@@ -89,7 +89,7 @@ export async function searchFood(query: string): Promise<USDAFood[]> {
 
 /**
  * Select the best matching food from search results
- * Uses heuristics to avoid common mismatches (e.g., cod liver oil vs cod fish)
+ * Uses heuristics to avoid common mismatches (e.g., cod liver oil vs cod fish, sweet potato leaves vs sweet potato)
  */
 function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
   if (results.length === 0) return null;
@@ -101,6 +101,14 @@ function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
   const excludeTerms = ['oil', 'flour', 'powder', 'extract', 'juice', 'sauce', 'syrup', 'dried', 'canned', 'frozen'];
   // Unless the query specifically asks for them
   const queryHasExcludeTerm = excludeTerms.some(term => queryLower.includes(term));
+
+  // Plant parts we usually don't want (unless specifically requested)
+  const plantPartTerms = ['leaves', 'leaf', 'stems', 'stem', 'seeds', 'seed', 'peel', 'tops', 'greens'];
+  const queryHasPlantPart = plantPartTerms.some(term => queryLower.includes(term));
+
+  // Snack/processed food terms - heavy penalty unless specifically requested
+  const snackTerms = ['chips', 'snacks', 'candy', 'crackers', 'cookies', 'cake', 'pie', 'pudding', 'fried', 'fries', 'puffs', 'roll', 'breaded', 'battered', 'nuggets', 'tenders', 'babyfood', 'baby food', 'infant', 'strained', 'puree', 'pureed'];
+  const queryHasSnackTerm = snackTerms.some(term => queryLower.includes(term));
 
   // Score each result
   const scored = results.map(food => {
@@ -123,7 +131,35 @@ function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
     if (!queryHasExcludeTerm) {
       for (const term of excludeTerms) {
         if (descLower.includes(term)) {
-          score -= 200;
+          score -= 400;
+        }
+      }
+    }
+
+    // Extra penalty for canned/mashed if query doesn't specify
+    if (!queryLower.includes('canned') && descLower.includes('canned')) {
+      score -= 300;
+    }
+    if (!queryLower.includes('mashed') && descLower.includes('mashed')) {
+      score -= 300;
+    }
+
+    // Heavy penalty for plant parts (leaves, stems, etc.) unless query specifically mentions them
+    // This fixes issues like "sweet potato" matching "sweet potato leaves"
+    if (!queryHasPlantPart) {
+      for (const term of plantPartTerms) {
+        if (descLower.includes(term)) {
+          score -= 500;
+        }
+      }
+    }
+
+    // Heavy penalty for snack/processed foods unless query specifically mentions them
+    // This fixes issues like "sweet potato" matching "sweet potato chips"
+    if (!queryHasSnackTerm) {
+      for (const term of snackTerms) {
+        if (descLower.includes(term)) {
+          score -= 500;
         }
       }
     }
@@ -136,6 +172,14 @@ function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
       score -= 300;
     }
 
+    // Bonus for plural form matching singular (e.g., "potatoes" matches "potato")
+    // This helps match "Sweet potatoes" when searching for "sweet potato"
+    const queryBase = queryLower.replace(/e?s$/, ''); // Remove trailing 's' or 'es'
+    const descBase = descLower.replace(/e?s$/, '');
+    if (descBase.includes(queryBase) || queryBase.includes(descBase)) {
+      score += 100;
+    }
+
     // Bonus for shorter descriptions (usually more generic/common items)
     score -= food.description.length * 0.5;
 
@@ -144,6 +188,11 @@ function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
 
   // Sort by our custom score
   scored.sort((a, b) => b.score - a.score);
+
+  console.log(`selectBestMatch for "${query}": top 3 results:`);
+  scored.slice(0, 3).forEach((s, i) => {
+    console.log(`  ${i + 1}. "${s.food.description}" (score: ${s.score.toFixed(1)}, fdcId: ${s.food.fdcId})`);
+  });
 
   return scored[0].food;
 }
@@ -169,14 +218,17 @@ export async function getFoodDetails(fdcId: number): Promise<NutritionalData> {
 
 /**
  * Extract macronutrients from USDA food details response
- * Handles different USDA API response formats
+ * Handles different USDA API response formats (SR Legacy vs Foundation)
  */
 function extractNutrients(food: USDAFoodDetails): NutritionalData {
   const nutrients = food.foodNutrients || [];
 
   // USDA nutrient numbers (these are the standard identifiers)
+  // Note: Different data types use different nutrient numbers:
+  // - SR Legacy uses 208/1008 for Energy
+  // - Foundation uses 957 (Atwater General) or 958 (Atwater Specific) for Energy
   const NUTRIENT_NUMBERS: Record<string, string[]> = {
-    calories: ['208', '1008'], // Energy in kcal
+    calories: ['208', '1008', '957', '958'], // Energy in kcal (208/1008 for SR Legacy, 957/958 for Foundation)
     protein: ['203', '1003'],
     carbs: ['205', '1005'],
     fat: ['204', '1004'],
@@ -271,9 +323,13 @@ function normalizeIngredientName(name: string): string {
     'whole wheat bread': 'bread whole wheat',
     'oats': 'oats regular or quick',
     'rolled oats': 'oats regular or quick',
-    'sweet potato': 'sweet potato raw',
-    'potato': 'potato raw',
-    'potatoes': 'potato raw',
+    'sweet potato': 'sweet potatoes raw unprepared',
+    'sweet potatoes': 'sweet potatoes raw unprepared',
+    'yam': 'yam raw',
+    'potato': 'potatoes flesh and skin raw',
+    'potatoes': 'potatoes flesh and skin raw',
+    'russet potato': 'potatoes russet raw',
+    'red potato': 'potatoes red raw',
 
     // Vegetables
     'broccoli': 'broccoli raw',

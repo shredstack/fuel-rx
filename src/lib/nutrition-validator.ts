@@ -2,7 +2,7 @@ import type { DayPlan, Meal, Ingredient, Macros, UserProfile } from './types';
 import { getOrFetchIngredient, calculateMacrosForAmount, CachedIngredient } from './usda';
 import { convertToGrams } from './unit-conversions';
 
-const TOLERANCE_PERCENT = 5;
+const TOLERANCE_PERCENT = 10;
 const MAX_ADJUSTMENT_ITERATIONS = 5;
 
 interface ValidatedMeal extends Meal {
