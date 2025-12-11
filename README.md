@@ -39,6 +39,9 @@ Built for athletes who know nutrition matters but struggle with meal planning an
   - Generates personalized meal plans
   - Pay-as-you-go pricing (~$3 per million input tokens)
   - Powered by Claude Sonnet for optimal cost/performance
+- **USDA FoodData Central API**
+  - Validates and verifies macro calculations
+  - See [Calorie & Macro Validation](#calorie--macro-validation) for details
 
 ### Hosting & Deployment
 - **Vercel** (Free Tier)
@@ -147,6 +150,127 @@ fuel-rx/
 npm install -g vercel
 vercel
 ```
+
+## Calorie & Macro Validation
+
+FuelRx uses a multi-step validation process to ensure meal plan macros are accurate:
+
+### Validation Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        MEAL PLAN GENERATION                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│  1. Claude generates meal plan with estimated macros                    │
+│     └── Includes: meals, ingredients, instructions, macro estimates     │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FOR EACH INGREDIENT                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  2. Convert amount to grams                                             │
+│     ├── Check database tables: density_multipliers, item_weights        │
+│     ├── Fall back to hardcoded values if DB unavailable                 │
+│     └── Assign confidence level: HIGH, MEDIUM, or LOW                   │
+│                                                                         │
+│     Confidence Levels:                                                  │
+│     • HIGH: Known unit conversion + known density/weight                │
+│     • MEDIUM: Known unit but unknown density (uses water = 1.0)         │
+│     • LOW: Unknown unit, falls back to 100g per unit                    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      USDA LOOKUP                                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│  3. Look up ingredient in USDA FoodData Central                         │
+│     ├── Check local cache (usda_ingredients table, 90-day TTL)          │
+│     └── If not cached, fetch from USDA API and cache result             │
+│                                                                         │
+│     USDA data provides per-100g values for:                             │
+│     • Calories, Protein, Carbohydrates, Fat                             │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    MACRO CALCULATION                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│  4. Calculate macros based on confidence level:                         │
+│                                                                         │
+│     IF (USDA data exists AND confidence != LOW):                        │
+│        → Use USDA calculation: (grams / 100) × USDA per-100g values     │
+│        → Mark as "usda_validated"                                       │
+│                                                                         │
+│     ELSE IF (confidence == LOW):                                        │
+│        → Use Claude's original estimate (distributed across ingredients)│
+│        → Prevents wildly inaccurate calculations from bad conversions   │
+│                                                                         │
+│     ELSE (no USDA data but good conversion):                            │
+│        → Use category-based estimates (protein, dairy, produce, etc.)   │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   PORTION ADJUSTMENT                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│  5. Compare daily totals to user's macro targets                        │
+│     └── If outside 5% tolerance, iteratively adjust portions            │
+│         (max 5 iterations, weighted toward calories & protein)          │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     FINAL OUTPUT                                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│  6. Return validated meal plan with:                                    │
+│     • Adjusted ingredient amounts                                       │
+│     • Validated macro totals per meal and per day                       │
+│     • Regenerated grocery list with consolidated quantities             │
+│     • Validation summary (ingredients validated vs fallback)            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/claude.ts` | Generates initial meal plan with Claude AI |
+| `src/lib/nutrition-validator.ts` | Main validation orchestration |
+| `src/lib/usda.ts` | USDA API integration and caching |
+| `src/lib/unit-conversions.ts` | Converts amounts to grams |
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `usda_ingredients` | Cached USDA nutritional data (90-day TTL) |
+| `density_multipliers` | Volume-to-gram density values (e.g., granola = 0.45) |
+| `item_weights` | Standard weights for countable items (e.g., egg = 50g) |
+
+### Adding New Ingredients
+
+To add density multipliers or item weights, insert into the database:
+
+```sql
+-- Add a new density multiplier
+INSERT INTO density_multipliers (ingredient_name, multiplier, category)
+VALUES ('chia seeds', 0.55, 'seeds');
+
+-- Add a new item weight
+INSERT INTO item_weights (ingredient_name, weight_grams, notes)
+VALUES ('bagel', 85, 'medium plain bagel');
+```
+
+### Environment Variables
+
+Add to `.env.local`:
+
+```bash
+USDA_API_KEY=your_usda_api_key
+```
+
+Get a free API key at: https://fdc.nal.usda.gov/api-key-signup.html
 
 ## Roadmap
 

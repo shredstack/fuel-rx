@@ -56,13 +56,23 @@ export async function validateAndAdjustMealPlan(
       // Process each meal in the day
       const validatedMeals = await Promise.all(
         day.meals.map(async (meal) => {
+          // Calculate what proportion of the meal's macros each ingredient represents
+          // This is used as a fallback when we can't reliably calculate from USDA data
+          const totalIngredients = meal.ingredients.length;
+          const llmMacrosPerIngredient: Macros = {
+            calories: meal.macros.calories / totalIngredients,
+            protein: meal.macros.protein / totalIngredients,
+            carbs: meal.macros.carbs / totalIngredients,
+            fat: meal.macros.fat / totalIngredients,
+          };
+
           const ingredientDetails = await Promise.all(
             meal.ingredients.map(async (ingredient) => {
               // Get USDA data for this ingredient
               const usdaData = await getOrFetchIngredient(ingredient.name);
 
               // Convert amount to grams
-              const conversion = convertToGrams(
+              const conversion = await convertToGrams(
                 ingredient.amount,
                 ingredient.unit,
                 ingredient.name
@@ -71,16 +81,24 @@ export async function validateAndAdjustMealPlan(
               let macros: Macros;
               let usda_validated = false;
 
-              if (usdaData) {
+              // Only use USDA calculation if we have USDA data AND high/medium confidence conversion
+              // Low confidence conversions can produce wildly inaccurate gram amounts
+              if (usdaData && conversion.confidence !== 'low') {
                 // Calculate macros using USDA data
                 macros = calculateMacrosForAmount(usdaData, conversion.grams);
                 usda_validated = true;
                 ingredientsValidated++;
+              } else if (conversion.confidence === 'low') {
+                // Low confidence conversion - use LLM's estimate as it's likely more accurate
+                // than a gram calculation based on an assumed 100g per unit
+                macros = llmMacrosPerIngredient;
+                ingredientsFallback++;
+                console.warn(`Using LLM estimate for low-confidence conversion: ${ingredient.name}`);
               } else {
-                // Fallback: estimate based on ingredient category
+                // No USDA data but good conversion - use category-based estimate
                 macros = estimateMacrosForIngredient(ingredient, conversion.grams);
                 ingredientsFallback++;
-                console.warn(`Using fallback macros for: ${ingredient.name}`);
+                console.warn(`Using category fallback macros for: ${ingredient.name}`);
               }
 
               return {

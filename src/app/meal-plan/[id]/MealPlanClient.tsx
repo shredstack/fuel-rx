@@ -10,6 +10,7 @@ interface Props {
   mealPlan: {
     id: string
     week_start_date: string
+    title: string | null
     days: DayPlan[]
     grocery_list: Ingredient[]
     is_favorite: boolean
@@ -36,6 +37,33 @@ export default function MealPlanClient({ mealPlan }: Props) {
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null)
   const [isFavorite, setIsFavorite] = useState(mealPlan.is_favorite)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [title, setTitle] = useState(mealPlan.title || '')
+  const [savingTitle, setSavingTitle] = useState(false)
+
+  const defaultTitle = `Week of ${new Date(mealPlan.week_start_date).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })}`
+
+  const displayTitle = title || defaultTitle
+
+  const saveTitle = async () => {
+    setSavingTitle(true)
+    const newTitle = title.trim() || null
+
+    const { error } = await supabase
+      .from('meal_plans')
+      .update({ title: newTitle })
+      .eq('id', mealPlan.id)
+
+    if (!error) {
+      setTitle(newTitle || '')
+    }
+    setSavingTitle(false)
+    setIsEditingTitle(false)
+  }
 
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay)
 
@@ -81,16 +109,67 @@ export default function MealPlanClient({ mealPlan }: Props) {
         {/* Plan header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Meal Plan
-            </h1>
-            <p className="text-gray-600">
-              Week of {new Date(mealPlan.week_start_date).toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={defaultTitle}
+                  className="text-2xl font-bold text-gray-900 border-b-2 border-primary-500 bg-transparent outline-none px-1"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveTitle()
+                    if (e.key === 'Escape') {
+                      setTitle(mealPlan.title || '')
+                      setIsEditingTitle(false)
+                    }
+                  }}
+                />
+                <button
+                  onClick={saveTitle}
+                  disabled={savingTitle}
+                  className="p-1 text-green-600 hover:text-green-700"
+                  title="Save"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setTitle(mealPlan.title || '')
+                    setIsEditingTitle(false)
+                  }}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                  title="Cancel"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {displayTitle}
+                </h1>
+                <button
+                  onClick={() => setIsEditingTitle(true)}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                  title="Edit title"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            {title && (
+              <p className="text-gray-600">
+                {defaultTitle}
+              </p>
+            )}
           </div>
           <div className="flex gap-3">
             <button
@@ -152,25 +231,25 @@ export default function MealPlanClient({ mealPlan }: Props) {
             <div className="grid grid-cols-4 gap-4 text-center">
               <div>
                 <p className="text-2xl font-bold text-primary-600">
-                  {currentDayPlan.daily_totals.calories}
+                  {Math.round(currentDayPlan.daily_totals.calories)}
                 </p>
                 <p className="text-sm text-gray-500">Calories</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-blue-600">
-                  {currentDayPlan.daily_totals.protein}g
+                  {currentDayPlan.daily_totals.protein.toFixed(1)}g
                 </p>
                 <p className="text-sm text-gray-500">Protein</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-orange-600">
-                  {currentDayPlan.daily_totals.carbs}g
+                  {currentDayPlan.daily_totals.carbs.toFixed(1)}g
                 </p>
                 <p className="text-sm text-gray-500">Carbs</p>
               </div>
               <div>
                 <p className="text-2xl font-bold text-purple-600">
-                  {currentDayPlan.daily_totals.fat}g
+                  {currentDayPlan.daily_totals.fat.toFixed(1)}g
                 </p>
                 <p className="text-sm text-gray-500">Fat</p>
               </div>
@@ -233,16 +312,16 @@ function MealCard({
             <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
             <div className="flex gap-4 mt-2 text-sm">
               <span className="text-gray-600">
-                <span className="font-medium">{meal.macros.calories}</span> kcal
+                <span className="font-medium">{Math.round(meal.macros.calories)}</span> kcal
               </span>
               <span className="text-blue-600">
-                <span className="font-medium">{meal.macros.protein}g</span> protein
+                <span className="font-medium">{meal.macros.protein.toFixed(1)}g</span> protein
               </span>
               <span className="text-orange-600">
-                <span className="font-medium">{meal.macros.carbs}g</span> carbs
+                <span className="font-medium">{meal.macros.carbs.toFixed(1)}g</span> carbs
               </span>
               <span className="text-purple-600">
-                <span className="font-medium">{meal.macros.fat}g</span> fat
+                <span className="font-medium">{meal.macros.fat.toFixed(1)}g</span> fat
               </span>
             </div>
           </div>
