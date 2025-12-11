@@ -30,17 +30,22 @@ export interface CachedIngredient {
 }
 
 interface USDANutrient {
+  // Flat structure (used by search endpoint's abridged format)
   nutrientName?: string;
   nutrientNumber?: string;
   value?: number;
-  amount?: number;
-  unitName?: string;
-  // Some responses nest the nutrient info
+  // Nested structure (used by food details endpoint)
   nutrient?: {
+    id: number;
     name: string;
     number: string;
+    rank: number;
     unitName: string;
   };
+  amount?: number;
+  id?: number;
+  dataPoints?: number;
+  type?: string;
 }
 
 interface USDAFoodSearchResult {
@@ -187,11 +192,12 @@ function extractNutrients(food: USDAFoodDetails): NutritionalData {
     for (const n of nutrients) {
       // Get the nutrient name - handle both flat and nested structures
       const nutrientName = n.nutrientName || n.nutrient?.name || '';
-      const nutrientNumber = n.nutrientNumber || n.nutrient?.number || '';
+      // Convert nutrient number to string for comparison (API may return number or string)
+      const nutrientNumber = String(n.nutrientNumber || n.nutrient?.number || '');
       const nutrientValue = n.value ?? n.amount ?? 0;
 
       // Try matching by number first (more reliable)
-      if (numbers.includes(nutrientNumber)) {
+      if (nutrientNumber && numbers.includes(nutrientNumber)) {
         return nutrientValue;
       }
 
@@ -341,7 +347,7 @@ export async function getOrFetchIngredient(name: string): Promise<CachedIngredie
     const daysSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
 
     if (daysSinceUpdate < CACHE_EXPIRATION_DAYS) {
-      return {
+      const result = {
         ingredient_name: cached.ingredient_name,
         fdc_id: cached.fdc_id,
         calories_per_100g: parseFloat(cached.calories_per_100g),
@@ -349,6 +355,20 @@ export async function getOrFetchIngredient(name: string): Promise<CachedIngredie
         carbs_per_100g: parseFloat(cached.carbs_per_100g),
         fat_per_100g: parseFloat(cached.fat_per_100g),
       };
+
+      // Validate cached data - if it looks corrupted, re-fetch
+      if (!isCacheDataValid(result)) {
+        console.log(`USDA cache invalidated for "${name}" - will re-fetch`);
+        // Delete the invalid cache entry
+        await supabase
+          .from('usda_ingredients')
+          .delete()
+          .eq('ingredient_name', normalizedName);
+        // Fall through to fetch fresh data
+      } else {
+        console.log(`USDA cache hit for "${name}": cal=${result.calories_per_100g} p=${result.protein_per_100g} c=${result.carbs_per_100g} f=${result.fat_per_100g}`);
+        return result;
+      }
     }
   }
 
@@ -368,6 +388,7 @@ export async function getOrFetchIngredient(name: string): Promise<CachedIngredie
     }
     console.log(`USDA: "${name}" -> "${bestMatch.description}" (fdc:${bestMatch.fdcId})`);
     const nutritionData = await getFoodDetails(bestMatch.fdcId);
+    console.log(`USDA API returned: cal=${nutritionData.calories} p=${nutritionData.protein} c=${nutritionData.carbs} f=${nutritionData.fat}`);
 
     // 3. Store in database cache
     const cacheData = {
@@ -423,4 +444,77 @@ export function calculateMacrosForAmount(
     carbs: Math.round(ingredientData.carbs_per_100g * factor * 10) / 10,
     fat: Math.round(ingredientData.fat_per_100g * factor * 10) / 10,
   };
+}
+
+/**
+ * Check if cached data looks valid (sanity check for obviously wrong data)
+ * Returns false if the data seems corrupted or incomplete
+ */
+function isCacheDataValid(cached: CachedIngredient): boolean {
+  // If we have calories but ALL macros are 0, something is wrong
+  // (almost no food has exactly 0 protein, 0 carbs, AND 0 fat)
+  if (cached.calories_per_100g > 0 &&
+      cached.protein_per_100g === 0 &&
+      cached.carbs_per_100g === 0 &&
+      cached.fat_per_100g === 0) {
+    console.warn(`Cache validation failed for "${cached.ingredient_name}": has calories but all macros are 0`);
+    return false;
+  }
+
+  // Basic sanity check: calories should roughly match macro calculation
+  // Calories = protein*4 + carbs*4 + fat*9
+  const expectedCalories = (cached.protein_per_100g * 4) +
+                          (cached.carbs_per_100g * 4) +
+                          (cached.fat_per_100g * 9);
+
+  // Allow significant variance since some foods have fiber, alcohol, etc.
+  // But if expected is 0 and actual is high, something is wrong
+  if (expectedCalories === 0 && cached.calories_per_100g > 50) {
+    console.warn(`Cache validation failed for "${cached.ingredient_name}": calories ${cached.calories_per_100g} but calculated macros give 0`);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Clear all cached USDA ingredients to force fresh fetches
+ * Use this after fixing data extraction bugs
+ */
+export async function clearUsdaCache(): Promise<{ cleared: number; error?: string }> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('usda_ingredients')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000') // Delete all rows
+    .select('id');
+
+  if (error) {
+    console.error('Failed to clear USDA cache:', error);
+    return { cleared: 0, error: error.message };
+  }
+
+  return { cleared: data?.length || 0 };
+}
+
+/**
+ * Clear cached data for specific ingredients (by name)
+ */
+export async function clearCachedIngredients(names: string[]): Promise<{ cleared: number; error?: string }> {
+  const supabase = await createClient();
+  const normalizedNames = names.map(n => n.toLowerCase().trim());
+
+  const { data, error } = await supabase
+    .from('usda_ingredients')
+    .delete()
+    .in('ingredient_name', normalizedNames)
+    .select('id');
+
+  if (error) {
+    console.error('Failed to clear specific ingredients from cache:', error);
+    return { cleared: 0, error: error.message };
+  }
+
+  return { cleared: data?.length || 0 };
 }
