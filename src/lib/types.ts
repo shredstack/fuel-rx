@@ -79,9 +79,20 @@ export interface MealPlan {
   id: string;
   user_id: string;
   week_start_date: string;
+  title: string | null;
   days: DayPlan[];
   grocery_list: Ingredient[];
   is_favorite: boolean;
+  created_at: string;
+}
+
+export type MealPreferenceType = 'liked' | 'disliked';
+
+export interface MealPreference {
+  id: string;
+  user_id: string;
+  meal_name: string;
+  preference: MealPreferenceType;
   created_at: string;
 }
 

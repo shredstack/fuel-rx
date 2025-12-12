@@ -39,9 +39,20 @@ export async function POST() {
     recentMealNames = planData.flatMap(day => day.meals.map(meal => meal.name))
   }
 
+  // Fetch user's meal preferences (likes/dislikes)
+  const { data: mealPrefsData } = await supabase
+    .from('meal_preferences')
+    .select('meal_name, preference')
+    .eq('user_id', user.id)
+
+  const mealPreferences = {
+    liked: mealPrefsData?.filter(p => p.preference === 'liked').map(p => p.meal_name) || [],
+    disliked: mealPrefsData?.filter(p => p.preference === 'disliked').map(p => p.meal_name) || [],
+  }
+
   try {
     // Generate meal plan using Claude
-    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames)
+    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames, mealPreferences)
 
     // Calculate week start date (next Monday)
     const today = new Date()
