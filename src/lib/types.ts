@@ -44,6 +44,7 @@ export interface UserProfile {
   meal_consistency_prefs: MealConsistencyPrefs;
   social_feed_enabled: boolean;
   display_name: string | null;
+  profile_photo_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -109,6 +110,7 @@ export interface OnboardingData {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  profile_photo_url: string | null;
 }
 
 export const DIETARY_PREFERENCE_LABELS: Record<DietaryPreference, string> = {
@@ -161,6 +163,7 @@ export interface ValidatedMeal {
   image_url: string | null;
   share_with_community: boolean;
   prep_time: CustomMealPrepTime | null;
+  meal_prep_instructions: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -184,6 +187,7 @@ export interface SocialFeedPost {
   prep_time: CustomMealPrepTime | null;
   ingredients: ValidatedMealIngredient[] | null;
   instructions: string[] | null;
+  meal_prep_instructions: string | null;
   meal_type: MealType | null;
   created_at: string;
   // Joined fields from queries

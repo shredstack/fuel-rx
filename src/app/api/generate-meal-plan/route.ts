@@ -66,7 +66,7 @@ export async function POST() {
 
   try {
     // Generate meal plan using Claude
-    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames, mealPreferences, validatedMeals)
+    const mealPlanData = await generateMealPlan(profile as UserProfile, user.id, recentMealNames, mealPreferences, validatedMeals)
 
     // Calculate week start date (next Monday)
     const today = new Date()
