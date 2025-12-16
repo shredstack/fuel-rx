@@ -86,32 +86,26 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 ### Database Setup
 
-Run the SQL migrations in your Supabase project (see `/supabase/migrations` folder):
+Run the SQL migrations in your Supabase project (see `/supabase/migrations` folder).
 
-```sql
--- Users table
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT,
-    weight DECIMAL,
-    target_protein INT,
-    target_carbs INT,
-    target_fat INT,
-    target_calories INT,
-    dietary_prefs TEXT[],
-    meals_per_day INT,
-    prep_time INT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+For local development, we use the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started?queryGroups=platform&platform=macos).
 
--- Meal plans table
-CREATE TABLE meal_plans (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id),
-    week_start_date DATE,
-    plan_data JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+Install the supabase cli:
+```
+brew install supabase/tap/supabase
+brew upgrade supabase
+```
+
+Install [Docker Desktop](https://docs.docker.com/desktop/).
+
+Check migration status with:
+```bash
+supabase migration list --linked
+```
+
+To run new migrations:
+```bash
+supabase db push --linked
 ```
 
 ## Project Structure
