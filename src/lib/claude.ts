@@ -231,49 +231,96 @@ function getMealTypesForPlan(mealsPerDay: number): MealType[] {
   }
 }
 
-function consolidateGroceryList(days: DayPlan[]): Ingredient[] {
-  const ingredientMap = new Map<string, { amount: number; unit: string; category: Ingredient['category'] }>();
+function collectRawIngredients(days: DayPlan[]): Ingredient[] {
+  // Collect all ingredients without consolidation for LLM processing
+  const allIngredients: Ingredient[] = [];
 
   for (const day of days) {
     for (const meal of day.meals) {
       for (const ingredient of meal.ingredients) {
-        const key = `${ingredient.name.toLowerCase()}|${ingredient.unit.toLowerCase()}|${ingredient.category}`;
-        const existing = ingredientMap.get(key);
-        const amount = parseFloat(ingredient.amount) || 1;
-
-        if (existing) {
-          existing.amount += amount;
-        } else {
-          ingredientMap.set(key, {
-            amount,
-            unit: ingredient.unit,
-            category: ingredient.category,
-          });
-        }
+        allIngredients.push({ ...ingredient });
       }
     }
   }
 
-  const groceryList: Ingredient[] = [];
-  Array.from(ingredientMap.entries()).forEach(([key, value]) => {
-    const [name] = key.split('|');
-    groceryList.push({
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      amount: value.amount % 1 === 0 ? value.amount.toString() : value.amount.toFixed(1),
-      unit: value.unit,
-      category: value.category,
-    });
-  });
+  return allIngredients;
+}
 
-  // Sort by category then name
-  groceryList.sort((a, b) => {
-    if (a.category !== b.category) {
-      return a.category.localeCompare(b.category);
+async function consolidateGroceryListWithLLM(
+  rawIngredients: Ingredient[],
+  userId: string
+): Promise<Ingredient[]> {
+  // Group raw ingredients by name similarity for the prompt
+  const ingredientSummary = rawIngredients.map(i =>
+    `${i.amount} ${i.unit} ${i.name} (${i.category})`
+  ).join('\n');
+
+  const prompt = `You are a helpful assistant that creates practical grocery shopping lists.
+
+## Task
+Take this raw list of ingredients from a 7-day meal plan and consolidate them into a practical grocery shopping list.
+
+## Raw Ingredients (one per line):
+${ingredientSummary}
+
+## Instructions
+1. **Combine similar ingredients**: Merge items that are the same ingredient even if described differently (e.g., "avocado", "avocado, sliced", "1/2 avocado" should all become one "Avocados" entry)
+2. **Use practical shopping quantities**: Convert to units you'd actually buy at a store:
+   - Use "whole" or count for items bought individually (e.g., "3 Avocados" not "2.5 medium avocado")
+   - Use "bag" for items typically sold in bags (e.g., "1 bag Carrots" or "2 bags Spinach")
+   - Use "bunch" for herbs and leafy greens sold in bunches
+   - Use "lb" or "oz" for meats and proteins
+   - Use "can" or "jar" for canned/jarred items
+   - Use "dozen" for eggs
+   - Use "container" or "package" for items sold that way (e.g., yogurt, tofu)
+3. **Round up to whole numbers**: Always round up to ensure the shopper has enough (e.g., 1.3 avocados → 2 avocados)
+4. **Keep practical minimums**: Don't list less than you can buy (e.g., at least 1 bag of carrots, at least 1 bunch of cilantro)
+5. **Preserve categories**: Keep the same category for each ingredient
+
+## Response Format
+Return ONLY valid JSON with this exact structure (no markdown, no code blocks, just raw JSON):
+{
+  "grocery_list": [
+    {
+      "name": "Ingredient name (capitalized, simple)",
+      "amount": "2",
+      "unit": "whole",
+      "category": "produce|protein|dairy|grains|pantry|frozen|other"
     }
-    return a.name.localeCompare(b.name);
+  ]
+}
+
+Sort the list by category (produce, protein, dairy, grains, pantry, frozen, other) then alphabetically by name within each category.`;
+
+  const startTime = Date.now();
+  const message = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const duration = Date.now() - startTime;
+
+  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+
+  // Log the LLM call
+  await logLLMCall({
+    user_id: userId,
+    prompt,
+    output: responseText,
+    model: 'claude-sonnet-4-20250514',
+    prompt_type: 'grocery_list_consolidation',
+    tokens_used: message.usage?.output_tokens,
+    duration_ms: duration,
   });
 
-  return groceryList;
+  // Parse the JSON response
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  const parsed: { grocery_list: Ingredient[] } = JSON.parse(jsonText);
+  return parsed.grocery_list;
 }
 
 export async function generateMealPlan(
@@ -356,8 +403,9 @@ export async function generateMealPlan(
     };
   });
 
-  // Consolidate grocery list from all meals
-  const grocery_list = consolidateGroceryList(days);
+  // Collect raw ingredients and consolidate with LLM for practical shopping list
+  const rawIngredients = collectRawIngredients(days);
+  const grocery_list = await consolidateGroceryListWithLLM(rawIngredients, userId);
 
   return { days, grocery_list };
 }
