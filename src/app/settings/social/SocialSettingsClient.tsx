@@ -38,6 +38,13 @@ export default function SocialSettingsClient({ initialSettings }: Props) {
         throw new Error(data.error || 'Failed to save settings')
       }
 
+      // If user just enabled social feed (wasn't enabled before), redirect to community
+      // Use window.location for a full page navigation to ensure fresh data from server
+      if (socialFeedEnabled && !initialSettings.social_feed_enabled) {
+        window.location.href = '/community'
+        return
+      }
+
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
