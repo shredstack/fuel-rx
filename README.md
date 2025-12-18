@@ -103,10 +103,18 @@ Check migration status with:
 supabase migration list --linked
 ```
 
-To run new migrations:
+You can view your local supabase instance here: http://127.0.0.1:54333/
+
+To add a new migration file:
 ```bash
-supabase db push --linked
+supabase migration new <description>
 ```
+
+To run new migrations locally:
+```bash
+supabase migration up
+```
+
 
 ## Project Structure
 
