@@ -1,0 +1,192 @@
+name: Validate Database Migrations
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/validate-migrations.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify migration files
+        run: |
+          echo "Checking migration file syntax..."
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating: $file"
+              # Check for basic SQL syntax issues
+              if ! grep -q "^--" "$file" && ! grep -q "CREATE\|ALTER\|DROP\|INSERT" "$file"; then
+                echo "❌ Warning: $file may be empty or invalid"
+                exit 1
+              fi
+            fi
+          done
+          echo "✅ All migration files validated"
+
+      - name: Start local Supabase
+        run: |
+          supabase init --force || true
+          supabase start
+
+      - name: Check migration status
+        run: supabase migration list --local
+
+      - name: Test migrations locally
+        run: |
+          echo "Testing migrations in isolated environment..."
+          supabase db reset --local --debug
+
+      - name: Run database tests (if you have any)
+        run: |
+          echo "Running database tests..."
+          # Add your test commands here
+          # Example: npm run test:db
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+      - name: Comment on PR
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Database migrations validated successfully! Safe to merge.'
+            })
+
+      - name: Notify Slack on success
+        if: success()
+        run: |
+          curl -L -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "✅ Database Migration Validation Passed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Database Migration Validation Passed",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*PR:*\n#${{ github.event.pull_request.number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.head_ref }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Pull Request",
+                        "emoji": true
+                      },
+                      "url": "${{ github.event.pull_request.html_url }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_NOTIFICATION_URL }}
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -L -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "🚨 Database Migration Validation Failed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚨 Database Migration Validation Failed",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*PR:*\n#${{ github.event.pull_request.number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.head_ref }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ *Action Required:* Please check the workflow logs and fix the migration issues before merging."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow Run",
+                        "emoji": true
+                      },
+                      "style": "danger",
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_NOTIFICATION_URL }}
+

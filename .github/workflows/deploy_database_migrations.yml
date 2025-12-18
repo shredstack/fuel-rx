@@ -1,0 +1,204 @@
+name: Deploy Database Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+permissions:
+  deployments: write
+  issues: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production  # Requires manual approval (optional but recommended)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check migration status before deployment
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          echo "Linking to production project..."
+          supabase link --project-ref $PROJECT_REF
+
+          echo "Checking current migration status..."
+          supabase migration list --linked
+
+      - name: Deploy migrations to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          echo "🚀 Deploying migrations to production..."
+          supabase db push --linked
+
+          echo "✅ Migrations deployed successfully!"
+
+      - name: Verify deployment
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          echo "Verifying migration status..."
+          supabase migration list --linked
+
+      - name: Create GitHub deployment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              description: 'Database migrations deployed',
+              auto_merge: false,
+              required_contexts: []
+            })
+
+      - name: Notify on failure (GitHub Issue)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Migration Deployment Failed',
+              body: `Migration deployment failed for commit ${context.sha}\n\nCheck the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`,
+              labels: ['bug', 'database', 'urgent']
+            })
+
+      - name: Notify Slack on success
+        if: success()
+        run: |
+          curl -L -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "✅ Database Migration Deployed Successfully",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Database Migration Deployed",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n`${{ github.sha }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Triggered by:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow Run",
+                        "emoji": true
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_NOTIFICATION_URL }}
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -L -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "🚨 Database Migration Failed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚨 Database Migration Failed",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n`${{ github.sha }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Triggered by:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ *Action Required:* Please check the workflow logs and resolve the migration issue."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow Run",
+                        "emoji": true
+                      },
+                      "style": "danger",
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_NOTIFICATION_URL }}

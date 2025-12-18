@@ -1,6 +1,6 @@
 -- -- Add title column to meal_plans
--- ALTER TABLE meal_plans
--- ADD COLUMN title TEXT;
+ALTER TABLE meal_plans
+ADD COLUMN title TEXT;
 
 COMMENT ON COLUMN meal_plans.title IS 'User-editable title for the meal plan';
 
