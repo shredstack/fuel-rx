@@ -13,9 +13,99 @@ import type {
   DailyAssembly,
   PrepModeResponse,
   DayOfWeek,
+  IngredientNutrition,
 } from './types';
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS } from './types';
 import { createClient } from './supabase/server';
+
+// ============================================
+// Ingredient Nutrition Cache Functions
+// ============================================
+
+/**
+ * Fetch cached nutrition data for ingredients
+ * Returns a map of normalized ingredient names to nutrition data
+ */
+async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<string, IngredientNutrition>> {
+  const supabase = await createClient();
+  const normalizedNames = ingredientNames.map(name => name.toLowerCase().trim());
+
+  const { data, error } = await supabase
+    .from('ingredient_nutrition')
+    .select('*')
+    .in('name_normalized', normalizedNames);
+
+  if (error) {
+    console.error('Error fetching cached nutrition:', error);
+    return new Map();
+  }
+
+  const nutritionMap = new Map<string, IngredientNutrition>();
+  for (const item of data || []) {
+    nutritionMap.set(item.name_normalized, item as IngredientNutrition);
+  }
+
+  return nutritionMap;
+}
+
+/**
+ * Cache new nutrition data for ingredients
+ */
+async function cacheIngredientNutrition(
+  ingredients: Array<{
+    name: string;
+    serving_size: number;
+    serving_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>
+): Promise<void> {
+  const supabase = await createClient();
+
+  const inserts = ingredients.map(ing => ({
+    name: ing.name,
+    name_normalized: ing.name.toLowerCase().trim(),
+    serving_size: ing.serving_size,
+    serving_unit: ing.serving_unit,
+    calories: ing.calories,
+    protein: ing.protein,
+    carbs: ing.carbs,
+    fat: ing.fat,
+    source: 'llm_estimated' as const,
+    confidence_score: 0.7,
+  }));
+
+  // Use upsert to avoid duplicates
+  const { error } = await supabase
+    .from('ingredient_nutrition')
+    .upsert(inserts, {
+      onConflict: 'name_normalized,serving_size,serving_unit',
+      ignoreDuplicates: true,
+    });
+
+  if (error) {
+    console.error('Error caching ingredient nutrition:', error);
+  }
+}
+
+/**
+ * Build a nutrition reference string from cached data for LLM prompts
+ */
+function buildNutritionReferenceSection(nutritionCache: Map<string, IngredientNutrition>): string {
+  if (nutritionCache.size === 0) return '';
+
+  const lines = Array.from(nutritionCache.values()).map(n =>
+    `- ${n.name}: ${n.calories} cal, ${n.protein}g protein, ${n.carbs}g carbs, ${n.fat}g fat per ${n.serving_size} ${n.serving_unit}`
+  );
+
+  return `
+## NUTRITION REFERENCE (use these exact values)
+The following ingredients have validated nutrition data. Use these exact values when calculating macros:
+${lines.join('\n')}
+`;
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -429,8 +519,8 @@ export async function generateMealPlan(
 // ============================================
 
 /**
- * Stage 1: Generate core ingredients for the week
- * Selects a focused set of ingredients based on user preferences
+ * Stage 1: Generate core ingredients for the week with quantity estimates
+ * Selects a focused set of ingredients and estimates quantities to meet weekly calorie targets
  */
 async function generateCoreIngredients(
   profile: UserProfile,
@@ -444,6 +534,12 @@ async function generateCoreIngredients(
     .join(', ') || 'No restrictions';
 
   const varietyPrefs = profile.ingredient_variety_prefs ?? DEFAULT_INGREDIENT_VARIETY_PREFS;
+
+  // Calculate weekly macro targets
+  const weeklyCalories = profile.target_calories * 7;
+  const weeklyProtein = profile.target_protein * 7;
+  const weeklyCarbs = profile.target_carbs * 7;
+  const weeklyFat = profile.target_fat * 7;
 
   // Map prep_time to complexity level
   let prepComplexity = 'moderate';
@@ -469,10 +565,26 @@ async function generateCoreIngredients(
     }
   }
 
-  const prompt = `You are a meal planning assistant for CrossFit athletes. Your job is to select a focused set of core ingredients for one week of meals.
+  // Fetch cached nutrition data for common ingredients to provide as reference
+  const commonIngredients = [
+    'chicken breast', 'ground beef', 'salmon', 'eggs', 'greek yogurt',
+    'broccoli', 'spinach', 'sweet potato', 'bell peppers', 'rice',
+    'quinoa', 'oats', 'avocado', 'olive oil', 'almonds', 'banana'
+  ];
+  const nutritionCache = await fetchCachedNutrition(commonIngredients);
+  const nutritionReference = buildNutritionReferenceSection(nutritionCache);
+
+  const prompt = `You are a meal planning assistant for CrossFit athletes. Your job is to select a focused set of core ingredients for one week of meals that will MEET THE USER'S CALORIE AND MACRO TARGETS.
 ${exclusionsSection}${preferencesSection}
+## CRITICAL: WEEKLY CALORIE TARGET
+The user needs approximately ${weeklyCalories} calories for the week (${profile.target_calories} per day).
+- Weekly Protein Target: ${weeklyProtein}g (${profile.target_protein}g/day)
+- Weekly Carbs Target: ${weeklyCarbs}g (${profile.target_carbs}g/day)
+- Weekly Fat Target: ${weeklyFat}g (${profile.target_fat}g/day)
+
+**Your ingredient selection with quantities MUST provide enough total calories and macros to meet these weekly targets.**
+
 ## USER CONTEXT
-- Daily Macros: ${profile.target_calories} calories, ${profile.target_protein}g protein, ${profile.target_carbs}g carbs, ${profile.target_fat}g fat
 - Meal prep time available: ${prepComplexity} (${profile.prep_time} minutes per meal max)
 - Dietary preferences: ${dietaryPrefsText}
 - Meals per day: ${profile.meals_per_day}
@@ -485,34 +597,40 @@ The user wants their weekly grocery list to include:
 - Grains/Starches: ${varietyPrefs.grains} different options
 - Healthy Fats: ${varietyPrefs.fats} different options
 - Pantry Staples: ${varietyPrefs.pantry} different options
-
+${nutritionReference}
 ## INSTRUCTIONS
-Select ingredients that:
-1. Are versatile and can be prepared multiple ways
-2. Are commonly available at grocery stores
-3. Work well for batch cooking
-4. Can create variety through different cooking methods
-5. Are appropriate for CrossFit athletes (nutrient-dense, support recovery)
+Select ingredients AND estimate weekly quantities that:
+1. TOTAL to approximately ${weeklyCalories} calories for the week
+2. Provide approximately ${weeklyProtein}g protein for the week
+3. Are versatile and can be prepared multiple ways
+4. Are commonly available at grocery stores
+5. Work well for batch cooking
 6. Match the user's dietary preferences
 
+## CALORIE DISTRIBUTION GUIDANCE
+A typical distribution for ${weeklyCalories} weekly calories:
+- Proteins should provide ~35-40% of calories (~${Math.round(weeklyCalories * 0.35)} cal)
+- Grains/Starches should provide ~25-30% of calories (~${Math.round(weeklyCalories * 0.25)} cal)
+- Fats should provide ~20-25% of calories (~${Math.round(weeklyCalories * 0.20)} cal)
+- Fruits, vegetables, and pantry items make up the rest
+
 ## INGREDIENT SELECTION GUIDELINES
-- **Proteins**: Focus on lean, versatile options like chicken breast, ground beef (90% lean), salmon, eggs, Greek yogurt
-- **Vegetables**: Mix of colors and nutrients - cruciferous (broccoli, cauliflower), leafy greens (spinach, kale), starchy (sweet potatoes), and colorful (bell peppers, tomatoes)
-- **Fruits**: Fresh fruits that support recovery and provide natural energy
-- **Grains/Starches**: Whole grains like quinoa, brown rice, oats, or starchy vegetables
-- **Healthy Fats**: Avocado, olive oil, nuts, nut butters, seeds
-- **Pantry Staples**: Eggs (if not listed as protein), Greek yogurt, canned beans, cottage cheese, etc.
+- **Proteins**: Focus on lean, versatile options. 4oz chicken breast = ~140 cal, 26g protein. 4oz salmon = ~180 cal, 25g protein.
+- **Vegetables**: Mix of colors - broccoli, spinach, bell peppers, sweet potatoes. Low calorie but essential for nutrients.
+- **Fruits**: Fresh fruits for energy - banana = ~105 cal, berries = ~70-85 cal/cup.
+- **Grains/Starches**: 1 cup cooked rice = ~215 cal, 1 cup quinoa = ~220 cal, 1 medium sweet potato = ~105 cal.
+- **Healthy Fats**: Calorie-dense - 1 tbsp olive oil = 120 cal, 1 oz almonds = 165 cal, 1/2 avocado = 160 cal.
+- **Pantry Staples**: Eggs (70 cal each), Greek yogurt (130 cal/cup), beans (110 cal/half cup).
 
 ## CONSTRAINTS
 - Select EXACTLY the number of items requested per category
 - Prioritize ingredients that can be used in multiple meals
-- Consider shelf life and storage
-- Think about what can be bought in bulk
 - ONLY recommend healthy, whole foods that are non-processed or minimally processed
+- **Quantities must add up to approximately ${weeklyCalories} total weekly calories**
 
 Return ONLY valid JSON in this exact format (no markdown, no explanations):
 {
-  "proteins": ["Chicken breast", "Ground beef", "Salmon"],
+  "proteins": ["Chicken breast", "Ground beef 90% lean", "Salmon"],
   "vegetables": ["Broccoli", "Bell peppers", "Spinach", "Sweet potatoes", "Zucchini"],
   "fruits": ["Bananas", "Mixed berries"],
   "grains": ["Quinoa", "Brown rice"],
@@ -553,7 +671,8 @@ Return ONLY valid JSON in this exact format (no markdown, no explanations):
 
 /**
  * Stage 2: Generate meals using ONLY the core ingredients
- * Creates 21 meals constrained to the selected ingredients
+ * Creates meals constrained to the selected ingredients
+ * Properly handles multiple snacks per day
  */
 async function generateMealsFromCoreIngredients(
   profile: UserProfile,
@@ -578,13 +697,21 @@ async function generateMealsFromCoreIngredients(
   const targetCarbsPerMeal = Math.round(profile.target_carbs / profile.meals_per_day);
   const targetFatPerMeal = Math.round(profile.target_fat / profile.meals_per_day);
 
-  // Determine meal types needed
+  // Determine meal types needed and count snacks
   const mealTypesNeeded = getMealTypesForPlan(profile.meals_per_day);
+  const snacksPerDay = mealTypesNeeded.filter(t => t === 'snack').length;
   const uniqueMealTypes = Array.from(new Set(mealTypesNeeded)) as MealType[];
 
-  // Build consistency instructions
+  // Build consistency instructions with proper snack count
   const consistencyInstructions = uniqueMealTypes.map(type => {
     const isConsistent = mealConsistencyPrefs[type] === 'consistent';
+    if (type === 'snack' && snacksPerDay > 1) {
+      // Special handling for multiple snacks per day
+      if (isConsistent) {
+        return `- Snack: Generate ${snacksPerDay} different snacks (the user has ${snacksPerDay} snack slots per day, eaten consistently all 7 days)`;
+      }
+      return `- Snack: Generate ${snacksPerDay * 7} different snacks (${snacksPerDay} per day × 7 days = ${snacksPerDay * 7} total snacks)`;
+    }
     if (isConsistent) {
       return `- ${type.charAt(0).toUpperCase() + type.slice(1)}: Generate 1 meal (will be eaten all 7 days)`;
     }
@@ -617,40 +744,70 @@ ${mealsList}
 `;
   }
 
+  // Fetch cached nutrition data for the core ingredients
+  const allIngredientNames = [
+    ...coreIngredients.proteins,
+    ...coreIngredients.vegetables,
+    ...coreIngredients.fruits,
+    ...coreIngredients.grains,
+    ...coreIngredients.fats,
+    ...coreIngredients.pantry,
+  ];
+  const nutritionCache = await fetchCachedNutrition(allIngredientNames);
+  const nutritionReference = buildNutritionReferenceSection(nutritionCache);
+
+  // Calculate total meals needed
+  const totalMealsPerDay = profile.meals_per_day;
+  const totalMealsPerWeek = totalMealsPerDay * 7;
+
+  // Build snack-specific instructions if multiple snacks per day
+  let snackInstructions = '';
+  if (snacksPerDay > 1) {
+    snackInstructions = `
+## IMPORTANT: MULTIPLE SNACKS PER DAY
+The user has ${snacksPerDay} snack slots per day. You MUST generate ${snacksPerDay} snacks for each day.
+- Label them with "snack_number": 1 or 2 (or 3 if applicable) to distinguish them
+- Each day needs: breakfast, lunch, dinner, AND ${snacksPerDay} snacks
+- Total snacks needed: ${snacksPerDay * 7} (${snacksPerDay} per day × 7 days)
+`;
+  }
+
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
 ${preferencesSection}${validatedMealsSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
-
-## USER MACROS (daily targets)
-- Calories: ${profile.target_calories} kcal
-- Protein: ${profile.target_protein}g
-- Carbs: ${profile.target_carbs}g
-- Fat: ${profile.target_fat}g
+${nutritionReference}
+## USER MACROS (daily targets) - MUST BE MET
+- **Daily Calories: ${profile.target_calories} kcal** (this is the PRIMARY goal)
+- Daily Protein: ${profile.target_protein}g
+- Daily Carbs: ${profile.target_carbs}g
+- Daily Fat: ${profile.target_fat}g
 - Dietary Preferences: ${dietaryPrefsText}
 - Max Prep Time Per Meal: ${profile.prep_time} minutes
+- Meals Per Day: ${profile.meals_per_day}
 
 ## TARGET MACROS PER MEAL (approximately)
-- Calories: ~${targetCaloriesPerMeal} kcal
-- Protein: ~${targetProteinPerMeal}g
-- Carbs: ~${targetCarbsPerMeal}g
-- Fat: ~${targetFatPerMeal}g
+- Calories: ~${targetCaloriesPerMeal} kcal per meal
+- Protein: ~${targetProteinPerMeal}g per meal
+- Carbs: ~${targetCarbsPerMeal}g per meal
+- Fat: ~${targetFatPerMeal}g per meal
+
+**CRITICAL**: Each day's meals MUST total approximately ${profile.target_calories} calories.
+Do NOT generate meals that total significantly less than this target (within 5-10% is acceptable).
 
 ## MEAL CONSISTENCY SETTINGS
 ${consistencyInstructions}
-
+${snackInstructions}
 ## INSTRUCTIONS
-1. Create variety through different:
+1. **PRIORITIZE HITTING CALORIE TARGETS** - use adequate portion sizes
+2. Create variety through different:
    - Cooking methods (grilled, baked, stir-fried, steamed, raw)
    - Flavor profiles (Mediterranean, Asian, Mexican, Italian, American)
    - Meal structures (bowls, salads, plates, wraps using lettuce)
-2. Design meals that work well for batch cooking
-   - Many meals can share the same base protein cooked once
-   - Example: Grilled chicken used in 4 different meals with different preparations
-3. Balance macros across each day
-4. Make meals practical and appealing
+3. Design meals that work well for batch cooking
+4. Use realistic portion sizes that add up to daily calorie targets
 5. Consider meal prep efficiency
 
 ## CRITICAL RULES
@@ -658,6 +815,7 @@ ${consistencyInstructions}
 - Do NOT introduce new proteins, vegetables, fruits, grains, fats, or pantry items beyond what's listed
 - Create variety through preparation methods, not new ingredients
 - Verify that calories approximately = (protein × 4) + (carbs × 4) + (fat × 9)
+- **MUST generate exactly ${totalMealsPerDay} meals per day (${totalMealsPerWeek} total)**
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON with this exact structure:
@@ -665,7 +823,7 @@ Return ONLY valid JSON with this exact structure:
   "meals": [
     {
       "day": "monday",
-      "type": "breakfast",
+      "type": "breakfast",${snacksPerDay > 1 ? '\n      "snack_number": 1,' : ''}
       "name": "Greek Yogurt Power Bowl",
       "ingredients": [
         {"name": "Greek yogurt", "amount": "1", "unit": "cup", "category": "dairy"},
@@ -684,7 +842,9 @@ Return ONLY valid JSON with this exact structure:
   ]
 }
 
-Generate all meals for all 7 days in a single "meals" array. Order by day (monday first), then by meal type (breakfast, lunch, dinner, snack).`;
+Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
+Order by day (monday first), then by meal type (breakfast, snack, lunch, snack, dinner for 5 meals/day).
+${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}`;
 
   const startTime = Date.now();
   const message = await anthropic.messages.create({

@@ -357,3 +357,38 @@ export interface PrepModeResponse {
   }>;
   dailyAssembly: DailyAssembly;
 }
+
+// ============================================
+// Ingredient Nutrition Cache Types
+// ============================================
+
+export interface IngredientNutrition {
+  id: string;
+  name: string;
+  name_normalized: string;
+  serving_size: number;
+  serving_unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+  source: 'llm_estimated' | 'usda' | 'user_corrected';
+  usda_fdc_id?: string;
+  confidence_score?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Core ingredient with quantity estimation for weekly calorie targets
+export interface CoreIngredientWithQuantity {
+  name: string;
+  category: IngredientCategory;
+  weeklyQuantity: string; // e.g., "4 lbs", "2 dozen"
+  estimatedWeeklyCalories: number;
+  estimatedWeeklyProtein: number;
+  estimatedWeeklyCarbs: number;
+  estimatedWeeklyFat: number;
+}
