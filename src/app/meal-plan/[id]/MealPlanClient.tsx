@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride } from '@/lib/types'
 import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 
@@ -190,6 +190,90 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           protein: newMacros.protein,
           carbs: newMacros.carbs,
           fat: newMacros.fat,
+        }, {
+          onConflict: 'user_id,meal_name',
+        })
+    }
+
+    setMealPlan({ ...mealPlan, days: updatedDays })
+    return true
+  }
+
+  const updateIngredientInMeal = async (
+    dayIndex: number,
+    mealIndex: number,
+    ingredientIndex: number,
+    newIngredient: Ingredient
+  ) => {
+    const updatedDays = [...mealPlan.days]
+    const day = updatedDays[dayIndex]
+    const meal = day.meals[mealIndex]
+
+    // Update the ingredient
+    meal.ingredients[ingredientIndex] = { ...newIngredient }
+
+    // Recalculate meal macros from ingredient totals
+    const newMealMacros = meal.ingredients.reduce(
+      (totals, ing) => ({
+        calories: totals.calories + (ing.calories || 0),
+        protein: totals.protein + (ing.protein || 0),
+        carbs: totals.carbs + (ing.carbs || 0),
+        fat: totals.fat + (ing.fat || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    )
+
+    // Round to reasonable precision
+    meal.macros = {
+      calories: Math.round(newMealMacros.calories),
+      protein: Math.round(newMealMacros.protein * 10) / 10,
+      carbs: Math.round(newMealMacros.carbs * 10) / 10,
+      fat: Math.round(newMealMacros.fat * 10) / 10,
+    }
+
+    // Recalculate daily totals
+    day.daily_totals = day.meals.reduce(
+      (totals, m) => ({
+        calories: totals.calories + m.macros.calories,
+        protein: totals.protein + m.macros.protein,
+        carbs: totals.carbs + m.macros.carbs,
+        fat: totals.fat + m.macros.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    )
+
+    // Save to database
+    const { error: planError } = await supabase
+      .from('meal_plans')
+      .update({ plan_data: updatedDays })
+      .eq('id', mealPlan.id)
+
+    if (planError) {
+      console.error('Error saving meal plan:', planError)
+      return false
+    }
+
+    // Also update validated_meals_by_user with the new macros and ingredient nutrition
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase
+        .from('validated_meals_by_user')
+        .upsert({
+          user_id: user.id,
+          meal_name: meal.name,
+          calories: meal.macros.calories,
+          protein: meal.macros.protein,
+          carbs: meal.macros.carbs,
+          fat: meal.macros.fat,
+          ingredients: meal.ingredients.map(ing => ({
+            name: ing.name,
+            amount: ing.amount,
+            unit: ing.unit,
+            calories: ing.calories || 0,
+            protein: ing.protein || 0,
+            carbs: ing.carbs || 0,
+            fat: ing.fat || 0,
+          })),
         }, {
           onConflict: 'user_id,meal_name',
         })
@@ -461,6 +545,10 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                     onLike={() => toggleMealPreference(meal.name, 'liked')}
                     onDislike={() => toggleMealPreference(meal.name, 'disliked')}
                     onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
+                    onIngredientChange={(ingredientIndex, newIngredient) =>
+                      updateIngredientInMeal(dayIndex, mealIndex, ingredientIndex, newIngredient)
+                    }
+                    mealPlanId={mealPlan.id}
                   />
                 )
               })}
@@ -490,6 +578,8 @@ function MealCard({
   onLike,
   onDislike,
   onMacrosChange,
+  onIngredientChange,
+  mealPlanId,
 }: {
   meal: Meal
   isExpanded: boolean
@@ -498,6 +588,8 @@ function MealCard({
   onLike: () => void
   onDislike: () => void
   onMacrosChange: (macros: Macros) => Promise<boolean>
+  onIngredientChange: (ingredientIndex: number, newIngredient: Ingredient) => Promise<boolean>
+  mealPlanId: string
 }) {
   const [isEditingMacros, setIsEditingMacros] = useState(false)
   const [macrosValue, setMacrosValue] = useState({
@@ -507,6 +599,8 @@ function MealCard({
     fat: meal.macros.fat.toString(),
   })
   const [savingMacros, setSavingMacros] = useState(false)
+  const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
+  const [savingIngredient, setSavingIngredient] = useState(false)
 
   const mealTypeColors: Record<string, string> = {
     breakfast: 'bg-yellow-100 text-yellow-800',
@@ -739,14 +833,32 @@ function MealCard({
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Ingredients */}
+            {/* Ingredients with Nutrition */}
             <div>
-              <h5 className="font-medium text-gray-900 mb-2">Ingredients</h5>
-              <ul className="space-y-1">
+              <h5 className="font-medium text-gray-900 mb-2">
+                Ingredients
+                <span className="text-xs text-gray-400 font-normal ml-2">(click to edit nutrition)</span>
+              </h5>
+              <ul className="space-y-2">
                 {meal.ingredients.map((ing, idx) => (
-                  <li key={idx} className="text-sm text-gray-600">
-                    {ing.amount} {ing.unit} {ing.name}
-                  </li>
+                  <IngredientRow
+                    key={idx}
+                    ingredient={ing}
+                    isEditing={editingIngredientIndex === idx}
+                    isSaving={savingIngredient && editingIngredientIndex === idx}
+                    onStartEdit={() => setEditingIngredientIndex(idx)}
+                    onCancelEdit={() => setEditingIngredientIndex(null)}
+                    onSave={async (updatedIng) => {
+                      setSavingIngredient(true)
+                      const success = await onIngredientChange(idx, updatedIng)
+                      if (success) {
+                        setEditingIngredientIndex(null)
+                      }
+                      setSavingIngredient(false)
+                    }}
+                    mealName={meal.name}
+                    mealPlanId={mealPlanId}
+                  />
                 ))}
               </ul>
             </div>
@@ -766,5 +878,165 @@ function MealCard({
         </div>
       )}
     </div>
+  )
+}
+
+// Ingredient row component with inline editing
+function IngredientRow({
+  ingredient,
+  isEditing,
+  isSaving,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  mealName,
+  mealPlanId,
+}: {
+  ingredient: Ingredient
+  isEditing: boolean
+  isSaving: boolean
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onSave: (updatedIngredient: Ingredient) => Promise<void>
+  mealName: string
+  mealPlanId: string
+}) {
+  const [editValues, setEditValues] = useState({
+    calories: ingredient.calories?.toString() || '0',
+    protein: ingredient.protein?.toString() || '0',
+    carbs: ingredient.carbs?.toString() || '0',
+    fat: ingredient.fat?.toString() || '0',
+  })
+
+  const hasNutritionData = ingredient.calories !== undefined
+
+  const handleSave = async () => {
+    const newCalories = parseFloat(editValues.calories) || 0
+    const newProtein = parseFloat(editValues.protein) || 0
+    const newCarbs = parseFloat(editValues.carbs) || 0
+    const newFat = parseFloat(editValues.fat) || 0
+
+    // Save to user overrides API
+    try {
+      await fetch('/api/ingredient-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredient_name: ingredient.name,
+          serving_size: parseFloat(ingredient.amount) || 1,
+          serving_unit: ingredient.unit,
+          original_calories: ingredient.calories,
+          original_protein: ingredient.protein,
+          original_carbs: ingredient.carbs,
+          original_fat: ingredient.fat,
+          override_calories: newCalories,
+          override_protein: newProtein,
+          override_carbs: newCarbs,
+          override_fat: newFat,
+          meal_plan_id: mealPlanId,
+          meal_name: mealName,
+        }),
+      })
+    } catch (error) {
+      console.error('Error saving ingredient override:', error)
+    }
+
+    // Update local state
+    await onSave({
+      ...ingredient,
+      calories: newCalories,
+      protein: newProtein,
+      carbs: newCarbs,
+      fat: newFat,
+    })
+  }
+
+  if (isEditing) {
+    return (
+      <li className="text-sm bg-gray-50 rounded-lg p-3 border border-gray-200">
+        <div className="font-medium text-gray-900 mb-2">
+          {ingredient.amount} {ingredient.unit} {ingredient.name}
+        </div>
+        <div className="grid grid-cols-4 gap-2 mb-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Calories</label>
+            <input
+              type="number"
+              value={editValues.calories}
+              onChange={(e) => setEditValues({ ...editValues, calories: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Protein</label>
+            <input
+              type="number"
+              value={editValues.protein}
+              onChange={(e) => setEditValues({ ...editValues, protein: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Carbs</label>
+            <input
+              type="number"
+              value={editValues.carbs}
+              onChange={(e) => setEditValues({ ...editValues, carbs: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Fat</label>
+            <input
+              type="number"
+              value={editValues.fat}
+              onChange={(e) => setEditValues({ ...editValues, fat: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-3 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={onCancelEdit}
+            className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    )
+  }
+
+  return (
+    <li
+      className="text-sm text-gray-600 p-2 hover:bg-gray-50 rounded cursor-pointer group transition-colors"
+      onClick={onStartEdit}
+    >
+      <div className="flex justify-between items-start">
+        <span>{ingredient.amount} {ingredient.unit} {ingredient.name}</span>
+        <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </div>
+      {hasNutritionData && (
+        <div className="flex gap-3 text-xs text-gray-400 mt-1">
+          <span>{ingredient.calories} cal</span>
+          <span className="text-blue-400">{ingredient.protein}g P</span>
+          <span className="text-orange-400">{ingredient.carbs}g C</span>
+          <span className="text-purple-400">{ingredient.fat}g F</span>
+        </div>
+      )}
+    </li>
   )
 }

@@ -55,6 +55,19 @@ export interface Ingredient {
   amount: string;
   unit: string;
   category: 'produce' | 'protein' | 'dairy' | 'grains' | 'pantry' | 'frozen' | 'other';
+  // Optional nutrition data (populated by LLM, can be overridden by user)
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+}
+
+// Extended ingredient with required nutrition data
+export interface IngredientWithNutrition extends Omit<Ingredient, 'calories' | 'protein' | 'carbs' | 'fat'> {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
 }
 
 export interface Macros {
@@ -69,6 +82,16 @@ export interface Meal {
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   prep_time_minutes: number;
   ingredients: Ingredient[];
+  instructions: string[];
+  macros: Macros;
+}
+
+// Meal with ingredient-level nutrition data
+export interface MealWithIngredientNutrition {
+  name: string;
+  type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  prep_time_minutes: number;
+  ingredients: IngredientWithNutrition[];
   instructions: string[];
   macros: Macros;
 }
@@ -378,6 +401,35 @@ export interface IngredientNutrition {
   source: 'llm_estimated' | 'usda' | 'user_corrected';
   usda_fdc_id?: string;
   confidence_score?: number;
+  validated?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// User override for ingredient nutrition (pending expert validation)
+export type IngredientOverrideValidationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface IngredientNutritionUserOverride {
+  id: string;
+  user_id: string;
+  ingredient_name: string;
+  ingredient_name_normalized: string;
+  serving_size: number;
+  serving_unit: string;
+  original_calories?: number;
+  original_protein?: number;
+  original_carbs?: number;
+  original_fat?: number;
+  override_calories: number;
+  override_protein: number;
+  override_carbs: number;
+  override_fat: number;
+  meal_plan_id?: string;
+  meal_name?: string;
+  validation_status: IngredientOverrideValidationStatus;
+  validated_by?: string;
+  validated_at?: string;
+  validation_notes?: string;
   created_at: string;
   updated_at: string;
 }

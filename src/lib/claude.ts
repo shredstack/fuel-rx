@@ -3,9 +3,11 @@ import type {
   UserProfile,
   DayPlan,
   Ingredient,
+  IngredientWithNutrition,
   MealConsistencyPrefs,
   MealType,
   Meal,
+  MealWithIngredientNutrition,
   Macros,
   CoreIngredients,
   IngredientVarietyPrefs,
@@ -680,7 +682,7 @@ async function generateMealsFromCoreIngredients(
   userId: string,
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[]
-): Promise<{ meals: Array<Meal & { day: DayOfWeek }> }> {
+): Promise<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
     .map(pref => DIETARY_LABELS[pref] || pref)
@@ -826,21 +828,27 @@ Return ONLY valid JSON with this exact structure:
       "type": "breakfast",${snacksPerDay > 1 ? '\n      "snack_number": 1,' : ''}
       "name": "Greek Yogurt Power Bowl",
       "ingredients": [
-        {"name": "Greek yogurt", "amount": "1", "unit": "cup", "category": "dairy"},
-        {"name": "Berries", "amount": "0.5", "unit": "cup", "category": "produce"},
-        {"name": "Almonds", "amount": "1", "unit": "oz", "category": "pantry"}
+        {"name": "Greek yogurt", "amount": "1", "unit": "cup", "category": "dairy", "calories": 130, "protein": 17, "carbs": 8, "fat": 0},
+        {"name": "Berries", "amount": "0.5", "unit": "cup", "category": "produce", "calories": 35, "protein": 0.5, "carbs": 8.5, "fat": 0.25},
+        {"name": "Almonds", "amount": "1", "unit": "oz", "category": "pantry", "calories": 165, "protein": 6, "carbs": 6, "fat": 14}
       ],
       "instructions": ["Add yogurt to bowl", "Top with berries and almonds"],
       "prep_time_minutes": 5,
       "macros": {
-        "calories": 350,
-        "protein": 25,
-        "carbs": 35,
-        "fat": 12
+        "calories": 330,
+        "protein": 23.5,
+        "carbs": 22.5,
+        "fat": 14.25
       }
     }
   ]
 }
+
+**CRITICAL NUTRITION REQUIREMENTS**:
+1. **Each ingredient MUST include its individual nutrition values** (calories, protein, carbs, fat) for the specified amount
+2. The meal's total macros MUST equal the SUM of all ingredient macros (verify this before outputting)
+3. Use the nutrition reference data provided above when available
+4. For ingredients not in the reference, estimate based on USDA standards
 
 Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
 Order by day (monday first), then by meal type (breakfast, snack, lunch, snack, dinner for 5 meals/day).
