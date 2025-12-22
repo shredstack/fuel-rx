@@ -19,8 +19,9 @@ import type {
   PrepStyle,
   MealComplexity,
   PrepSessionType,
+  HouseholdServingsPrefs,
 } from './types';
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS } from './types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS } from './types';
 import { createClient } from './supabase/server';
 
 // ============================================
@@ -115,6 +116,104 @@ ${lines.join('\n')}
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+// ============================================
+// Household Servings Helper Functions
+// ============================================
+
+/**
+ * Check if user has any household members configured
+ */
+function hasHouseholdMembers(servings: HouseholdServingsPrefs): boolean {
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  return DAYS_OF_WEEK.some(day =>
+    mealTypes.some(meal => servings[day]?.[meal]?.adults > 0 || servings[day]?.[meal]?.children > 0)
+  );
+}
+
+/**
+ * Calculate the serving multiplier for a specific day and meal
+ * Returns the total multiplier (1 for the athlete + additional household members)
+ */
+function getServingMultiplier(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+): number {
+  const dayServings = servings[day]?.[mealType];
+  if (!dayServings) return 1;
+
+  // Athlete counts as 1, additional adults as 1 each, children as 0.6 each
+  return 1 + dayServings.adults + (dayServings.children * CHILD_PORTION_MULTIPLIER);
+}
+
+/**
+ * Build a summary of household servings for LLM prompts
+ */
+function buildHouseholdContextSection(servings: HouseholdServingsPrefs): string {
+  if (!hasHouseholdMembers(servings)) {
+    return '';
+  }
+
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  const lines: string[] = [];
+
+  // Build a day-by-day summary
+  for (const day of DAYS_OF_WEEK) {
+    const dayServings = servings[day];
+    const mealSummaries: string[] = [];
+
+    for (const meal of mealTypes) {
+      const serving = dayServings?.[meal];
+      if (serving && (serving.adults > 0 || serving.children > 0)) {
+        const parts: string[] = [];
+        if (serving.adults > 0) parts.push(`${serving.adults} additional adult${serving.adults > 1 ? 's' : ''}`);
+        if (serving.children > 0) parts.push(`${serving.children} child${serving.children > 1 ? 'ren' : ''}`);
+        const multiplier = getServingMultiplier(servings, day, meal);
+        mealSummaries.push(`${meal}: ${parts.join(' + ')} (${multiplier.toFixed(1)}x portions)`);
+      }
+    }
+
+    if (mealSummaries.length > 0) {
+      lines.push(`- ${DAY_OF_WEEK_LABELS[day]}: ${mealSummaries.join(', ')}`);
+    }
+  }
+
+  if (lines.length === 0) return '';
+
+  return `
+## HOUSEHOLD SERVINGS (IMPORTANT)
+The athlete is also cooking for their household. Generate prep instructions and grocery quantities for the FULL household, not just the athlete.
+
+**Household schedule:**
+${lines.join('\n')}
+
+**Key guidelines:**
+- The athlete's personal macro targets are still the priority for meal COMPOSITION
+- But prep instructions should be for the FULL batch size (all household members)
+- Grocery quantities should be scaled to feed everyone
+- Children count as approximately 0.6x an adult portion
+- Choose meals that scale well and are broadly appealing when feeding children
+`;
+}
+
+/**
+ * Calculate the average serving multiplier across all meals for grocery scaling
+ */
+function getAverageServingMultiplier(servings: HouseholdServingsPrefs): number {
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  let totalMultiplier = 0;
+  let count = 0;
+
+  for (const day of DAYS_OF_WEEK) {
+    for (const meal of mealTypes) {
+      totalMultiplier += getServingMultiplier(servings, day, meal);
+      count++;
+    }
+  }
+
+  return count > 0 ? totalMultiplier / count : 1;
+}
 
 const DIETARY_LABELS: Record<string, string> = {
   no_restrictions: 'No Restrictions',
@@ -877,10 +976,14 @@ The user has ${snacksPerDay} snack slots per day. You MUST generate ${snacksPerD
 `;
   }
 
+  // Build household context if user has household members
+  const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const householdSection = buildHouseholdContextSection(householdServings);
+
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
-${preferencesSection}${validatedMealsSection}
+${preferencesSection}${validatedMealsSection}${householdSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
 ${nutritionReference}
@@ -1160,6 +1263,44 @@ For this user:
 `,
   };
 
+  // Build household context for prep instructions
+  const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const householdHasMembers = hasHouseholdMembers(householdServings);
+
+  // Build a day/meal specific household servings summary for prep
+  let householdPrepSection = '';
+  if (householdHasMembers) {
+    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+    const servingLines: string[] = [];
+
+    for (const day of DAYS_OF_WEEK) {
+      const dayParts: string[] = [];
+      for (const meal of mealTypes) {
+        const multiplier = getServingMultiplier(householdServings, day, meal);
+        if (multiplier > 1) {
+          dayParts.push(`${meal}: ${multiplier.toFixed(1)}x`);
+        }
+      }
+      if (dayParts.length > 0) {
+        servingLines.push(`- ${DAY_OF_WEEK_LABELS[day]}: ${dayParts.join(', ')}`);
+      }
+    }
+
+    householdPrepSection = `
+## HOUSEHOLD SERVINGS - CRITICAL FOR PREP INSTRUCTIONS
+The athlete is cooking for their household. Your prep instructions MUST include quantities for the FULL batch, not just the athlete.
+
+**Serving multipliers by day/meal:**
+${servingLines.join('\n')}
+
+**IMPORTANT for prep instructions:**
+- Scale ALL ingredient quantities in detailed_steps for the full household
+- Example: If Monday dinner is 2.2x servings, and the base recipe calls for "4 oz salmon", write "9 oz salmon (2.2 servings)"
+- Include the multiplier or total servings in your instructions so the user knows the batch size
+- Meals with 1.0x multiplier are just for the athlete (no scaling needed)
+`;
+  }
+
   const prompt = `You are creating a DETAILED prep schedule for a CrossFit athlete's weekly meal plan. The user needs ACTIONABLE cooking instructions, not just meal descriptions.
 
 ## MEAL PLAN WITH FULL DETAILS
@@ -1170,7 +1311,7 @@ ${JSON.stringify(coreIngredients, null, 2)}
 
 ## WEEK DATES
 ${JSON.stringify(dayDates, null, 2)}
-
+${householdPrepSection}
 ${prepStyleInstructions[prepStyle as PrepStyle]}
 
 ## CRITICAL RULES
@@ -1444,11 +1585,13 @@ Return ONLY valid JSON:
 /**
  * Generate grocery list from core ingredients
  * Converts core ingredients to practical shopping quantities
+ * Scales quantities based on household servings
  */
 async function generateGroceryListFromCoreIngredients(
   coreIngredients: CoreIngredients,
   days: DayPlan[],
-  userId: string
+  userId: string,
+  profile?: UserProfile
 ): Promise<Ingredient[]> {
   // First, collect all ingredient usage from meals to understand quantities
   const ingredientUsage: Map<string, { count: number; amounts: string[] }> = new Map();
@@ -1470,17 +1613,36 @@ async function generateGroceryListFromCoreIngredients(
     .map(([name, data]) => `${name}: used ${data.count} times (${data.amounts.join(', ')})`)
     .join('\n');
 
+  // Calculate household scaling if applicable
+  const householdServings = profile?.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const avgMultiplier = getAverageServingMultiplier(householdServings);
+  const householdHasMembers = hasHouseholdMembers(householdServings);
+
+  let householdScalingSection = '';
+  if (householdHasMembers) {
+    householdScalingSection = `
+## HOUSEHOLD SCALING (IMPORTANT)
+The athlete is also feeding their household. Scale grocery quantities by approximately ${avgMultiplier.toFixed(1)}x to account for additional family members.
+
+**Key points:**
+- The base quantities above are for the athlete only
+- Multiply all quantities by approximately ${avgMultiplier.toFixed(1)} to feed the household
+- Round up generously to ensure enough food for everyone
+- It's better to have slightly more than to run short
+`;
+  }
+
   const prompt = `You are creating a practical grocery shopping list from a meal plan's core ingredients.
 
 ## CORE INGREDIENTS
 ${JSON.stringify(coreIngredients, null, 2)}
 
-## INGREDIENT USAGE IN MEALS
+## INGREDIENT USAGE IN MEALS (for athlete only)
 ${usageSummary}
-
+${householdScalingSection}
 ## INSTRUCTIONS
 Convert these core ingredients into a practical grocery shopping list with realistic quantities based on how they're used in the meals.
-
+${householdHasMembers ? `\n**Remember to scale quantities by ~${avgMultiplier.toFixed(1)}x for the household.**\n` : ''}
 Use practical shopping quantities:
 - Use "whole" or count for items bought individually (e.g., "3" avocados)
 - Use "lb" or "oz" for meats and proteins
@@ -1650,7 +1812,7 @@ export async function generateMealPlanWithProgress(
   progress('finalizing', 'Building grocery list and prep schedule...');
 
   const [grocery_list, prep_sessions] = await Promise.all([
-    generateGroceryListFromCoreIngredients(coreIngredients, days, userId),
+    generateGroceryListFromCoreIngredients(coreIngredients, days, userId, profile),
     generatePrepSessions(days, coreIngredients, profile, userId),
   ]);
 
