@@ -165,21 +165,64 @@ function buildBasePromptContext(
     .map(pref => DIETARY_LABELS[pref] || pref)
     .join(', ') || 'No restrictions';
 
-  const recentMealsExclusion = recentMealNames && recentMealNames.length > 0
-    ? `\n## IMPORTANT: Meal Variety Requirement\nAVOID these recently used meals from the user's last meal plan: ${recentMealNames.join(', ')}. Create entirely new and different meals to provide variety.\n`
-    : '';
+  // Build comprehensive variety section with recent meals from the last 3 weeks
+  let varietySection = '';
+  if (recentMealNames && recentMealNames.length > 0) {
+    varietySection = `
+## CRITICAL: Meal Variety Requirements (from user's last 3 meal plans)
 
+### Meals to AVOID
+The following meals have been used recently. You MUST NOT use these exact meal names OR meals with similar flavor profiles/ingredient combinations:
+${recentMealNames.slice(0, 50).join(', ')}
+
+### Variety Guidelines
+To ensure fresh, exciting meals each week:
+1. **Avoid similar flavor profiles** - If recent meals were teriyaki-based, don't use other Asian sweet-savory sauces. If they featured Italian herbs, explore different seasonings.
+2. **Avoid similar ingredient combinations** - If recent meals paired chicken with broccoli, use different protein-vegetable pairings.
+3. **Change up cooking methods** - If recent meals were mostly baked/roasted, incorporate more stovetop, one-pan, or bowl-style assembly meals.
+4. **Explore cuisine diversity** - Rotate through different cuisines:
+   - Mediterranean (olive oil, lemon, herbs, feta, olives)
+   - Asian (soy, ginger, sesame, rice vinegar, miso)
+   - Mexican/Latin (cumin, lime, cilantro, peppers, beans)
+   - American/Classic (simple seasonings, familiar comfort foods)
+   - Middle Eastern (tahini, za'atar, sumac, chickpeas)
+   - Indian-inspired (turmeric, cumin, coriander, yogurt-based)
+5. **Vary vegetable preparations** - Mix raw (salads, slaws), steamed, roasted, sautéed, and grilled preparations.
+`;
+  }
+
+  // Build enhanced meal preferences section
   let mealPreferencesSection = '';
   if (mealPreferences) {
-    const parts: string[] = [];
-    if (mealPreferences.liked.length > 0) {
-      parts.push(`**Meals the user LIKES** (try to include similar meals or these exact meals): ${mealPreferences.liked.join(', ')}`);
-    }
-    if (mealPreferences.disliked.length > 0) {
-      parts.push(`**Meals the user DISLIKES** (AVOID these meals and similar ones): ${mealPreferences.disliked.join(', ')}`);
-    }
-    if (parts.length > 0) {
-      mealPreferencesSection = `\n## User Meal Preferences\n${parts.join('\n')}\n`;
+    const hasLikes = mealPreferences.liked.length > 0;
+    const hasDislikes = mealPreferences.disliked.length > 0;
+
+    if (hasLikes || hasDislikes) {
+      mealPreferencesSection = `
+## User Meal Preferences (IMPORTANT - Follow These Closely)
+`;
+      if (hasLikes) {
+        mealPreferencesSection += `
+### Meals the User LIKES
+The user enjoys these meals. Use them as inspiration for flavor profiles, ingredient combinations, and meal styles they prefer:
+${mealPreferences.liked.map(m => `- ${m}`).join('\n')}
+
+**How to use this**: Create meals with SIMILAR flavor profiles, cuisines, or ingredient styles. You can include some of these exact meals if they haven't been used in the last 3 weeks.
+`;
+      }
+      if (hasDislikes) {
+        mealPreferencesSection += `
+### Meals the User DISLIKES (MUST AVOID)
+The user has explicitly disliked these meals. NEVER include them or meals with similar characteristics:
+${mealPreferences.disliked.map(m => `- ${m}`).join('\n')}
+
+**STRICT REQUIREMENT**: Do NOT generate these meals or meals with similar:
+- Main ingredients or protein sources
+- Flavor profiles or seasonings
+- Cooking styles or preparations
+- Cuisine types (if the pattern suggests they dislike a cuisine)
+`;
+      }
     }
   }
 
@@ -196,7 +239,7 @@ ${mealsList}
   }
 
   return `You are a nutrition expert specializing in meal planning for CrossFit athletes.
-${recentMealsExclusion}${mealPreferencesSection}${validatedMealsSection}
+${varietySection}${mealPreferencesSection}${validatedMealsSection}
 ## User Profile
 - Daily Calorie Target: ${profile.target_calories} kcal
 - Daily Protein Target: ${profile.target_protein}g
@@ -551,22 +594,52 @@ async function generateCoreIngredients(
   if (profile.prep_time <= 15) prepComplexity = 'minimal';
   else if (profile.prep_time >= 45) prepComplexity = 'extensive';
 
+  // Build variety section for ingredient selection based on last 3 meal plans
   let exclusionsSection = '';
   if (recentMealNames && recentMealNames.length > 0) {
-    exclusionsSection = `\n## Avoid Recently Used Meals\nThe user recently had these meals, so try to select ingredients that enable DIFFERENT meals: ${recentMealNames.slice(0, 10).join(', ')}\n`;
+    exclusionsSection = `
+## CRITICAL: Ingredient Variety for Fresh Meals (based on user's last 3 meal plans)
+
+### Recent Meals to Avoid Recreating
+${recentMealNames.slice(0, 30).join(', ')}
+
+### Variety Strategy for Ingredient Selection
+To create DIFFERENT meals from recent weeks, select ingredients that enable:
+
+1. **Different cuisines** - If recent meals were mostly Mediterranean, choose ingredients for Asian, Mexican, or American-style dishes
+2. **Different protein preparations** - If chicken was always baked, pick proteins that work well for stir-frying, grilling, or bowl assembly
+3. **Different flavor bases** - Rotate between:
+   - Citrus-forward (lemon, lime)
+   - Asian aromatics (ginger, soy, sesame)
+   - Mediterranean herbs (oregano, basil, garlic)
+   - Latin spices (cumin, cilantro, chili)
+4. **Different vegetable families** - Mix cruciferous (broccoli, cauliflower), leafy greens, nightshades (peppers, tomatoes), and root vegetables
+`;
   }
 
+  // Build enhanced preferences section for ingredient selection
   let preferencesSection = '';
   if (mealPreferences) {
-    const parts: string[] = [];
-    if (mealPreferences.liked.length > 0) {
-      parts.push(`The user LIKES meals like: ${mealPreferences.liked.join(', ')} - consider ingredients that work for similar meals`);
-    }
-    if (mealPreferences.disliked.length > 0) {
-      parts.push(`The user DISLIKES: ${mealPreferences.disliked.join(', ')} - avoid ingredients strongly associated with these`);
-    }
-    if (parts.length > 0) {
-      preferencesSection = `\n## User Preferences\n${parts.join('\n')}\n`;
+    const hasLikes = mealPreferences.liked.length > 0;
+    const hasDislikes = mealPreferences.disliked.length > 0;
+
+    if (hasLikes || hasDislikes) {
+      preferencesSection = '\n## User Meal Preferences (Use to Guide Ingredient Selection)\n';
+      if (hasLikes) {
+        preferencesSection += `
+**Meals the user LIKES**: ${mealPreferences.liked.join(', ')}
+- Choose ingredients that enable similar flavor profiles and meal styles
+- These meals indicate the user's preferred cuisines and cooking methods
+`;
+      }
+      if (hasDislikes) {
+        preferencesSection += `
+**Meals the user DISLIKES**: ${mealPreferences.disliked.join(', ')}
+- AVOID ingredients strongly associated with these disliked meals
+- Do NOT select proteins, seasonings, or combinations that would lead to similar meals
+- If the user dislikes several meals from a cuisine, avoid ingredients specific to that cuisine
+`;
+      }
     }
   }
 
