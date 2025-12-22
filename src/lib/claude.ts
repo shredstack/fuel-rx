@@ -18,7 +18,6 @@ import type {
   IngredientNutrition,
   PrepStyle,
   MealComplexity,
-  PrepTask,
   PrepSessionType,
 } from './types';
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS } from './types';
@@ -923,6 +922,30 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
 }
 
 // New prep sessions response type for the collapsible prep view
+// Extended prep task as returned by LLM (matches new PrepTask interface)
+interface LLMPrepTask {
+  id: string;
+  description: string;
+  detailed_steps: string[];
+  cooking_temps?: {
+    oven?: string;
+    stovetop?: string;
+    internal_temp?: string;
+    grill?: string;
+  };
+  cooking_times?: {
+    prep_time?: string;
+    cook_time?: string;
+    rest_time?: string;
+    total_time?: string;
+  };
+  tips?: string[];
+  storage?: string;
+  estimated_minutes: number;
+  meal_ids: string[];
+  completed: boolean;
+}
+
 interface NewPrepSessionsResponse {
   prep_sessions: Array<{
     session_name: string;
@@ -931,9 +954,10 @@ interface NewPrepSessionsResponse {
     session_time_of_day: 'morning' | 'afternoon' | 'night' | null;
     prep_for_date: string | null;
     estimated_minutes: number;
-    prep_tasks: PrepTask[];
+    prep_tasks: LLMPrepTask[];
     display_order: number;
   }>;
+  daily_assembly?: DailyAssembly;
 }
 
 /**
@@ -952,18 +976,26 @@ async function generatePrepSessions(
 
   // Build meal IDs for reference
   const mealIds: Record<string, string> = {};
-  days.forEach((day, dayIndex) => {
+  days.forEach((day) => {
     day.meals.forEach((meal, mealIndex) => {
       const id = `meal_${day.day}_${meal.type}_${mealIndex}`;
       mealIds[`${day.day}_${meal.type}_${mealIndex}`] = id;
     });
   });
 
-  // Build a summary of the meal plan with IDs
+  // Build a detailed summary of the meal plan with IDs AND instructions
+  // This gives the LLM the actual cooking steps to create accurate prep tasks
   const mealSummary = days.map(day => {
-    const mealsList = day.meals.map((m, idx) =>
-      `  - ${m.type} (ID: meal_${day.day}_${m.type}_${idx}): ${m.name} (${m.macros.protein}g protein, prep: ${m.prep_time_minutes}min)`
-    ).join('\n');
+    const mealsList = day.meals.map((m, idx) => {
+      const mealId = `meal_${day.day}_${m.type}_${idx}`;
+      const ingredientsList = m.ingredients.map(ing => `${ing.amount} ${ing.unit} ${ing.name}`).join(', ');
+      const instructionsList = m.instructions.length > 0
+        ? `\n      Instructions: ${m.instructions.map((inst, i) => `${i + 1}. ${inst}`).join(' ')}`
+        : '';
+      return `  - ${m.type} (ID: ${mealId}): ${m.name}
+      Prep time: ${m.prep_time_minutes}min | Protein: ${m.macros.protein}g
+      Ingredients: ${ingredientsList}${instructionsList}`;
+    }).join('\n');
     return `${day.day.charAt(0).toUpperCase() + day.day.slice(1)}:\n${mealsList}`;
   }).join('\n\n');
 
@@ -991,7 +1023,7 @@ Create 1-2 prep sessions:
 1. **Main Batch Prep** (Sunday or Saturday): 1.5-2.5 hours of major cooking
 2. **Optional Mid-Week Refresh** (Wednesday): 30-45 min if needed
 
-Group all batch cooking together. Meals with quick_assembly complexity need NO prep tasks.
+Group all batch cooking together. Only truly no-cook assembly meals (like grabbing a pre-made snack) should be excluded.
 `,
     night_before: `
 ## PREP STYLE: Night Before
@@ -1005,17 +1037,35 @@ Example:
 
 Session types should be "night_before".
 Group tasks that can be done together (e.g., marinating protein while chopping veggies).
+Include ALL meals that have any cooking or prep steps - even "simple" meals like overnight oats need prep instructions.
 `,
     day_of: `
 ## PREP STYLE: Day-Of Fresh Cooking
-Create multiple sessions per day - one for each meal that requires cooking.
-Users want FRESH meals, so create separate sessions for breakfast, lunch, and dinner each day.
+The user wants to cook fresh for every meal. This means they need DETAILED prep instructions for EVERY meal that involves ANY cooking or preparation.
 
-For quick_assembly meals (${breakfastComplexity === 'quick_assembly' ? 'breakfast' : ''}${lunchComplexity === 'quick_assembly' ? ', lunch' : ''}${dinnerComplexity === 'quick_assembly' ? ', dinner' : ''}):
-These don't need prep sessions - they're just assembly.
+CRITICAL RULES FOR DAY-OF STYLE:
+1. Create a prep session for EVERY meal that requires:
+   - Any heat (stove, oven, microwave, grill)
+   - Any mixing, chopping, or assembly that takes more than 2 minutes
+   - Any advance prep (like soaking oats overnight)
 
-For minimal_prep and full_recipe meals: Create individual prep sessions.
-Session types: "day_of_morning" for breakfast, "day_of_dinner" for dinner.
+2. ONLY skip meals that are truly grab-and-go (like eating a banana or pre-made protein bar)
+
+3. Session types:
+   - "day_of_morning" for breakfast prep
+   - "day_of_morning" for lunch prep (done in the morning or at lunchtime)
+   - "day_of_dinner" for dinner prep
+
+4. Include ALL meals with cooking verbs in their instructions (bake, sear, roast, grill, sauté, simmer, boil, fry, toast, heat, cook, etc.)
+
+5. Even "simple" meals like eggs, oatmeal, or salads with cooked protein NEED prep sessions with proper instructions.
+
+User's complexity preferences:
+- Breakfast: ${breakfastComplexity}
+- Lunch: ${lunchComplexity}
+- Dinner: ${dinnerComplexity}
+
+NOTE: Complexity preference does NOT mean skip the prep session. It just indicates how complex the user expects meals to be. ALL cooked meals need prep instructions regardless of complexity level.
 `,
     mixed: `
 ## PREP STYLE: Mixed/Flexible
@@ -1026,20 +1076,20 @@ This is the most common choice. Create a balanced prep schedule:
 3. **Day-Of** sessions for full_recipe dinners that users want fresh
 
 COMPLEXITY-BASED LOGIC:
-- quick_assembly meals (${breakfastComplexity === 'quick_assembly' ? 'breakfast, ' : ''}${lunchComplexity === 'quick_assembly' ? 'lunch, ' : ''}${dinnerComplexity === 'quick_assembly' ? 'dinner' : ''}): NO prep sessions needed
+- quick_assembly meals: Only skip if truly no cooking involved
 - minimal_prep meals: Can be prepped night before OR batched if similar across days
 - full_recipe meals: Prep night before for components, or cook day-of for freshness
 
 For this user:
-- Breakfast: ${breakfastComplexity} → ${breakfastComplexity === 'quick_assembly' ? 'No prep needed' : breakfastComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Lunch: ${lunchComplexity} → ${lunchComplexity === 'quick_assembly' ? 'No prep needed' : lunchComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Dinner: ${dinnerComplexity} → ${dinnerComplexity === 'quick_assembly' ? 'No prep needed' : dinnerComplexity === 'minimal_prep' ? 'Quick night-before prep' : 'Night-before prep or day-of cooking'}
+- Breakfast: ${breakfastComplexity} → ${breakfastComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : breakfastComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
+- Lunch: ${lunchComplexity} → ${lunchComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : lunchComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
+- Dinner: ${dinnerComplexity} → ${dinnerComplexity === 'quick_assembly' ? 'Minimal prep' : dinnerComplexity === 'minimal_prep' ? 'Quick night-before prep' : 'Night-before prep or day-of cooking'}
 `,
   };
 
-  const prompt = `You are creating a prep schedule for a CrossFit athlete's weekly meal plan.
+  const prompt = `You are creating a DETAILED prep schedule for a CrossFit athlete's weekly meal plan. The user needs ACTIONABLE cooking instructions, not just meal descriptions.
 
-## MEAL PLAN (with meal IDs for reference)
+## MEAL PLAN WITH FULL DETAILS
 ${mealSummary}
 
 ## CORE INGREDIENTS
@@ -1050,44 +1100,111 @@ ${JSON.stringify(dayDates, null, 2)}
 
 ${prepStyleInstructions[prepStyle as PrepStyle]}
 
-## INSTRUCTIONS
-Generate prep sessions based on the prep style above. Each session should have:
-1. A clear, descriptive name (e.g., "Sunday Batch Prep", "Monday Night (for Tuesday)", "Wednesday Dinner Prep")
-2. Appropriate session_type: "weekly_batch", "night_before", "day_of_morning", or "day_of_dinner"
-3. session_day: the day the prep happens (lowercase)
-4. session_time_of_day: "morning", "afternoon", or "night" (null for weekly_batch)
-5. prep_for_date: ISO date string for the day the meals are eaten (null for weekly_batch)
-6. Realistic time estimates
-7. Individual prep_tasks with:
-   - Unique IDs (e.g., "task_1", "task_batch_chicken")
-   - Clear descriptions of what to do
-   - Which meal_ids this task supports
-   - Time estimate per task
+## CRITICAL RULES
 
-## TASK GROUPING RULES
-- Batch similar tasks (all grilling, all chopping, etc.)
-- For weekly_batch: group proteins and grains that appear in multiple meals
-- For night_before: group all prep for the next day's meals
-- For day_of: include only cooking tasks for that specific meal
-- quick_assembly meals should NOT have prep tasks (they're just assembly)
+### RULE 1: ONE TASK PER MEAL (NOT PER INGREDIENT)
+Each prep_task should represent ONE COMPLETE MEAL, not individual ingredients.
+- WRONG: Separate tasks for "Roast sweet potato" and "Roast asparagus" for the same dinner
+- RIGHT: One task "Monday Dinner: Salmon with Roasted Vegetables" that includes ALL steps for that meal
+
+### RULE 2: INCLUDE EVERY SINGLE MEAL
+Create a prep task for EVERY meal in the meal plan, even simple ones:
+- Even "Greek yogurt with berries" needs a task: "Scoop yogurt into bowl, top with berries"
+- Even "Avocado toast" needs a task: "Toast bread, mash avocado, spread on toast, season with salt"
+- NO MEAL should be skipped. If someone asks "what do I do for Tuesday lunch?" there must be a task for it.
+
+### RULE 3: ACTIONABLE STEP-BY-STEP INSTRUCTIONS
+Your detailed_steps must be ACTUALLY HELPFUL with real cooking guidance.
+
+BAD (useless - just restates the meal):
+- "Prepare overnight oats with Greek yogurt and berries"
+
+GOOD (actionable with real details):
+- detailed_steps: [
+    "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a jar",
+    "Stir in 1 tbsp chia seeds and 1 tsp honey",
+    "Refrigerate overnight (at least 6 hours)",
+    "Top with fresh berries before serving"
+  ]
+
+## PREP TASK STRUCTURE
+
+Each prep_task represents ONE MEAL and MUST include:
+1. "id": Unique identifier (e.g., "meal_monday_breakfast")
+2. "description": The meal name (e.g., "Monday Breakfast: Overnight Oats with Berries")
+3. "detailed_steps": Array of ALL steps to prepare this meal (THIS IS REQUIRED - never leave empty)
+4. "cooking_temps": Object with temperature info (if applicable):
+   - "oven": e.g., "400°F" or "200°C"
+   - "stovetop": e.g., "medium-high heat"
+   - "internal_temp": e.g., "145°F for salmon", "165°F for chicken"
+   - "grill": e.g., "medium-high, 400-450°F"
+5. "cooking_times": Object with timing info:
+   - "prep_time": e.g., "5 min"
+   - "cook_time": e.g., "15-20 min"
+   - "rest_time": e.g., "5 min" (if applicable)
+   - "total_time": e.g., "25 min"
+6. "tips": Array of helpful pro tips (optional but encouraged)
+7. "storage": Storage instructions (REQUIRED for batch prep and night-before styles, optional for day-of)
+   - e.g., "Refrigerate in airtight container for up to 5 days"
+   - e.g., "Store in glass meal prep containers, keeps 4-5 days refrigerated"
+   - e.g., "Portion into individual containers for grab-and-go"
+8. "estimated_minutes": Total time in minutes
+9. "meal_ids": Array with the single meal_id this task is for
+10. "completed": false
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON:
 {
   "prep_sessions": [
     {
-      "session_name": "Weekly Batch Prep (Optional)",
-      "session_type": "weekly_batch",
-      "session_day": null,
-      "session_time_of_day": null,
-      "prep_for_date": null,
-      "estimated_minutes": 45,
+      "session_name": "Monday Morning Prep",
+      "session_type": "day_of_morning",
+      "session_day": "monday",
+      "session_time_of_day": "morning",
+      "prep_for_date": "${dayDates.monday}",
+      "estimated_minutes": 20,
       "prep_tasks": [
         {
-          "id": "task_batch_chicken",
-          "description": "Grill 6 chicken breasts for the week's lunches",
-          "estimated_minutes": 25,
-          "meal_ids": ["meal_monday_lunch_0", "meal_tuesday_lunch_0", "meal_wednesday_lunch_0"],
+          "id": "meal_monday_breakfast",
+          "description": "Monday Breakfast: Overnight Oats with Berries",
+          "detailed_steps": [
+            "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a mason jar",
+            "Add 1 tbsp chia seeds and 1 tsp honey, stir well to combine",
+            "Cover and refrigerate overnight (minimum 6 hours)",
+            "Before serving, top with 1/4 cup fresh mixed berries"
+          ],
+          "cooking_times": {
+            "prep_time": "5 min",
+            "rest_time": "6+ hours (overnight)",
+            "total_time": "5 min active"
+          },
+          "tips": [
+            "Prep multiple jars at once for the week",
+            "Add berries just before eating to keep them fresh"
+          ],
+          "storage": "Refrigerate in mason jars for up to 5 days",
+          "estimated_minutes": 5,
+          "meal_ids": ["meal_monday_breakfast_0"],
+          "completed": false
+        },
+        {
+          "id": "meal_monday_lunch",
+          "description": "Monday Lunch: Greek Salad with Grilled Chicken",
+          "detailed_steps": [
+            "Slice chicken breast into strips",
+            "Chop cucumber, tomatoes, and red onion into bite-sized pieces",
+            "Combine vegetables in a large bowl",
+            "Add olives and crumbled feta cheese",
+            "Top with sliced chicken",
+            "Drizzle with olive oil and red wine vinegar, season with oregano"
+          ],
+          "cooking_times": {
+            "prep_time": "10 min",
+            "total_time": "10 min"
+          },
+          "storage": "Keep components separate until serving. Dressing on the side, refrigerate up to 3 days",
+          "estimated_minutes": 10,
+          "meal_ids": ["meal_monday_lunch_0"],
           "completed": false
         }
       ],
@@ -1099,30 +1216,82 @@ Return ONLY valid JSON:
       "session_day": "monday",
       "session_time_of_day": "night",
       "prep_for_date": "${dayDates.monday}",
-      "estimated_minutes": 30,
+      "estimated_minutes": 45,
       "prep_tasks": [
         {
-          "id": "task_mon_dinner_1",
-          "description": "Bake salmon with lemon and herbs",
-          "estimated_minutes": 20,
+          "id": "meal_monday_dinner",
+          "description": "Monday Dinner: Herb-Crusted Salmon with Roasted Vegetables",
+          "detailed_steps": [
+            "Preheat oven to 425°F",
+            "Cut sweet potato into 1-inch cubes, toss with 1 tbsp olive oil, salt and pepper",
+            "Spread sweet potato on a sheet pan and roast for 15 minutes",
+            "Meanwhile, trim woody ends from asparagus",
+            "Remove salmon from refrigerator and pat completely dry with paper towels",
+            "Season salmon with salt, pepper, garlic powder, and dried dill",
+            "Add asparagus to the sheet pan with sweet potato, drizzle with oil and season",
+            "Continue roasting vegetables for 12-15 more minutes",
+            "Heat 1 tbsp olive oil in a skillet over medium-high heat until shimmering",
+            "Place salmon skin-side up and sear undisturbed for 4 minutes until golden",
+            "Flip and cook 3-4 minutes more until internal temp reaches 145°F",
+            "Let salmon rest 2 minutes, then serve with roasted vegetables"
+          ],
+          "cooking_temps": {
+            "oven": "425°F",
+            "stovetop": "medium-high heat",
+            "internal_temp": "145°F (salmon is done)"
+          },
+          "cooking_times": {
+            "prep_time": "15 min",
+            "cook_time": "30 min",
+            "total_time": "45 min"
+          },
+          "tips": [
+            "Start the vegetables first since they take longer",
+            "Don't move the salmon while searing - let the crust form",
+            "Cut sweet potato uniformly for even cooking"
+          ],
+          "storage": "Best served fresh. Leftovers keep 2 days refrigerated, reheat veggies in oven",
+          "estimated_minutes": 45,
           "meal_ids": ["meal_monday_dinner_0"],
           "completed": false
         }
       ],
       "display_order": 2
     }
-  ]
+  ],
+  "daily_assembly": {
+    "monday": {
+      "breakfast": { "time": "5 min", "instructions": "Remove overnight oats from fridge, top with fresh berries and enjoy cold" },
+      "lunch": { "time": "5 min", "instructions": "Combine prepped salad components, add dressing, toss and serve" },
+      "dinner": { "time": "0 min", "instructions": "Serve fresh from cooking" }
+    },
+    "tuesday": {
+      "breakfast": { "time": "5 min", "instructions": "Remove overnight oats from fridge, top with fresh berries and enjoy cold" },
+      "lunch": { "time": "5 min", "instructions": "Portion prepped chicken and veggies, microwave 2 min if desired warm" }
+    }
+  }
 }
 
-IMPORTANT:
-- Every meal_id in prep_tasks MUST match the format "meal_[day]_[type]_[index]" from the meal plan above
-- Order sessions by display_order (weekly batch first if present, then chronologically)
-- Keep session count reasonable: 3-10 for mixed, 1-2 for traditional_batch, 7 for night_before, up to 21 for day_of`;
+## IMPORTANT RULES
+1. Every meal_id in prep_tasks MUST match the format "meal_[day]_[type]_[index]" from the meal plan above
+2. Order sessions by display_order chronologically through the week
+3. ONE TASK PER MEAL - combine all components of a meal into a single task
+4. EVERY MEAL must have a prep task - even simple assembly meals like "yogurt with fruit"
+5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
+6. Include cooking_temps and cooking_times whenever heat/cooking is involved
+7. Base your detailed_steps on the actual meal instructions provided above
+8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch and night_before styles)
+9. DAILY ASSEMBLY (REQUIRED for traditional_batch and night_before styles):
+   - For batch prep and night-before styles, include a "daily_assembly" object in your response
+   - This tells the user how to assemble/reheat prepped food each day
+   - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
+   - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)
+   - For day_of style, daily_assembly can be empty since food is cooked fresh`;
 
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
+    max_tokens: 16000, // Increased for detailed prep instructions
     messages: [{ role: 'user', content: prompt }],
   });
   const duration = Date.now() - startTime;
@@ -1149,7 +1318,7 @@ IMPORTANT:
   const parsed: NewPrepSessionsResponse = JSON.parse(jsonText);
 
   // Convert new format to PrepModeResponse format for backward compatibility
-  // The new format includes prep_tasks, the old format uses prepItems
+  // The new format includes prep_tasks with detailed_steps, cooking_temps, cooking_times, tips
   const prepModeResponse: PrepModeResponse = {
     prepSessions: parsed.prep_sessions.map(session => ({
       sessionName: session.session_name,
@@ -1159,8 +1328,8 @@ IMPORTANT:
       prepItems: session.prep_tasks.map(task => ({
         item: task.description,
         quantity: '',
-        method: '',
-        storage: '',
+        method: task.detailed_steps?.join(' → ') || '', // Include detailed steps in method for legacy
+        storage: task.storage || '',
         feeds: task.meal_ids.map(mealId => {
           // Parse meal_id format: "meal_monday_lunch_0"
           const parts = mealId.split('_');
@@ -1173,15 +1342,24 @@ IMPORTANT:
           return { day: 'monday' as DayOfWeek, meal: 'dinner' as MealType };
         }),
       })),
-      // Store new fields for the UI
+      // Store new fields for the UI - ensure detailed fields are preserved
       sessionType: session.session_type,
       sessionDay: session.session_day,
       sessionTimeOfDay: session.session_time_of_day,
       prepForDate: session.prep_for_date,
-      prepTasks: session.prep_tasks,
+      prepTasks: session.prep_tasks.map(task => ({
+        ...task,
+        // Ensure detailed_steps is always an array
+        detailed_steps: task.detailed_steps || [],
+        // Ensure cooking_temps and cooking_times are preserved
+        cooking_temps: task.cooking_temps || undefined,
+        cooking_times: task.cooking_times || undefined,
+        tips: task.tips || [],
+        storage: task.storage || undefined,
+      })),
       displayOrder: session.display_order,
     })),
-    dailyAssembly: {}, // Will be populated separately if needed
+    dailyAssembly: parsed.daily_assembly || {},
   };
 
   // Store the raw new format for the new prep view UI
@@ -1280,39 +1458,14 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
 }
 
 /**
- * Main two-stage meal plan generation function
- * Orchestrates all three stages and returns a complete meal plan with prep sessions
+ * Progress callback type for streaming updates
  */
-export async function generateMealPlanTwoStage(
-  profile: UserProfile,
-  userId: string,
-  recentMealNames?: string[],
-  mealPreferences?: { liked: string[]; disliked: string[] },
-  validatedMeals?: ValidatedMealMacros[]
-): Promise<{
-  days: DayPlan[];
-  grocery_list: Ingredient[];
-  core_ingredients: CoreIngredients;
-  prep_sessions: PrepModeResponse;
-}> {
-  // Stage 1: Generate core ingredients
-  const coreIngredients = await generateCoreIngredients(
-    profile,
-    userId,
-    recentMealNames,
-    mealPreferences
-  );
+export type ProgressCallback = (stage: string, message: string) => void;
 
-  // Stage 2: Generate meals from core ingredients
-  const mealsResult = await generateMealsFromCoreIngredients(
-    profile,
-    coreIngredients,
-    userId,
-    mealPreferences,
-    validatedMeals
-  );
-
-  // Organize meals into day plans
+/**
+ * Helper function to organize meals into day plans
+ */
+function organizeMealsIntoDays(mealsResult: { meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }): DayPlan[] {
   const mealsByDay = new Map<DayOfWeek, Meal[]>();
   for (const day of DAYS) {
     mealsByDay.set(day, []);
@@ -1332,7 +1485,7 @@ export async function generateMealPlanTwoStage(
   }
 
   // Build day plans with totals
-  const days: DayPlan[] = DAYS.map(day => {
+  return DAYS.map(day => {
     const meals = mealsByDay.get(day) || [];
     const daily_totals: Macros = meals.reduce(
       (totals, meal) => ({
@@ -1346,21 +1499,89 @@ export async function generateMealPlanTwoStage(
 
     return { day, meals, daily_totals };
   });
+}
 
-  // Generate grocery list from core ingredients
-  const grocery_list = await generateGroceryListFromCoreIngredients(
-    coreIngredients,
-    days,
-    userId
-  );
-
-  // Stage 3: Generate prep sessions
-  const prep_sessions = await generatePrepSessions(
-    days,
-    coreIngredients,
+/**
+ * Main two-stage meal plan generation function
+ * Orchestrates all three stages and returns a complete meal plan with prep sessions
+ */
+export async function generateMealPlanTwoStage(
+  profile: UserProfile,
+  userId: string,
+  recentMealNames?: string[],
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  validatedMeals?: ValidatedMealMacros[]
+): Promise<{
+  days: DayPlan[];
+  grocery_list: Ingredient[];
+  core_ingredients: CoreIngredients;
+  prep_sessions: PrepModeResponse;
+}> {
+  // Use the progress version with a no-op callback
+  return generateMealPlanWithProgress(
     profile,
-    userId
+    userId,
+    recentMealNames,
+    mealPreferences,
+    validatedMeals,
+    () => {} // No-op progress callback
   );
+}
+
+/**
+ * Main two-stage meal plan generation function WITH progress callbacks
+ * Orchestrates all stages with streaming progress updates
+ * Parallelizes grocery list and prep sessions for better performance
+ */
+export async function generateMealPlanWithProgress(
+  profile: UserProfile,
+  userId: string,
+  recentMealNames?: string[],
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  validatedMeals?: ValidatedMealMacros[],
+  onProgress?: ProgressCallback
+): Promise<{
+  days: DayPlan[];
+  grocery_list: Ingredient[];
+  core_ingredients: CoreIngredients;
+  prep_sessions: PrepModeResponse;
+}> {
+  const progress = onProgress || (() => {});
+
+  // Stage 1: Generate core ingredients
+  progress('ingredients', 'Selecting ingredients based on your macros...');
+  const coreIngredients = await generateCoreIngredients(
+    profile,
+    userId,
+    recentMealNames,
+    mealPreferences
+  );
+  progress('ingredients_done', 'Ingredients selected!');
+
+  // Stage 2: Generate meals from core ingredients
+  progress('meals', 'Creating your 7-day meal plan...');
+  const mealsResult = await generateMealsFromCoreIngredients(
+    profile,
+    coreIngredients,
+    userId,
+    mealPreferences,
+    validatedMeals
+  );
+  progress('meals_done', 'Meals created!');
+
+  // Organize meals into day plans
+  const days = organizeMealsIntoDays(mealsResult);
+
+  // Stage 3: Generate grocery list AND prep sessions IN PARALLEL
+  // This is a key performance optimization - these two tasks are independent
+  progress('finalizing', 'Building grocery list and prep schedule...');
+
+  const [grocery_list, prep_sessions] = await Promise.all([
+    generateGroceryListFromCoreIngredients(coreIngredients, days, userId),
+    generatePrepSessions(days, coreIngredients, profile, userId),
+  ]);
+
+  progress('finalizing_done', 'Almost done!');
 
   return {
     days,
