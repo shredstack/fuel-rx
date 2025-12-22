@@ -6,11 +6,28 @@ import { createClient } from '@/lib/supabase/client'
 import type { PrepSession, PrepTask, PrepStyle, DayOfWeek, PrepItem, CookingTemps, CookingTimes, DailyAssembly, MealType } from '@/lib/types'
 import { PREP_STYLE_LABELS } from '@/lib/types'
 
+// Helper to split method strings by arrow delimiter into individual steps
+function parseMethodSteps(method: string | undefined): string[] {
+  if (!method) return []
+  // Split by arrow delimiter (→) and trim whitespace from each step
+  const steps = method.split('→').map(step => step.trim()).filter(step => step.length > 0)
+  return steps
+}
+
 // Helper to get tasks from session - either from new prep_tasks or old prep_items
 function getSessionTasks(session: PrepSession): PrepTask[] {
   // First try the new prep_tasks format
   if (session.prep_tasks?.tasks && session.prep_tasks.tasks.length > 0) {
-    return session.prep_tasks.tasks
+    // Also parse any arrow-delimited steps in existing tasks
+    return session.prep_tasks.tasks.map(task => {
+      if (task.detailed_steps && task.detailed_steps.length === 1 && task.detailed_steps[0].includes('→')) {
+        return {
+          ...task,
+          detailed_steps: parseMethodSteps(task.detailed_steps[0])
+        }
+      }
+      return task
+    })
   }
 
   // Fall back to converting prep_items to PrepTask format
@@ -18,7 +35,7 @@ function getSessionTasks(session: PrepSession): PrepTask[] {
     return session.prep_items.map((item: PrepItem, index: number) => ({
       id: `legacy_${session.id}_${index}`,
       description: `${item.item}${item.quantity ? ` (${item.quantity})` : ''}`,
-      detailed_steps: item.method ? [item.method] : [],
+      detailed_steps: parseMethodSteps(item.method),
       estimated_minutes: Math.round((session.estimated_minutes || 30) / session.prep_items.length),
       meal_ids: item.feeds?.map(f => `meal_${f.day}_${f.meal}`) || [],
       completed: false,
@@ -448,12 +465,10 @@ export default function PrepViewClient({
                                       {task.detailed_steps && task.detailed_steps.length > 0 && (
                                         <div className="mb-3">
                                           <div className="flex items-center justify-between mb-2">
-                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Steps</h5>
-                                            {task.detailed_steps.length > 1 && (
-                                              <span className="text-xs text-gray-400">
-                                                {getStepProgress(task.id, task.detailed_steps.length).completed}/{task.detailed_steps.length} done
-                                              </span>
-                                            )}
+                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Method</h5>
+                                            <span className="text-xs text-gray-400">
+                                              {getStepProgress(task.id, task.detailed_steps.length).completed}/{task.detailed_steps.length} done
+                                            </span>
                                           </div>
                                           <ol className="space-y-2">
                                             {task.detailed_steps.map((step, idx) => {
