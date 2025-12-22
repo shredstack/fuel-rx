@@ -1098,35 +1098,39 @@ ${JSON.stringify(dayDates, null, 2)}
 
 ${prepStyleInstructions[prepStyle as PrepStyle]}
 
-## CRITICAL INSTRUCTION QUALITY REQUIREMENTS
+## CRITICAL RULES
 
-Your prep tasks must be ACTUALLY HELPFUL. Users are cooking these meals and need real guidance.
+### RULE 1: ONE TASK PER MEAL (NOT PER INGREDIENT)
+Each prep_task should represent ONE COMPLETE MEAL, not individual ingredients.
+- WRONG: Separate tasks for "Roast sweet potato" and "Roast asparagus" for the same dinner
+- RIGHT: One task "Monday Dinner: Salmon with Roasted Vegetables" that includes ALL steps for that meal
 
-BAD TASK (useless - just restates the meal name):
+### RULE 2: INCLUDE EVERY SINGLE MEAL
+Create a prep task for EVERY meal in the meal plan, even simple ones:
+- Even "Greek yogurt with berries" needs a task: "Scoop yogurt into bowl, top with berries"
+- Even "Avocado toast" needs a task: "Toast bread, mash avocado, spread on toast, season with salt"
+- NO MEAL should be skipped. If someone asks "what do I do for Tuesday lunch?" there must be a task for it.
+
+### RULE 3: ACTIONABLE STEP-BY-STEP INSTRUCTIONS
+Your detailed_steps must be ACTUALLY HELPFUL with real cooking guidance.
+
+BAD (useless - just restates the meal):
 - "Prepare overnight oats with Greek yogurt and berries"
-- "Pan-sear salmon with herbs"
-- "Make a salad"
 
-GOOD TASK (actionable with real cooking details):
-- "Prepare overnight oats" with detailed_steps like:
-  1. "Combine 1/2 cup rolled oats with 1/2 cup Greek yogurt and 1/2 cup milk in a jar"
-  2. "Stir in 1 tbsp chia seeds and 1 tsp honey"
-  3. "Refrigerate overnight (at least 6 hours)"
-  4. "Top with fresh berries before serving"
-
-- "Pan-sear salmon fillets" with detailed_steps like:
-  1. "Pat salmon dry and season with salt, pepper, and dried herbs"
-  2. "Heat 1 tbsp olive oil in a skillet over medium-high heat until shimmering"
-  3. "Place salmon skin-side up and sear 4 minutes until golden crust forms"
-  4. "Flip and cook 3-4 more minutes until internal temp reaches 145°F"
-  5. "Rest 2 minutes before serving"
+GOOD (actionable with real details):
+- detailed_steps: [
+    "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a jar",
+    "Stir in 1 tbsp chia seeds and 1 tsp honey",
+    "Refrigerate overnight (at least 6 hours)",
+    "Top with fresh berries before serving"
+  ]
 
 ## PREP TASK STRUCTURE
 
-Each prep_task MUST include:
-1. "id": Unique identifier
-2. "description": Brief task title (what you're cooking)
-3. "detailed_steps": Array of specific step-by-step instructions (THIS IS REQUIRED - never leave empty)
+Each prep_task represents ONE MEAL and MUST include:
+1. "id": Unique identifier (e.g., "meal_monday_breakfast")
+2. "description": The meal name (e.g., "Monday Breakfast: Overnight Oats with Berries")
+3. "detailed_steps": Array of ALL steps to prepare this meal (THIS IS REQUIRED - never leave empty)
 4. "cooking_temps": Object with temperature info (if applicable):
    - "oven": e.g., "400°F" or "200°C"
    - "stovetop": e.g., "medium-high heat"
@@ -1139,7 +1143,7 @@ Each prep_task MUST include:
    - "total_time": e.g., "25 min"
 6. "tips": Array of helpful pro tips (optional but encouraged)
 7. "estimated_minutes": Total time in minutes
-8. "meal_ids": Which meals this task supports
+8. "meal_ids": Array with the single meal_id this task is for
 9. "completed": false
 
 ## RESPONSE FORMAT
@@ -1147,20 +1151,20 @@ Return ONLY valid JSON:
 {
   "prep_sessions": [
     {
-      "session_name": "Monday Morning Breakfast Prep",
+      "session_name": "Monday Morning Prep",
       "session_type": "day_of_morning",
       "session_day": "monday",
       "session_time_of_day": "morning",
       "prep_for_date": "${dayDates.monday}",
-      "estimated_minutes": 15,
+      "estimated_minutes": 20,
       "prep_tasks": [
         {
-          "id": "task_mon_breakfast_oats",
-          "description": "Prepare overnight oats with Greek yogurt",
+          "id": "meal_monday_breakfast",
+          "description": "Monday Breakfast: Overnight Oats with Berries",
           "detailed_steps": [
-            "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a mason jar or container",
+            "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a mason jar",
             "Add 1 tbsp chia seeds and 1 tsp honey, stir well to combine",
-            "Cover and refrigerate overnight (minimum 6 hours, up to 3 days)",
+            "Cover and refrigerate overnight (minimum 6 hours)",
             "Before serving, top with 1/4 cup fresh mixed berries"
           ],
           "cooking_times": {
@@ -1175,6 +1179,25 @@ Return ONLY valid JSON:
           "estimated_minutes": 5,
           "meal_ids": ["meal_monday_breakfast_0"],
           "completed": false
+        },
+        {
+          "id": "meal_monday_lunch",
+          "description": "Monday Lunch: Greek Salad with Grilled Chicken",
+          "detailed_steps": [
+            "Slice chicken breast into strips",
+            "Chop cucumber, tomatoes, and red onion into bite-sized pieces",
+            "Combine vegetables in a large bowl",
+            "Add olives and crumbled feta cheese",
+            "Top with sliced chicken",
+            "Drizzle with olive oil and red wine vinegar, season with oregano"
+          ],
+          "cooking_times": {
+            "prep_time": "10 min",
+            "total_time": "10 min"
+          },
+          "estimated_minutes": 10,
+          "meal_ids": ["meal_monday_lunch_0"],
+          "completed": false
         }
       ],
       "display_order": 1
@@ -1185,63 +1208,41 @@ Return ONLY valid JSON:
       "session_day": "monday",
       "session_time_of_day": "night",
       "prep_for_date": "${dayDates.monday}",
-      "estimated_minutes": 35,
+      "estimated_minutes": 45,
       "prep_tasks": [
         {
-          "id": "task_mon_dinner_salmon",
-          "description": "Pan-sear herb-crusted salmon",
+          "id": "meal_monday_dinner",
+          "description": "Monday Dinner: Herb-Crusted Salmon with Roasted Vegetables",
           "detailed_steps": [
-            "Remove salmon from refrigerator 15 minutes before cooking",
-            "Pat salmon fillets completely dry with paper towels",
-            "Season generously with salt, pepper, garlic powder, and dried dill",
+            "Preheat oven to 425°F",
+            "Cut sweet potato into 1-inch cubes, toss with 1 tbsp olive oil, salt and pepper",
+            "Spread sweet potato on a sheet pan and roast for 15 minutes",
+            "Meanwhile, trim woody ends from asparagus",
+            "Remove salmon from refrigerator and pat completely dry with paper towels",
+            "Season salmon with salt, pepper, garlic powder, and dried dill",
+            "Add asparagus to the sheet pan with sweet potato, drizzle with oil and season",
+            "Continue roasting vegetables for 12-15 more minutes",
             "Heat 1 tbsp olive oil in a skillet over medium-high heat until shimmering",
             "Place salmon skin-side up and sear undisturbed for 4 minutes until golden",
-            "Flip carefully and cook 3-4 minutes more until internal temp reaches 145°F",
-            "Remove from heat and let rest 2 minutes before serving"
+            "Flip and cook 3-4 minutes more until internal temp reaches 145°F",
+            "Let salmon rest 2 minutes, then serve with roasted vegetables"
           ],
           "cooking_temps": {
+            "oven": "425°F",
             "stovetop": "medium-high heat",
             "internal_temp": "145°F (salmon is done)"
           },
           "cooking_times": {
-            "prep_time": "5 min",
-            "cook_time": "7-8 min",
-            "rest_time": "2 min",
-            "total_time": "15 min"
+            "prep_time": "15 min",
+            "cook_time": "30 min",
+            "total_time": "45 min"
           },
           "tips": [
+            "Start the vegetables first since they take longer",
             "Don't move the salmon while searing - let the crust form",
-            "Salmon continues cooking after removal, so pull at 140°F for perfect doneness"
+            "Cut sweet potato uniformly for even cooking"
           ],
-          "estimated_minutes": 15,
-          "meal_ids": ["meal_monday_dinner_0"],
-          "completed": false
-        },
-        {
-          "id": "task_mon_dinner_veggies",
-          "description": "Roast sweet potato and asparagus",
-          "detailed_steps": [
-            "Preheat oven to 425°F",
-            "Cut sweet potato into 1-inch cubes for even cooking",
-            "Trim woody ends from asparagus (about 1-2 inches)",
-            "Toss sweet potato with 1 tbsp olive oil, salt, and pepper on a sheet pan",
-            "Roast sweet potato for 15 minutes",
-            "Add asparagus to the pan, drizzle with olive oil and season",
-            "Continue roasting 12-15 minutes until sweet potato is fork-tender and asparagus is crisp-tender"
-          ],
-          "cooking_temps": {
-            "oven": "425°F"
-          },
-          "cooking_times": {
-            "prep_time": "10 min",
-            "cook_time": "27-30 min",
-            "total_time": "40 min"
-          },
-          "tips": [
-            "Cut sweet potato pieces uniformly for even cooking",
-            "Asparagus goes in later since it cooks faster than sweet potato"
-          ],
-          "estimated_minutes": 20,
+          "estimated_minutes": 45,
           "meal_ids": ["meal_monday_dinner_0"],
           "completed": false
         }
@@ -1253,11 +1254,12 @@ Return ONLY valid JSON:
 
 ## IMPORTANT RULES
 1. Every meal_id in prep_tasks MUST match the format "meal_[day]_[type]_[index]" from the meal plan above
-2. Order sessions by display_order (weekly batch first if present, then chronologically)
-3. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
-4. Include cooking_temps and cooking_times whenever heat/cooking is involved
-5. Base your detailed_steps on the actual meal instructions provided above - don't make up different recipes
-6. For day_of prep style: Include prep sessions for ALL meals with any cooking steps (check the Instructions field for each meal)`;
+2. Order sessions by display_order chronologically through the week
+3. ONE TASK PER MEAL - combine all components of a meal into a single task
+4. EVERY MEAL must have a prep task - even simple assembly meals like "yogurt with fruit"
+5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
+6. Include cooking_temps and cooking_times whenever heat/cooking is involved
+7. Base your detailed_steps on the actual meal instructions provided above`;
 
   const startTime = Date.now();
   const message = await anthropic.messages.create({

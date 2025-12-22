@@ -93,6 +93,10 @@ export default function PrepViewClient({
     return completed
   })
 
+  // Track completed steps within tasks (local state for real-time cooking)
+  // Key format: "taskId_stepIndex"
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set())
+
   const toggleSession = (sessionId: string) => {
     const newExpanded = new Set(expandedSessions)
     if (newExpanded.has(sessionId)) {
@@ -101,6 +105,31 @@ export default function PrepViewClient({
       newExpanded.add(sessionId)
     }
     setExpandedSessions(newExpanded)
+  }
+
+  const toggleStepComplete = (taskId: string, stepIndex: number) => {
+    const stepKey = `${taskId}_${stepIndex}`
+    const newCompletedSteps = new Set(completedSteps)
+    if (newCompletedSteps.has(stepKey)) {
+      newCompletedSteps.delete(stepKey)
+    } else {
+      newCompletedSteps.add(stepKey)
+    }
+    setCompletedSteps(newCompletedSteps)
+  }
+
+  const isStepCompleted = (taskId: string, stepIndex: number) => {
+    return completedSteps.has(`${taskId}_${stepIndex}`)
+  }
+
+  const getStepProgress = (taskId: string, totalSteps: number) => {
+    let completed = 0
+    for (let i = 0; i < totalSteps; i++) {
+      if (completedSteps.has(`${taskId}_${i}`)) {
+        completed++
+      }
+    }
+    return { completed, total: totalSteps }
   }
 
   const toggleTaskComplete = async (sessionId: string, taskId: string) => {
@@ -413,19 +442,42 @@ export default function PrepViewClient({
                                   {/* Detailed Steps - expandable section */}
                                   {hasDetails && !completedTasks.has(task.id) && (
                                     <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                                      {/* Step-by-step instructions */}
+                                      {/* Step-by-step instructions as checklist */}
                                       {task.detailed_steps && task.detailed_steps.length > 0 && (
                                         <div className="mb-3">
-                                          <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Steps</h5>
-                                          <ol className="space-y-1.5">
-                                            {task.detailed_steps.map((step, idx) => (
-                                              <li key={idx} className="flex gap-2 text-sm text-gray-700">
-                                                <span className="flex-shrink-0 w-5 h-5 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center text-xs font-medium">
-                                                  {idx + 1}
-                                                </span>
-                                                <span>{step}</span>
-                                              </li>
-                                            ))}
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Steps</h5>
+                                            {task.detailed_steps.length > 1 && (
+                                              <span className="text-xs text-gray-400">
+                                                {getStepProgress(task.id, task.detailed_steps.length).completed}/{task.detailed_steps.length} done
+                                              </span>
+                                            )}
+                                          </div>
+                                          <ol className="space-y-2">
+                                            {task.detailed_steps.map((step, idx) => {
+                                              const stepCompleted = isStepCompleted(task.id, idx)
+                                              return (
+                                                <li key={idx} className="flex gap-2 text-sm">
+                                                  <button
+                                                    onClick={() => toggleStepComplete(task.id, idx)}
+                                                    className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all mt-0.5 ${
+                                                      stepCompleted
+                                                        ? 'bg-teal-500 border-teal-500'
+                                                        : 'border-gray-300 hover:border-teal-400'
+                                                    }`}
+                                                  >
+                                                    {stepCompleted && (
+                                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                      </svg>
+                                                    )}
+                                                  </button>
+                                                  <span className={`flex-1 ${stepCompleted ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                                    {step}
+                                                  </span>
+                                                </li>
+                                              )
+                                            })}
                                           </ol>
                                         </div>
                                       )}
