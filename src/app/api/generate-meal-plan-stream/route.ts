@@ -98,8 +98,23 @@ export async function POST() {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
+      let isControllerClosed = false
+
       const sendEvent = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+        if (isControllerClosed) return
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller may have been closed due to client disconnect
+          isControllerClosed = true
+        }
+      }
+
+      const closeController = () => {
+        if (!isControllerClosed) {
+          isControllerClosed = true
+          controller.close()
+        }
       }
 
       try {
@@ -143,7 +158,7 @@ export async function POST() {
         if (saveError) {
           console.error('Error saving meal plan:', saveError)
           sendEvent('error', { error: 'Failed to save meal plan' })
-          controller.close()
+          closeController()
           return
         }
 
@@ -214,11 +229,11 @@ export async function POST() {
           week_start_date: savedPlan.week_start_date,
         })
 
-        controller.close()
+        closeController()
       } catch (error) {
         console.error('Error generating meal plan:', error)
         sendEvent('error', { error: 'Failed to generate meal plan' })
-        controller.close()
+        closeController()
       }
     },
   })

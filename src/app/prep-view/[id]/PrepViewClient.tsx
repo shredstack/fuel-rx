@@ -399,7 +399,9 @@ export default function PrepViewClient({
                               const hasDetails = (task.detailed_steps && task.detailed_steps.length > 0) ||
                                 cookingTemps.length > 0 ||
                                 cookingTimes.length > 0 ||
-                                (task.tips && task.tips.length > 0)
+                                (task.tips && task.tips.length > 0) ||
+                                (task.equipment_needed && task.equipment_needed.length > 0) ||
+                                (task.ingredients_to_prep && task.ingredients_to_prep.length > 0)
 
                               return (
                                 <div
@@ -460,12 +462,58 @@ export default function PrepViewClient({
 
                                   {/* Detailed Steps - expandable section */}
                                   {hasDetails && !completedTasks.has(task.id) && (
-                                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                                    <div className="border-t border-gray-100 bg-white px-4 py-4">
+
+                                      {/* Equipment Needed */}
+                                      {task.equipment_needed && task.equipment_needed.length > 0 && (
+                                        <div className="mb-4">
+                                          <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                            </svg>
+                                            Equipment Needed
+                                          </h5>
+                                          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {task.equipment_needed.map((item, idx) => (
+                                              <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                                <span className="text-teal-500 mt-0.5">•</span>
+                                                <span>{item}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+
+                                      {/* Ingredients to Prep/Gather */}
+                                      {task.ingredients_to_prep && task.ingredients_to_prep.length > 0 && (
+                                        <div className="mb-4">
+                                          <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                            Ingredients to Gather
+                                          </h5>
+                                          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {task.ingredients_to_prep.map((item, idx) => (
+                                              <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                                <span className="text-teal-500 mt-0.5">•</span>
+                                                <span>{item}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+
+                                      {/* Divider before method if we have equipment or ingredients */}
+                                      {((task.equipment_needed && task.equipment_needed.length > 0) || (task.ingredients_to_prep && task.ingredients_to_prep.length > 0)) && task.detailed_steps && task.detailed_steps.length > 0 && (
+                                        <div className="border-t border-gray-100 pt-4 mt-2"></div>
+                                      )}
+
                                       {/* Step-by-step instructions as checklist */}
                                       {task.detailed_steps && task.detailed_steps.length > 0 && (
                                         <div className="mb-3">
                                           <div className="flex items-center justify-between mb-2">
-                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Method</h5>
+                                            <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Method</h5>
                                             <span className="text-xs text-gray-400">
                                               {getStepProgress(task.id, task.detailed_steps.length).completed}/{task.detailed_steps.length} done
                                             </span>
