@@ -134,7 +134,6 @@ async function cacheIngredientNutrition(
     }
 
     // Insert nutrition data for this serving size
-    // Round to integers since the database expects integer values
     const { error } = await supabase
       .from('ingredient_nutrition')
       .upsert({
@@ -178,101 +177,6 @@ ${lines.join('\n')}
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
-
-// ============================================
-// JSON Parsing Helper
-// ============================================
-
-/**
- * Repair common LLM JSON malformations
- * - Fixes cooking_times being generated as array instead of object
- * - Fixes other fields that should be objects but are arrays
- */
-function repairMalformedJSON(jsonText: string): string {
-  // Fix cooking_times array -> object pattern
-  // The LLM sometimes generates: "cooking_times": [ "prep_time": "5 min", ... ]
-  // instead of: "cooking_times": { "prep_time": "5 min", ... }
-  let repaired = jsonText;
-
-  // Pattern: "cooking_times": [ ... ] where contents look like object properties
-  // Match: "cooking_times": followed by [ then key-value pairs then ]
-  const cookingTimesArrayPattern = /"cooking_times"\s*:\s*\[\s*("(?:prep_time|cook_time|rest_time|total_time)")/g;
-  if (cookingTimesArrayPattern.test(repaired)) {
-    // Replace opening [ with {
-    repaired = repaired.replace(/"cooking_times"\s*:\s*\[(\s*"(?:prep_time|cook_time|rest_time|total_time)")/g,
-      '"cooking_times": {$1');
-
-    // Find and replace the corresponding closing ] with }
-    // This is tricky - we need to find the ] that closes the cooking_times array
-    // Look for pattern like "total_time": "X min" followed by ] and replace ] with }
-    repaired = repaired.replace(/("(?:prep_time|cook_time|rest_time|total_time)"\s*:\s*"[^"]*")\s*\]/g,
-      (_, lastProp) => {
-        // Check if this is likely the end of cooking_times by looking at what follows
-        return lastProp + ' }';
-      });
-  }
-
-  // Also fix cooking_temps if it has the same issue
-  const cookingTempsArrayPattern = /"cooking_temps"\s*:\s*\[\s*("(?:oven|stovetop|internal_temp|grill)")/g;
-  if (cookingTempsArrayPattern.test(repaired)) {
-    repaired = repaired.replace(/"cooking_temps"\s*:\s*\[(\s*"(?:oven|stovetop|internal_temp|grill)")/g,
-      '"cooking_temps": {$1');
-    repaired = repaired.replace(/("(?:oven|stovetop|internal_temp|grill)"\s*:\s*"[^"]*")\s*\]/g,
-      (_, lastProp) => lastProp + ' }');
-  }
-
-  return repaired;
-}
-
-/**
- * Safely extract and parse JSON from LLM response
- * Handles markdown code blocks and extra text before/after JSON
- */
-function extractAndParseJSON<T>(responseText: string, context: string): T {
-  let jsonText = responseText.trim();
-
-  // Remove markdown code blocks if present
-  jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-
-  // Extract JSON object - find the first { and last }
-  const firstBrace = jsonText.indexOf('{');
-  const lastBrace = jsonText.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    jsonText = jsonText.substring(firstBrace, lastBrace + 1);
-  }
-
-  // Try parsing first without repair
-  try {
-    return JSON.parse(jsonText) as T;
-  } catch (firstError) {
-    // Try to repair common LLM JSON malformations
-    console.log(`Initial parse failed for ${context}, attempting repair...`);
-    const repairedJson = repairMalformedJSON(jsonText);
-
-    try {
-      const result = JSON.parse(repairedJson) as T;
-      console.log(`JSON repair successful for ${context}`);
-      return result;
-    } catch (repairError) {
-      // Both attempts failed, log details and throw
-      console.error(`Failed to parse ${context} JSON. Response length:`, responseText.length);
-      console.error('First 500 chars:', jsonText.substring(0, 500));
-      console.error('Last 200 chars:', jsonText.substring(jsonText.length - 200));
-
-      // Try to find the problematic area around the error position
-      if (firstError instanceof SyntaxError) {
-        const match = firstError.message.match(/position (\d+)/);
-        if (match) {
-          const pos = parseInt(match[1], 10);
-          console.error(`JSON around error position ${pos}:`, jsonText.substring(Math.max(0, pos - 100), pos + 100));
-        }
-      }
-
-      console.error('Parse error:', firstError);
-      throw firstError;
-    }
-  }
-}
 
 // ============================================
 // Household Servings Helper Functions
@@ -340,14 +244,15 @@ function buildHouseholdContextSection(servings: HouseholdServingsPrefs): string 
 
   return `
 ## HOUSEHOLD SERVINGS (IMPORTANT)
-The athlete is also cooking for their household.
+The athlete is also cooking for their household. Generate prep instructions and grocery quantities for the FULL household, not just the athlete.
 
 **Household schedule:**
 ${lines.join('\n')}
 
 **Key guidelines:**
 - The athlete's personal macro targets are still the priority for meal COMPOSITION
-- Ingredient amounts in meals should be for the ATHLETE ONLY (grocery scaling is handled separately)
+- But prep instructions should be for the FULL batch size (all household members)
+- Grocery quantities should be scaled to feed everyone
 - Children count as approximately 0.6x an adult portion
 - Choose meals that scale well and are broadly appealing when feeding children
 `;
@@ -614,7 +519,12 @@ ${isConsistent
   }
 
   // Parse the JSON response
-  const parsed = extractAndParseJSON<MealTypeResult>(responseText, `${mealType} meals`);
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  const parsed: MealTypeResult = JSON.parse(jsonText);
   return parsed.meals;
 }
 
@@ -697,7 +607,7 @@ Sort the list by category (produce, protein, dairy, grains, pantry, frozen, othe
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4000,
+    max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
   const duration = Date.now() - startTime;
@@ -716,7 +626,12 @@ Sort the list by category (produce, protein, dairy, grains, pantry, frozen, othe
   });
 
   // Parse the JSON response
-  const parsed = extractAndParseJSON<{ grocery_list: Ingredient[] }>(responseText, 'grocery list consolidation');
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  const parsed: { grocery_list: Ingredient[] } = JSON.parse(jsonText);
   return parsed.grocery_list;
 }
 
@@ -990,7 +905,7 @@ Return ONLY valid JSON in this exact format (no markdown, no explanations):
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
+    max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
   const duration = Date.now() - startTime;
@@ -1009,7 +924,12 @@ Return ONLY valid JSON in this exact format (no markdown, no explanations):
   });
 
   // Parse the JSON response
-  const parsed = extractAndParseJSON<CoreIngredients>(responseText, 'core ingredients');
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  const parsed: CoreIngredients = JSON.parse(jsonText);
   return parsed;
 }
 
@@ -1231,7 +1151,7 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 16000,
+    max_tokens: 32000, // Increased from 16000 to handle larger meal plans with detailed nutrition
     messages: [{ role: 'user', content: prompt }],
   });
   const duration = Date.now() - startTime;
@@ -1251,12 +1171,28 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
 
   // Check for truncation
   if (message.stop_reason === 'max_tokens') {
+    console.error('TRUNCATION ERROR: Meals response was truncated. Output tokens used:', message.usage?.output_tokens);
     throw new Error('Response was truncated when generating meals from core ingredients.');
   }
 
   // Parse the JSON response
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parsed = extractAndParseJSON<any>(responseText, 'meals from core ingredients');
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (parseError) {
+    // Log detailed error info for debugging
+    console.error('JSON PARSE ERROR in generateMealsFromCoreIngredients:');
+    console.error('Stop reason:', message.stop_reason);
+    console.error('Output tokens:', message.usage?.output_tokens);
+    console.error('Response length:', responseText.length);
+    console.error('Last 500 chars:', responseText.slice(-500));
+    throw new Error(`Failed to parse meals JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
 
   // Cache all unique ingredients to ingredient_nutrition table
   // This builds our ingredient database over time for consistency
@@ -1333,7 +1269,6 @@ interface LLMPrepTask {
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;
-  // NEW: Equipment and ingredients needed before starting
   equipment_needed?: string[];
   ingredients_to_prep?: string[];
 }
@@ -1809,7 +1744,7 @@ Return ONLY valid JSON:
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 16000, // Increased for detailed prep instructions
+    max_tokens: 64000, // Maximum for detailed prep instructions
     messages: [{ role: 'user', content: prompt }],
   });
   const duration = Date.now() - startTime;
@@ -1827,8 +1762,30 @@ Return ONLY valid JSON:
     duration_ms: duration,
   });
 
+  // Check for truncation
+  if (message.stop_reason === 'max_tokens') {
+    console.error('TRUNCATION ERROR: Prep sessions response was truncated. Output tokens used:', message.usage?.output_tokens);
+    throw new Error('Response was truncated when generating prep sessions.');
+  }
+
   // Parse the JSON response
-  const parsed = extractAndParseJSON<NewPrepSessionsResponse>(responseText, 'prep sessions');
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  let parsed: NewPrepSessionsResponse;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (parseError) {
+    // Log detailed error info for debugging
+    console.error('JSON PARSE ERROR in generatePrepSessions:');
+    console.error('Stop reason:', message.stop_reason);
+    console.error('Output tokens:', message.usage?.output_tokens);
+    console.error('Response length:', responseText.length);
+    console.error('Last 500 chars:', responseText.slice(-500));
+    throw new Error(`Failed to parse prep sessions JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
 
   // Convert new format to PrepModeResponse format for backward compatibility
   // The new format includes prep_tasks with detailed_steps, cooking_temps, cooking_times, tips
@@ -1869,7 +1826,6 @@ Return ONLY valid JSON:
         cooking_times: task.cooking_times || undefined,
         tips: task.tips || [],
         storage: task.storage || undefined,
-        // NEW: Preserve equipment and ingredients fields
         equipment_needed: task.equipment_needed || undefined,
         ingredients_to_prep: task.ingredients_to_prep || undefined,
       })),
@@ -2025,12 +1981,16 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 12000, // Increased from 8000 to handle larger household grocery lists
+    messages: [
+      { role: 'user', content: prompt },
+      { role: 'assistant', content: '{' }, // Prefill to force JSON output
+    ],
   });
   const duration = Date.now() - startTime;
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+  // Prepend the '{' we used as prefill
+  const responseText = '{' + (message.content[0].type === 'text' ? message.content[0].text : '');
 
   await logLLMCall({
     user_id: userId,
@@ -2042,8 +2002,11 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
     duration_ms: duration,
   });
 
-  // Parse the JSON response
-  const parsed = extractAndParseJSON<{ grocery_list: Ingredient[] }>(responseText, 'grocery list from core ingredients');
+  // Check for truncation
+  if (message.stop_reason === 'max_tokens') {
+    console.error('TRUNCATION ERROR: Grocery list response was truncated. Output tokens used:', message.usage?.output_tokens);
+    throw new Error('Response was truncated when generating grocery list.');
+  }
 
   // Define reasonable maximum quantities for a week's worth of groceries
   // These limits are generous enough for a family of 4-5 but prevent absurd quantities
@@ -2070,6 +2033,25 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
     'pork': { max: 5, unit: 'lb' },
     'shrimp': { max: 3, unit: 'lb' },
   };
+
+  // Parse the JSON response
+  let jsonText = responseText.trim();
+  if (jsonText.startsWith('```')) {
+    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  let parsed: { grocery_list: Ingredient[] };
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (parseError) {
+    // Log detailed error info for debugging
+    console.error('JSON PARSE ERROR in generateGroceryListFromCoreIngredients:');
+    console.error('Stop reason:', message.stop_reason);
+    console.error('Output tokens:', message.usage?.output_tokens);
+    console.error('Response length:', responseText.length);
+    console.error('Last 500 chars:', responseText.slice(-500));
+    throw new Error(`Failed to parse grocery list JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
 
   // Validate and cap quantities
   const warnings: string[] = [];
