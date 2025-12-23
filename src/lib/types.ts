@@ -489,6 +489,9 @@ export interface PrepTask {
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;
+  // NEW: Equipment and ingredients needed before starting
+  equipment_needed?: string[];      // e.g., ["Large skillet", "Medium pot", "Baking sheet"]
+  ingredients_to_prep?: string[];   // e.g., ["1.5 lbs ground turkey", "8 oz mushrooms, sliced"]
 }
 
 // Session type for prep scheduling

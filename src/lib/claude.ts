@@ -134,16 +134,17 @@ async function cacheIngredientNutrition(
     }
 
     // Insert nutrition data for this serving size
+    // Round to integers since the database expects integer values
     const { error } = await supabase
       .from('ingredient_nutrition')
       .upsert({
         ingredient_id: ingredientId,
-        serving_size: ing.serving_size,
+        serving_size: Math.round(ing.serving_size),
         serving_unit: ing.serving_unit,
-        calories: ing.calories,
-        protein: ing.protein,
-        carbs: ing.carbs,
-        fat: ing.fat,
+        calories: Math.round(ing.calories),
+        protein: Math.round(ing.protein),
+        carbs: Math.round(ing.carbs),
+        fat: Math.round(ing.fat),
         source: 'llm_estimated' as const,
         confidence_score: 0.7,
       }, {
@@ -177,6 +178,101 @@ ${lines.join('\n')}
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+// ============================================
+// JSON Parsing Helper
+// ============================================
+
+/**
+ * Repair common LLM JSON malformations
+ * - Fixes cooking_times being generated as array instead of object
+ * - Fixes other fields that should be objects but are arrays
+ */
+function repairMalformedJSON(jsonText: string): string {
+  // Fix cooking_times array -> object pattern
+  // The LLM sometimes generates: "cooking_times": [ "prep_time": "5 min", ... ]
+  // instead of: "cooking_times": { "prep_time": "5 min", ... }
+  let repaired = jsonText;
+
+  // Pattern: "cooking_times": [ ... ] where contents look like object properties
+  // Match: "cooking_times": followed by [ then key-value pairs then ]
+  const cookingTimesArrayPattern = /"cooking_times"\s*:\s*\[\s*("(?:prep_time|cook_time|rest_time|total_time)")/g;
+  if (cookingTimesArrayPattern.test(repaired)) {
+    // Replace opening [ with {
+    repaired = repaired.replace(/"cooking_times"\s*:\s*\[(\s*"(?:prep_time|cook_time|rest_time|total_time)")/g,
+      '"cooking_times": {$1');
+
+    // Find and replace the corresponding closing ] with }
+    // This is tricky - we need to find the ] that closes the cooking_times array
+    // Look for pattern like "total_time": "X min" followed by ] and replace ] with }
+    repaired = repaired.replace(/("(?:prep_time|cook_time|rest_time|total_time)"\s*:\s*"[^"]*")\s*\]/g,
+      (_, lastProp) => {
+        // Check if this is likely the end of cooking_times by looking at what follows
+        return lastProp + ' }';
+      });
+  }
+
+  // Also fix cooking_temps if it has the same issue
+  const cookingTempsArrayPattern = /"cooking_temps"\s*:\s*\[\s*("(?:oven|stovetop|internal_temp|grill)")/g;
+  if (cookingTempsArrayPattern.test(repaired)) {
+    repaired = repaired.replace(/"cooking_temps"\s*:\s*\[(\s*"(?:oven|stovetop|internal_temp|grill)")/g,
+      '"cooking_temps": {$1');
+    repaired = repaired.replace(/("(?:oven|stovetop|internal_temp|grill)"\s*:\s*"[^"]*")\s*\]/g,
+      (_, lastProp) => lastProp + ' }');
+  }
+
+  return repaired;
+}
+
+/**
+ * Safely extract and parse JSON from LLM response
+ * Handles markdown code blocks and extra text before/after JSON
+ */
+function extractAndParseJSON<T>(responseText: string, context: string): T {
+  let jsonText = responseText.trim();
+
+  // Remove markdown code blocks if present
+  jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+
+  // Extract JSON object - find the first { and last }
+  const firstBrace = jsonText.indexOf('{');
+  const lastBrace = jsonText.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    jsonText = jsonText.substring(firstBrace, lastBrace + 1);
+  }
+
+  // Try parsing first without repair
+  try {
+    return JSON.parse(jsonText) as T;
+  } catch (firstError) {
+    // Try to repair common LLM JSON malformations
+    console.log(`Initial parse failed for ${context}, attempting repair...`);
+    const repairedJson = repairMalformedJSON(jsonText);
+
+    try {
+      const result = JSON.parse(repairedJson) as T;
+      console.log(`JSON repair successful for ${context}`);
+      return result;
+    } catch (repairError) {
+      // Both attempts failed, log details and throw
+      console.error(`Failed to parse ${context} JSON. Response length:`, responseText.length);
+      console.error('First 500 chars:', jsonText.substring(0, 500));
+      console.error('Last 200 chars:', jsonText.substring(jsonText.length - 200));
+
+      // Try to find the problematic area around the error position
+      if (firstError instanceof SyntaxError) {
+        const match = firstError.message.match(/position (\d+)/);
+        if (match) {
+          const pos = parseInt(match[1], 10);
+          console.error(`JSON around error position ${pos}:`, jsonText.substring(Math.max(0, pos - 100), pos + 100));
+        }
+      }
+
+      console.error('Parse error:', firstError);
+      throw firstError;
+    }
+  }
+}
 
 // ============================================
 // Household Servings Helper Functions
@@ -519,12 +615,7 @@ ${isConsistent
   }
 
   // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: MealTypeResult = JSON.parse(jsonText);
+  const parsed = extractAndParseJSON<MealTypeResult>(responseText, `${mealType} meals`);
   return parsed.meals;
 }
 
@@ -626,12 +717,7 @@ Sort the list by category (produce, protein, dairy, grains, pantry, frozen, othe
   });
 
   // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: { grocery_list: Ingredient[] } = JSON.parse(jsonText);
+  const parsed = extractAndParseJSON<{ grocery_list: Ingredient[] }>(responseText, 'grocery list consolidation');
   return parsed.grocery_list;
 }
 
@@ -924,12 +1010,7 @@ Return ONLY valid JSON in this exact format (no markdown, no explanations):
   });
 
   // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: CoreIngredients = JSON.parse(jsonText);
+  const parsed = extractAndParseJSON<CoreIngredients>(responseText, 'core ingredients');
   return parsed;
 }
 
@@ -1175,12 +1256,8 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
   }
 
   // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed = JSON.parse(jsonText);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsed = extractAndParseJSON<any>(responseText, 'meals from core ingredients');
 
   // Cache all unique ingredients to ingredient_nutrition table
   // This builds our ingredient database over time for consistency
@@ -1257,6 +1334,9 @@ interface LLMPrepTask {
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;
+  // NEW: Equipment and ingredients needed before starting
+  equipment_needed?: string[];
+  ingredients_to_prep?: string[];
 }
 
 interface NewPrepSessionsResponse {
@@ -1483,25 +1563,69 @@ GOOD (actionable with real details):
 Each prep_task represents ONE MEAL and MUST include:
 1. "id": Unique identifier (e.g., "meal_monday_breakfast")
 2. "description": The meal name (e.g., "Monday Breakfast: Overnight Oats with Berries")
-3. "detailed_steps": Array of ALL steps to prepare this meal (THIS IS REQUIRED - never leave empty)
-4. "cooking_temps": Object with temperature info (if applicable):
+3. "equipment_needed": Array of ALL cookware and tools needed (THIS IS REQUIRED - see examples below)
+4. "ingredients_to_prep": Array of ingredients to gather/prep before starting (THIS IS REQUIRED)
+5. "detailed_steps": Array of ALL steps to prepare this meal (THIS IS REQUIRED - never leave empty)
+6. "cooking_temps": Object with temperature info (if applicable):
    - "oven": e.g., "400°F" or "200°C"
    - "stovetop": e.g., "medium-high heat"
    - "internal_temp": e.g., "145°F for salmon", "165°F for chicken"
    - "grill": e.g., "medium-high, 400-450°F"
-5. "cooking_times": Object with timing info:
+7. "cooking_times": Object with timing info:
    - "prep_time": e.g., "5 min"
    - "cook_time": e.g., "15-20 min"
    - "rest_time": e.g., "5 min" (if applicable)
    - "total_time": e.g., "25 min"
-6. "tips": Array of helpful pro tips (optional but encouraged)
-7. "storage": Storage instructions (REQUIRED for batch prep and night-before styles, optional for day-of)
+8. "tips": Array of helpful pro tips (optional but encouraged)
+9. "storage": Storage instructions (REQUIRED for batch prep and night-before styles, optional for day-of)
    - e.g., "Refrigerate in airtight container for up to 5 days"
    - e.g., "Store in glass meal prep containers, keeps 4-5 days refrigerated"
    - e.g., "Portion into individual containers for grab-and-go"
-8. "estimated_minutes": Total time in minutes
-9. "meal_ids": Array with the single meal_id this task is for
-10. "completed": false
+10. "estimated_minutes": Total time in minutes
+11. "meal_ids": Array with the single meal_id this task is for
+12. "completed": false
+
+## CRITICAL: EQUIPMENT_NEEDED EXAMPLES
+
+**For "Asian-Style Ground Turkey with Jasmine Rice and Vegetables":**
+equipment_needed: ["Large skillet or wok (for turkey and vegetables)", "Medium pot with lid (for rice)", "Cutting board", "Chef's knife", "Wooden spoon or spatula", "Measuring spoons"]
+
+**For "Baked Salmon with Roasted Vegetables":**
+equipment_needed: ["Large baking sheet (for salmon)", "Separate baking sheet (for vegetables)", "Parchment paper or foil", "Tongs or spatula", "Small bowl (for seasoning mix)"]
+
+**For "Overnight Oats":**
+equipment_needed: ["Mason jar or airtight container", "Spoon for mixing"]
+
+## CRITICAL: INGREDIENTS_TO_PREP EXAMPLES
+
+**For "Asian-Style Ground Turkey with Jasmine Rice and Vegetables":**
+ingredients_to_prep: ["1.5 lbs ground turkey", "2 cups jasmine rice", "1 onion, diced", "8 oz mushrooms, sliced", "2 cups red cabbage, shredded", "1.5 tbsp coconut oil", "Garlic powder, salt, pepper, ginger"]
+
+This helps users gather everything BEFORE they start cooking.
+
+## CRITICAL: DETAILED_STEPS WITH VESSEL CLARITY
+
+Your detailed_steps MUST specify which cookware is being used at each step:
+
+**BAD (unclear which vessel):**
+- "Add ground turkey, cook 5-6 minutes until browned"
+- "Add mushrooms and cook 3-4 minutes"
+
+**GOOD (clear vessel instructions):**
+- "In the large skillet, add 1.5 lbs ground turkey, breaking apart with spoon. Cook 5-6 minutes until browned and no pink remains."
+- "To the same skillet with the turkey, add 8 oz sliced mushrooms. Cook 3-4 minutes until tender."
+- "Meanwhile, in the medium pot, bring 2 cups water to a boil. Add rice, reduce to low, cover and simmer 15 minutes."
+
+**GOOD (using multiple vessels simultaneously):**
+- "While the chicken is baking (check step 2), heat 1 tbsp olive oil in a large skillet over medium heat."
+- "In a separate small pot, bring 4 cups water to a boil for the quinoa."
+
+**Key patterns to use:**
+- "In the [specific cookware]..."
+- "To the same [cookware]..." (when adding to existing pan)
+- "In a separate [cookware]..." (when using different vessel)
+- "While X is cooking in [cookware A], prepare Y in [cookware B]..."
+- "Meanwhile, in [cookware]..." (for parallel tasks)
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON:
@@ -1518,8 +1642,20 @@ Return ONLY valid JSON:
         {
           "id": "meal_monday_breakfast",
           "description": "Monday Breakfast: Overnight Oats with Berries",
+          "equipment_needed": [
+            "Mason jar or airtight container",
+            "Spoon for mixing"
+          ],
+          "ingredients_to_prep": [
+            "1/2 cup rolled oats",
+            "1/2 cup Greek yogurt",
+            "1/2 cup milk",
+            "1 tbsp chia seeds",
+            "1 tsp honey",
+            "1/4 cup fresh mixed berries"
+          ],
           "detailed_steps": [
-            "Combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk in a mason jar",
+            "In the mason jar, combine 1/2 cup rolled oats, 1/2 cup Greek yogurt, and 1/2 cup milk",
             "Add 1 tbsp chia seeds and 1 tsp honey, stir well to combine",
             "Cover and refrigerate overnight (minimum 6 hours)",
             "Before serving, top with 1/4 cup fresh mixed berries"
@@ -1541,11 +1677,27 @@ Return ONLY valid JSON:
         {
           "id": "meal_monday_lunch",
           "description": "Monday Lunch: Greek Salad with Grilled Chicken",
+          "equipment_needed": [
+            "Large salad bowl",
+            "Cutting board",
+            "Chef's knife"
+          ],
+          "ingredients_to_prep": [
+            "1 grilled chicken breast, sliced",
+            "1 cucumber, diced",
+            "2 tomatoes, chopped",
+            "1/4 red onion, sliced",
+            "1/4 cup Kalamata olives",
+            "2 oz feta cheese, crumbled",
+            "2 tbsp olive oil",
+            "1 tbsp red wine vinegar",
+            "Dried oregano, salt, pepper"
+          ],
           "detailed_steps": [
-            "Slice chicken breast into strips",
+            "On the cutting board, slice chicken breast into strips",
             "Chop cucumber, tomatoes, and red onion into bite-sized pieces",
-            "Combine vegetables in a large bowl",
-            "Add olives and crumbled feta cheese",
+            "In the large salad bowl, combine all chopped vegetables",
+            "Add olives and crumbled feta cheese to the bowl",
             "Top with sliced chicken",
             "Drizzle with olive oil and red wine vinegar, season with oregano"
           ],
@@ -1572,19 +1724,35 @@ Return ONLY valid JSON:
         {
           "id": "meal_monday_dinner",
           "description": "Monday Dinner: Herb-Crusted Salmon with Roasted Vegetables",
+          "equipment_needed": [
+            "Large baking sheet (for vegetables)",
+            "Large skillet (for salmon)",
+            "Cutting board",
+            "Chef's knife",
+            "Tongs or spatula",
+            "Meat thermometer"
+          ],
+          "ingredients_to_prep": [
+            "6 oz salmon fillet",
+            "1 medium sweet potato, cubed",
+            "1 bunch asparagus, trimmed",
+            "2 tbsp olive oil",
+            "Salt, pepper, garlic powder, dried dill"
+          ],
           "detailed_steps": [
             "Preheat oven to 425°F",
-            "Cut sweet potato into 1-inch cubes, toss with 1 tbsp olive oil, salt and pepper",
-            "Spread sweet potato on a sheet pan and roast for 15 minutes",
-            "Meanwhile, trim woody ends from asparagus",
+            "On the cutting board, cut sweet potato into 1-inch cubes",
+            "On the large baking sheet, toss sweet potato cubes with 1 tbsp olive oil, salt and pepper",
+            "Place the baking sheet in the oven and roast for 15 minutes",
+            "Meanwhile, on the cutting board, trim woody ends from asparagus",
             "Remove salmon from refrigerator and pat completely dry with paper towels",
             "Season salmon with salt, pepper, garlic powder, and dried dill",
-            "Add asparagus to the sheet pan with sweet potato, drizzle with oil and season",
+            "Add asparagus to the same baking sheet with sweet potato, drizzle with oil and season",
             "Continue roasting vegetables for 12-15 more minutes",
-            "Heat 1 tbsp olive oil in a skillet over medium-high heat until shimmering",
-            "Place salmon skin-side up and sear undisturbed for 4 minutes until golden",
-            "Flip and cook 3-4 minutes more until internal temp reaches 145°F",
-            "Let salmon rest 2 minutes, then serve with roasted vegetables"
+            "In the large skillet, heat 1 tbsp olive oil over medium-high heat until shimmering",
+            "Place salmon in the skillet skin-side up and sear undisturbed for 4 minutes until golden",
+            "Using tongs, flip salmon and cook 3-4 minutes more until internal temp reaches 145°F",
+            "Let salmon rest 2 minutes, then serve with roasted vegetables from the baking sheet"
           ],
           "cooking_temps": {
             "oven": "425°F",
@@ -1661,12 +1829,7 @@ Return ONLY valid JSON:
   });
 
   // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: NewPrepSessionsResponse = JSON.parse(jsonText);
+  const parsed = extractAndParseJSON<NewPrepSessionsResponse>(responseText, 'prep sessions');
 
   // Convert new format to PrepModeResponse format for backward compatibility
   // The new format includes prep_tasks with detailed_steps, cooking_temps, cooking_times, tips
@@ -1707,6 +1870,9 @@ Return ONLY valid JSON:
         cooking_times: task.cooking_times || undefined,
         tips: task.tips || [],
         storage: task.storage || undefined,
+        // NEW: Preserve equipment and ingredients fields
+        equipment_needed: task.equipment_needed || undefined,
+        ingredients_to_prep: task.ingredients_to_prep || undefined,
       })),
       displayOrder: session.display_order,
     })),
@@ -1717,6 +1883,31 @@ Return ONLY valid JSON:
   (prepModeResponse as PrepModeResponse & { newPrepSessions: NewPrepSessionsResponse['prep_sessions'] }).newPrepSessions = parsed.prep_sessions;
 
   return prepModeResponse;
+}
+
+/**
+ * Get a human-readable description of the household size
+ */
+function getHouseholdDescription(servings: HouseholdServingsPrefs): string {
+  let totalAdults = 1; // Athlete
+  let totalChildren = 0;
+
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+
+  for (const day of DAYS_OF_WEEK) {
+    for (const meal of mealTypes) {
+      const dayServings = servings[day]?.[meal];
+      if (dayServings) {
+        totalAdults = Math.max(totalAdults, 1 + (dayServings.adults || 0));
+        totalChildren = Math.max(totalChildren, dayServings.children || 0);
+      }
+    }
+  }
+
+  if (totalChildren > 0) {
+    return `${totalAdults} adults and ${totalChildren} children`;
+  }
+  return totalAdults === 1 ? 'just the athlete' : `${totalAdults} adults`;
 }
 
 /**
@@ -1758,14 +1949,12 @@ async function generateGroceryListFromCoreIngredients(
   let householdScalingSection = '';
   if (householdHasMembers) {
     householdScalingSection = `
-## HOUSEHOLD SCALING (IMPORTANT)
-The athlete is also feeding their household. Scale grocery quantities by approximately ${avgMultiplier.toFixed(1)}x to account for additional family members.
+## HOUSEHOLD CONTEXT
+The meal plan was generated for a household of ${getHouseholdDescription(householdServings)}.
+The ingredient usage amounts shown above are ALREADY SCALED for the full household.
+Your job is to consolidate these pre-scaled amounts into practical shopping quantities.
 
-**Key points:**
-- The base quantities above are for the athlete only
-- Multiply all quantities by approximately ${avgMultiplier.toFixed(1)} to feed the household
-- Round up generously to ensure enough food for everyone
-- It's better to have slightly more than to run short
+**DO NOT multiply by ${avgMultiplier.toFixed(1)}x again - that would be double-scaling.**
 `;
   }
 
@@ -1774,26 +1963,54 @@ The athlete is also feeding their household. Scale grocery quantities by approxi
 ## CORE INGREDIENTS
 ${JSON.stringify(coreIngredients, null, 2)}
 
-## INGREDIENT USAGE IN MEALS (for athlete only)
+## INGREDIENT USAGE IN MEALS
 ${usageSummary}
 ${householdScalingSection}
+
+## CRITICAL: REASONABLENESS CHECKS
+Before finalizing quantities, validate that they make sense for ONE WEEK of meals:
+
+**Red flags that indicate you're calculating wrong:**
+- More than 15 of any single fruit or vegetable (e.g., 40 bell peppers is WRONG)
+- More than 20 of any citrus or small fruit (e.g., 26 oranges is WRONG)
+- More than 12 avocados (unless explicitly used in every single meal)
+- More than 5 lbs of any single vegetable
+- More than 8 lbs total protein for a household of 2-4 people
+
+**Realistic weekly quantities for a household of 3-4 people:**
+- Proteins: 4-6 lbs total (e.g., 2 lbs chicken + 2 lbs ground turkey + 1.5 lbs fish)
+- Leafy greens: 1-2 bags spinach, 1 bunch kale
+- Vegetables: 6-10 bell peppers MAX, 4-6 zucchini, 3-5 lbs broccoli
+- Fruits: 2 bunches bananas (6-8 bananas), 6-12 oranges, 6-10 avocados
+- Sweet potatoes: 3-5 lbs
+- Grains: 2-3 lbs rice, 1-2 bags/boxes oats
+
+If your calculated quantities exceed these by 2x or more, you're scaling incorrectly.
+
 ## INSTRUCTIONS
-Convert these core ingredients into a practical grocery shopping list with realistic quantities based on how they're used in the meals.
-${householdHasMembers ? `\n**Remember to scale quantities by ~${avgMultiplier.toFixed(1)}x for the household.**\n` : ''}
+Convert these core ingredients into a practical grocery shopping list with realistic quantities.
+
+**IMPORTANT SCALING NOTES:**
+${householdHasMembers
+  ? `The usage data above shows how ingredients are used in meals for the FULL HOUSEHOLD already.
+     DO NOT multiply quantities again - the amounts are already scaled.
+     Your job is to CONSOLIDATE and round to PRACTICAL shopping units, not to scale further.`
+  : `The usage data shows athlete-only portions. Round up slightly for shopping convenience.`}
+
 Use practical shopping quantities:
-- Use "whole" or count for items bought individually (e.g., "3" avocados)
+- Use "whole" or count for items bought individually (e.g., "6" bell peppers, NOT "40")
 - Use "lb" or "oz" for meats and proteins
 - Use "bag" for items typically sold in bags
 - Use "bunch" for herbs and leafy greens
 - Use "container" or "package" for yogurt, tofu, etc.
-- Round up to ensure enough for all meals
+- Round up modestly to ensure enough food, but stay realistic
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON:
 {
   "grocery_list": [
     {"name": "Chicken breast", "amount": "4", "unit": "lb", "category": "protein"},
-    {"name": "Broccoli", "amount": "2", "unit": "lb", "category": "produce"},
+    {"name": "Bell peppers", "amount": "8", "unit": "whole", "category": "produce"},
     {"name": "Greek yogurt", "amount": "2", "unit": "container", "category": "dairy"}
   ]
 }
@@ -1820,12 +2037,36 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
     duration_ms: duration,
   });
 
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  // Parse the JSON response
+  const parsed = extractAndParseJSON<{ grocery_list: Ingredient[] }>(responseText, 'grocery list from core ingredients');
+
+  // Validate quantities are reasonable
+  const warnings: string[] = [];
+  for (const item of parsed.grocery_list) {
+    const amount = parseFloat(item.amount);
+    if (isNaN(amount)) continue;
+
+    // Check for suspiciously high quantities
+    if (item.unit === 'whole' && amount > 20 && !item.name.toLowerCase().includes('egg')) {
+      warnings.push(`Suspiciously high: ${amount} ${item.name}`);
+    }
+    if (item.unit === 'lb' && amount > 10) {
+      warnings.push(`Suspiciously high: ${amount} lb ${item.name}`);
+    }
   }
 
-  const parsed: { grocery_list: Ingredient[] } = JSON.parse(jsonText);
+  if (warnings.length > 0) {
+    console.warn('Grocery list validation warnings:', warnings);
+    // Log to database for monitoring
+    await logLLMCall({
+      user_id: userId,
+      prompt: 'VALIDATION_WARNING',
+      output: warnings.join('; '),
+      model: 'validation',
+      prompt_type: 'grocery_list_validation',
+    });
+  }
+
   return parsed.grocery_list;
 }
 
