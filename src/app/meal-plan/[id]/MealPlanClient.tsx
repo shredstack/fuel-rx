@@ -660,7 +660,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               <p className="text-gray-500">Loading prep mode...</p>
             </div>
           ) : (
-            <PrepModeView prepSessions={prepSessions} dailyAssembly={dailyAssembly} />
+            <PrepModeView mealPlanDays={mealPlan.days} prepSessions={prepSessions} dailyAssembly={dailyAssembly} />
           )
         )}
       </main>

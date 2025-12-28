@@ -41,7 +41,7 @@ Review the changes in the current branch compared to main. Provide a thorough co
 - [ ] Union types are used for fixed value sets
 - [ ] Constants for labels/options follow UPPER_SNAKE_CASE
 
-### Claude AI Integration (src/lib/claude.ts, src/app/api/generate-meal-plan/)
+### Claude AI Integration (src/lib/claude.ts, src/app/api/generate-meal-plan-stream/)
 - [ ] API calls include proper error handling
 - [ ] LLM calls are logged to llm_logs table
 - [ ] System prompts are clear and structured
