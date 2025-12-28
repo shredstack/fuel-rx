@@ -1,5 +1,16 @@
 # Context for Claude
 
+## App Development Best Practices
+
+### Reusable Components
+When adding features that appear in multiple places (e.g., onboarding AND settings), create a shared component in `src/components/` rather than duplicating code. Use the controlled component pattern where the parent manages state and passes `value`/`onChange` props.
+
+Example: `HouseholdServingsEditor.tsx` is used by both onboarding flow and settings page.
+
+Before writing new UI code, check if similar functionality already exists that could be extracted into a reusable component
+
+
+
 ## Database migrations
 
 All database migrations live in supabase/migrations. New migrations should be generated using the following supabase command.
