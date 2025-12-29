@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { MEAL_TYPE_LABELS } from '@/lib/types'
-import type { MealType, MealConsistencyPrefs } from '@/lib/types'
+import type { MealConsistencyPrefs } from '@/lib/types'
+import MealConsistencyEditor from './MealConsistencyEditor'
 
 interface Props {
   isOpen: boolean
@@ -18,13 +18,6 @@ export default function EditVarietyModal({ isOpen, onClose, currentValues, onSav
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
-
-  const toggleMealConsistency = (mealType: MealType) => {
-    setPrefs(prev => ({
-      ...prev,
-      [mealType]: prev[mealType] === 'consistent' ? 'varied' : 'consistent',
-    }))
-  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -68,32 +61,7 @@ export default function EditVarietyModal({ isOpen, onClose, currentValues, onSav
           </div>
         )}
 
-        <div className="space-y-3">
-          {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => {
-            const isConsistent = prefs[mealType] === 'consistent'
-            return (
-              <div
-                key={mealType}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-              >
-                <span className="font-medium text-gray-900">
-                  {MEAL_TYPE_LABELS[mealType]}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggleMealConsistency(mealType)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isConsistent
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  {isConsistent ? 'Same Daily' : 'Varied'}
-                </button>
-              </div>
-            )
-          })}
-        </div>
+        <MealConsistencyEditor prefs={prefs} onChange={setPrefs} />
 
         <p className="text-xs text-gray-500 mt-4">
           &quot;Same Daily&quot; meals use one recipe repeated all week for simpler meal prep.

@@ -2,36 +2,28 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import NumericInput from './NumericInput'
+import MacrosEditor from './MacrosEditor'
+
+interface MacroValues {
+  target_protein: number
+  target_carbs: number
+  target_fat: number
+  target_calories: number
+}
 
 interface Props {
   isOpen: boolean
   onClose: () => void
-  currentValues: {
-    target_protein: number
-    target_carbs: number
-    target_fat: number
-    target_calories: number
-  }
-  onSave: (values: {
-    target_protein: number
-    target_carbs: number
-    target_fat: number
-    target_calories: number
-  }) => void
+  currentValues: MacroValues
+  onSave: (values: MacroValues) => void
 }
 
 export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave }: Props) {
-  const [protein, setProtein] = useState(currentValues.target_protein)
-  const [carbs, setCarbs] = useState(currentValues.target_carbs)
-  const [fat, setFat] = useState(currentValues.target_fat)
+  const [values, setValues] = useState<MacroValues>(currentValues)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
-
-  // Auto-calculate calories
-  const calories = protein * 4 + carbs * 4 + fat * 9
 
   const handleSave = async () => {
     setSaving(true)
@@ -44,21 +36,16 @@ export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
-          target_protein: protein,
-          target_carbs: carbs,
-          target_fat: fat,
-          target_calories: calories,
+          target_protein: values.target_protein,
+          target_carbs: values.target_carbs,
+          target_fat: values.target_fat,
+          target_calories: values.target_calories,
         })
         .eq('id', user.id)
 
       if (updateError) throw updateError
 
-      onSave({
-        target_protein: protein,
-        target_carbs: carbs,
-        target_fat: fat,
-        target_calories: calories,
-      })
+      onSave(values)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -80,55 +67,7 @@ export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave
           </div>
         )}
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Protein (g)
-            </label>
-            <NumericInput
-              value={protein}
-              onChange={setProtein}
-              min={0}
-              max={500}
-              className="input"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Carbs (g)
-            </label>
-            <NumericInput
-              value={carbs}
-              onChange={setCarbs}
-              min={0}
-              max={800}
-              className="input"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Fat (g)
-            </label>
-            <NumericInput
-              value={fat}
-              onChange={setFat}
-              min={0}
-              max={300}
-              className="input"
-            />
-          </div>
-
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
-              Calculated Calories: <span className="font-semibold">{calories} kcal</span>
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              (Protein × 4) + (Carbs × 4) + (Fat × 9)
-            </p>
-          </div>
-        </div>
+        <MacrosEditor values={values} onChange={setValues} />
 
         <div className="flex gap-3 mt-6">
           <button

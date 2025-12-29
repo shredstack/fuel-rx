@@ -3,27 +3,16 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { PrepStyle, MealComplexity } from '@/lib/types'
-import PrepStyleSelector from '@/components/PrepStyleSelector'
-import MealComplexityEditor from '@/components/MealComplexityEditor'
+import type { IngredientVarietyPrefs } from '@/lib/types'
+import IngredientVarietyEditor from '@/components/IngredientVarietyEditor'
 
 interface Props {
-  initialSettings: {
-    prep_style: string
-    breakfast_complexity: string
-    lunch_complexity: string
-    dinner_complexity: string
-  }
+  initialSettings: IngredientVarietyPrefs
 }
 
-export default function PrepSettingsClient({ initialSettings }: Props) {
+export default function IngredientVarietyClient({ initialSettings }: Props) {
   const supabase = createClient()
-  const [prepStyle, setPrepStyle] = useState<PrepStyle>(initialSettings.prep_style as PrepStyle)
-  const [complexityValues, setComplexityValues] = useState({
-    breakfast: initialSettings.breakfast_complexity as MealComplexity,
-    lunch: initialSettings.lunch_complexity as MealComplexity,
-    dinner: initialSettings.dinner_complexity as MealComplexity,
-  })
+  const [prefs, setPrefs] = useState<IngredientVarietyPrefs>(initialSettings)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -42,10 +31,7 @@ export default function PrepSettingsClient({ initialSettings }: Props) {
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
-          prep_style: prepStyle,
-          breakfast_complexity: complexityValues.breakfast,
-          lunch_complexity: complexityValues.lunch,
-          dinner_complexity: complexityValues.dinner,
+          ingredient_variety_prefs: prefs,
         })
         .eq('id', user.id)
 
@@ -66,7 +52,7 @@ export default function PrepSettingsClient({ initialSettings }: Props) {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Meal Prep Preferences</h1>
+          <h1 className="text-2xl font-bold text-primary-600">Ingredient Variety</h1>
           <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
             Back to Dashboard
           </Link>
@@ -90,21 +76,13 @@ export default function PrepSettingsClient({ initialSettings }: Props) {
         )}
 
         <div className="card mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Prep Style</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Grocery Shopping Preferences</h2>
           <p className="text-gray-600 mb-4">
-            How do you prefer to meal prep? We&apos;ll organize your weekly prep schedule to match your style.
+            How many different items do you want to buy in each category? Fewer items means a simpler
+            shopping list and easier meal prep. More items means more variety in your meals.
           </p>
 
-          <PrepStyleSelector value={prepStyle} onChange={setPrepStyle} />
-        </div>
-
-        <div className="card mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Meal Complexity</h2>
-          <p className="text-gray-600 mb-4">
-            What level of cooking effort do you prefer for each meal type?
-          </p>
-
-          <MealComplexityEditor values={complexityValues} onChange={setComplexityValues} />
+          <IngredientVarietyEditor prefs={prefs} onChange={setPrefs} />
 
           <button
             onClick={handleSave}
@@ -117,8 +95,8 @@ export default function PrepSettingsClient({ initialSettings }: Props) {
 
         <div className="bg-primary-50 p-4 rounded-lg">
           <p className="text-sm text-primary-800">
-            <strong>Note:</strong> These preferences will be used when generating your next meal plan.
-            Your existing meal plans will not be affected.
+            <strong>Tip:</strong> A typical efficient grocery list has 3 proteins, 5 vegetables, 2 fruits,
+            2 grains, 3 fats, and 2 dairy items. This creates variety while keeping shopping simple.
           </p>
         </div>
       </main>
