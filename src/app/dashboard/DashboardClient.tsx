@@ -47,6 +47,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const [showMacrosModal, setShowMacrosModal] = useState(false)
   const [showPreferencesModal, setShowPreferencesModal] = useState(false)
   const [showVarietyModal, setShowVarietyModal] = useState(false)
+  const [showOnboardingWarning, setShowOnboardingWarning] = useState(false)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -313,12 +314,12 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                 >
                   All Settings
                 </Link>
-                <Link
-                  href="/onboarding"
+                <button
+                  onClick={() => setShowOnboardingWarning(true)}
                   className="text-gray-400 hover:text-gray-600 text-sm"
                 >
                   Full Setup
-                </Link>
+                </button>
               </div>
             </div>
 
@@ -525,6 +526,41 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
               }}
             />
           </>
+        )}
+
+        {/* Onboarding Warning Modal */}
+        {showOnboardingWarning && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                Start Full Setup?
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Going through the full onboarding setup will require you to re-enter all your settings from scratch.
+              </p>
+              <p className="text-gray-600 mb-6">
+                If you only need to change specific settings, you can use the{' '}
+                <Link href="/settings" className="text-primary-600 hover:underline font-medium">
+                  All Settings
+                </Link>{' '}
+                page instead.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowOnboardingWarning(false)}
+                  className="btn-outline flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => router.push('/onboarding')}
+                  className="btn-primary flex-1"
+                >
+                  Continue to Setup
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { normalizeCoreIngredients } from '@/lib/types'
 import GroceryListClient from './GroceryListClient'
 
 interface Props {
@@ -31,7 +32,7 @@ export default async function GroceryListPage({ params }: Props) {
       mealPlanId={mealPlan.id}
       weekStartDate={mealPlan.week_start_date}
       groceryList={mealPlan.grocery_list}
-      coreIngredients={mealPlan.core_ingredients}
+      coreIngredients={normalizeCoreIngredients(mealPlan.core_ingredients)}
     />
   )
 }

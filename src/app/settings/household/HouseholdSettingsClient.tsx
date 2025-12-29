@@ -100,12 +100,6 @@ export default function HouseholdSettingsClient({ initialSettings }: Props) {
           </div>
         )}
 
-        {success && (
-          <div className="bg-green-50 text-green-600 p-4 rounded-lg mb-6">
-            Settings saved successfully! Your next meal plan will include portions for your household.
-          </div>
-        )}
-
         <div className="card mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Feeding Your Household</h2>
           <p className="text-gray-600 mb-4">
@@ -140,6 +134,12 @@ export default function HouseholdSettingsClient({ initialSettings }: Props) {
               {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
+
+          {success && (
+            <div className="bg-green-50 text-green-600 p-4 rounded-lg mt-4">
+              Settings saved successfully! Your next meal plan will include portions for your household.
+            </div>
+          )}
         </div>
 
         {/* Summary */}

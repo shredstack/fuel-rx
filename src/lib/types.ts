@@ -325,7 +325,7 @@ export interface SocialUser {
 // ============================================
 
 // Ingredient categories for core ingredient selection
-export type IngredientCategory = 'proteins' | 'vegetables' | 'fruits' | 'grains' | 'fats' | 'pantry';
+export type IngredientCategory = 'proteins' | 'vegetables' | 'fruits' | 'grains' | 'fats' | 'dairy';
 
 // User preferences for how many ingredients per category
 export interface IngredientVarietyPrefs {
@@ -334,7 +334,7 @@ export interface IngredientVarietyPrefs {
   fruits: number;
   grains: number;
   fats: number;
-  pantry: number;
+  dairy: number;
 }
 
 export const DEFAULT_INGREDIENT_VARIETY_PREFS: IngredientVarietyPrefs = {
@@ -343,7 +343,7 @@ export const DEFAULT_INGREDIENT_VARIETY_PREFS: IngredientVarietyPrefs = {
   fruits: 2,
   grains: 2,
   fats: 3,
-  pantry: 3,
+  dairy: 2,
 };
 
 export const INGREDIENT_CATEGORY_LABELS: Record<IngredientCategory, string> = {
@@ -352,7 +352,7 @@ export const INGREDIENT_CATEGORY_LABELS: Record<IngredientCategory, string> = {
   fruits: 'Fruits',
   grains: 'Grains & Starches',
   fats: 'Healthy Fats',
-  pantry: 'Pantry Staples',
+  dairy: 'Dairy',
 };
 
 export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number; max: number }> = {
@@ -361,7 +361,7 @@ export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number
   fruits: { min: 1, max: 5 },
   grains: { min: 1, max: 4 },
   fats: { min: 1, max: 5 },
-  pantry: { min: 1, max: 5 },
+  dairy: { min: 0, max: 4 },
 };
 
 // Core ingredients selected in Stage 1
@@ -371,7 +371,29 @@ export interface CoreIngredients {
   fruits: string[];
   grains: string[];
   fats: string[];
-  pantry: string[];
+  dairy: string[];
+}
+
+/**
+ * Normalize core ingredients to handle legacy 'pantry' field
+ * Converts 'pantry' to 'dairy' for backwards compatibility with old data
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeCoreIngredients(ingredients: any): CoreIngredients | null {
+  if (!ingredients) return null;
+
+  // Handle legacy 'pantry' field - merge into dairy
+  const pantryItems = ingredients.pantry || [];
+  const dairyItems = ingredients.dairy || [];
+
+  return {
+    proteins: ingredients.proteins || [],
+    vegetables: ingredients.vegetables || [],
+    fruits: ingredients.fruits || [],
+    grains: ingredients.grains || [],
+    fats: ingredients.fats || [],
+    dairy: [...dairyItems, ...pantryItems],
+  };
 }
 
 // Individual ingredient stored in meal_plan_ingredients table
@@ -532,7 +554,7 @@ export interface Stage1Response {
   fruits: string[];
   grains: string[];
   fats: string[];
-  pantry: string[];
+  dairy: string[];
 }
 
 // Response from Stage 3 (Prep Mode) LLM call

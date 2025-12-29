@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride, IngredientPreferenceType, IngredientPreferenceWithDetails } from '@/lib/types'
+import { normalizeCoreIngredients } from '@/lib/types'
 import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 
@@ -561,9 +562,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         </div>
 
         {/* Core Ingredients (shown in both views) */}
-        {mealPlan.core_ingredients && (
+        {mealPlan.core_ingredients && normalizeCoreIngredients(mealPlan.core_ingredients) && (
           <div className="mb-6">
-            <CoreIngredientsCard coreIngredients={mealPlan.core_ingredients} />
+            <CoreIngredientsCard coreIngredients={normalizeCoreIngredients(mealPlan.core_ingredients)!} />
           </div>
         )}
 

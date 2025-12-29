@@ -78,12 +78,6 @@ export default function SocialSettingsClient({ initialSettings }: Props) {
           </div>
         )}
 
-        {success && (
-          <div className="bg-green-50 text-green-600 p-4 rounded-lg mb-6">
-            Settings saved successfully!
-          </div>
-        )}
-
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Community Feed Settings</h2>
 
@@ -175,6 +169,12 @@ export default function SocialSettingsClient({ initialSettings }: Props) {
           >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
+
+          {success && (
+            <div className="bg-green-50 text-green-600 p-4 rounded-lg mt-4">
+              Settings saved successfully!
+            </div>
+          )}
         </div>
 
         {/* Link to Community */}

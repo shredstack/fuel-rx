@@ -3,11 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency, IngredientCategory, PrepStyle, MealComplexity, DayOfWeek, HouseholdServingsPrefs } from '@/lib/types'
-import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS, DEFAULT_INGREDIENT_VARIETY_PREFS, INGREDIENT_CATEGORY_LABELS, INGREDIENT_VARIETY_RANGES, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS } from '@/lib/types'
-import NumericInput from '@/components/NumericInput'
-import ProfilePhotoUpload from '@/components/ProfilePhotoUpload'
+import type { OnboardingData } from '@/lib/types'
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import HouseholdServingsEditor from '@/components/HouseholdServingsEditor'
+import MacrosEditor from '@/components/MacrosEditor'
+import DietaryPrefsEditor from '@/components/DietaryPrefsEditor'
+import MealsPerDaySelector from '@/components/MealsPerDaySelector'
+import PrepTimeSelector from '@/components/PrepTimeSelector'
+import MealConsistencyEditor from '@/components/MealConsistencyEditor'
+import PrepStyleSelector from '@/components/PrepStyleSelector'
+import MealComplexityEditor from '@/components/MealComplexityEditor'
+import IngredientVarietyEditor from '@/components/IngredientVarietyEditor'
+import BasicInfoEditor from '@/components/BasicInfoEditor'
 
 const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
 type Step = typeof STEPS[number]
@@ -101,38 +108,6 @@ export default function OnboardingPage() {
     router.push('/dashboard')
   }
 
-  const toggleDietaryPref = (pref: DietaryPreference) => {
-    setFormData(prev => {
-      let newPrefs = [...prev.dietary_prefs]
-
-      if (pref === 'no_restrictions') {
-        newPrefs = ['no_restrictions']
-      } else {
-        newPrefs = newPrefs.filter(p => p !== 'no_restrictions')
-        if (newPrefs.includes(pref)) {
-          newPrefs = newPrefs.filter(p => p !== pref)
-        } else {
-          newPrefs.push(pref)
-        }
-        if (newPrefs.length === 0) {
-          newPrefs = ['no_restrictions']
-        }
-      }
-
-      return { ...prev, dietary_prefs: newPrefs }
-    })
-  }
-
-  const toggleMealConsistency = (mealType: MealType) => {
-    setFormData(prev => ({
-      ...prev,
-      meal_consistency_prefs: {
-        ...prev.meal_consistency_prefs,
-        [mealType]: prev.meal_consistency_prefs[mealType] === 'varied' ? 'consistent' : 'varied',
-      },
-    }))
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
@@ -177,45 +152,19 @@ export default function OnboardingPage() {
             <div className="space-y-6">
               <h3 className="text-xl font-semibold text-gray-900">Basic Information</h3>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Profile Photo (optional)
-                </label>
-                <ProfilePhotoUpload
-                  currentPhotoUrl={formData.profile_photo_url}
-                  onPhotoChange={(url) => setFormData({ ...formData, profile_photo_url: url })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name (optional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="input-field"
-                  placeholder="Your name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Weight in lbs (optional)
-                </label>
-                <NumericInput
-                  value={formData.weight || 0}
-                  onChange={(val) => setFormData({ ...formData, weight: val || null })}
-                  className="input-field"
-                  placeholder="e.g., 175"
-                  min={0}
-                  max={999}
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Helps personalize recommendations
-                </p>
-              </div>
+              <BasicInfoEditor
+                values={{
+                  name: formData.name,
+                  weight: formData.weight,
+                  profile_photo_url: formData.profile_photo_url,
+                }}
+                onChange={(values) => setFormData(prev => ({
+                  ...prev,
+                  name: values.name,
+                  weight: values.weight,
+                  profile_photo_url: values.profile_photo_url,
+                }))}
+              />
             </div>
           )}
 
@@ -227,61 +176,15 @@ export default function OnboardingPage() {
                 Enter your daily macro goals. Calories will be calculated automatically.
               </p>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Protein (g)
-                  </label>
-                  <NumericInput
-                    value={formData.target_protein}
-                    onChange={(val) => setFormData({ ...formData, target_protein: val })}
-                    className="input-field"
-                    min={50}
-                    max={500}
-                    allowEmpty={false}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Carbs (g)
-                  </label>
-                  <NumericInput
-                    value={formData.target_carbs}
-                    onChange={(val) => setFormData({ ...formData, target_carbs: val })}
-                    className="input-field"
-                    min={50}
-                    max={600}
-                    allowEmpty={false}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Fat (g)
-                  </label>
-                  <NumericInput
-                    value={formData.target_fat}
-                    onChange={(val) => setFormData({ ...formData, target_fat: val })}
-                    className="input-field"
-                    min={20}
-                    max={300}
-                    allowEmpty={false}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Calories (calculated)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.target_calories}
-                    className="input-field bg-gray-100"
-                    disabled
-                  />
-                </div>
-              </div>
+              <MacrosEditor
+                values={{
+                  target_protein: formData.target_protein,
+                  target_carbs: formData.target_carbs,
+                  target_fat: formData.target_fat,
+                  target_calories: formData.target_calories,
+                }}
+                onChange={(values) => setFormData(prev => ({ ...prev, ...values }))}
+              />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
@@ -301,66 +204,30 @@ export default function OnboardingPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Dietary Preferences
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(DIETARY_PREFERENCE_LABELS) as DietaryPreference[]).map((pref) => (
-                    <button
-                      key={pref}
-                      type="button"
-                      onClick={() => toggleDietaryPref(pref)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                        formData.dietary_prefs.includes(pref)
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {DIETARY_PREFERENCE_LABELS[pref]}
-                    </button>
-                  ))}
-                </div>
+                <DietaryPrefsEditor
+                  selectedPrefs={formData.dietary_prefs}
+                  onChange={(prefs) => setFormData(prev => ({ ...prev, dietary_prefs: prefs }))}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Meals Per Day
                 </label>
-                <div className="flex gap-2">
-                  {MEALS_PER_DAY_OPTIONS.map((num) => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, meals_per_day: num })}
-                      className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        formData.meals_per_day === num
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                </div>
+                <MealsPerDaySelector
+                  value={formData.meals_per_day}
+                  onChange={(value) => setFormData(prev => ({ ...prev, meals_per_day: value }))}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Max Prep Time Per Meal
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {PREP_TIME_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, prep_time: option.value })}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        formData.prep_time === option.value
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <PrepTimeSelector
+                  value={formData.prep_time}
+                  onChange={(value) => setFormData(prev => ({ ...prev, prep_time: value }))}
+                />
               </div>
             </div>
           )}
@@ -374,50 +241,10 @@ export default function OnboardingPage() {
                 Consistent meals simplify meal prep and grocery shopping.
               </p>
 
-              <div className="space-y-4">
-                {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => (
-                  <div
-                    key={mealType}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                  >
-                    <span className="font-medium text-gray-900">
-                      {MEAL_TYPE_LABELS[mealType]}
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.meal_consistency_prefs[mealType] !== 'consistent') {
-                            toggleMealConsistency(mealType)
-                          }
-                        }}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          formData.meal_consistency_prefs[mealType] === 'consistent'
-                            ? 'bg-primary-600 text-white'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        Same Daily
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.meal_consistency_prefs[mealType] !== 'varied') {
-                            toggleMealConsistency(mealType)
-                          }
-                        }}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          formData.meal_consistency_prefs[mealType] === 'varied'
-                            ? 'bg-primary-600 text-white'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        Varied
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <MealConsistencyEditor
+                prefs={formData.meal_consistency_prefs}
+                onChange={(prefs) => setFormData(prev => ({ ...prev, meal_consistency_prefs: prefs }))}
+              />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
@@ -436,27 +263,10 @@ export default function OnboardingPage() {
                 We&apos;ll organize your weekly prep schedule to match your style.
               </p>
 
-              <div className="grid gap-3">
-                {(Object.keys(PREP_STYLE_LABELS) as PrepStyle[]).map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, prep_style: style })}
-                    className={`p-4 rounded-lg border-2 text-left transition-all ${
-                      formData.prep_style === style
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-semibold text-gray-900">
-                      {PREP_STYLE_LABELS[style].title}
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">
-                      {PREP_STYLE_LABELS[style].description}
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <PrepStyleSelector
+                value={formData.prep_style}
+                onChange={(value) => setFormData(prev => ({ ...prev, prep_style: value }))}
+              />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
@@ -475,83 +285,19 @@ export default function OnboardingPage() {
                 We&apos;ll match meal complexity to your preferences for each meal type.
               </p>
 
-              {/* Breakfast */}
-              <div>
-                <label className="block font-medium text-gray-900 mb-2">Breakfast</label>
-                <div className="grid gap-2">
-                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
-                    <button
-                      key={complexity}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, breakfast_complexity: complexity })}
-                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
-                        formData.breakfast_complexity === complexity
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-semibold">
-                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
-                      </div>
-                      <div className="text-gray-600">
-                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Lunch */}
-              <div>
-                <label className="block font-medium text-gray-900 mb-2">Lunch</label>
-                <div className="grid gap-2">
-                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
-                    <button
-                      key={complexity}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, lunch_complexity: complexity })}
-                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
-                        formData.lunch_complexity === complexity
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-semibold">
-                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
-                      </div>
-                      <div className="text-gray-600">
-                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Dinner */}
-              <div>
-                <label className="block font-medium text-gray-900 mb-2">Dinner</label>
-                <div className="grid gap-2">
-                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
-                    <button
-                      key={complexity}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, dinner_complexity: complexity })}
-                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
-                        formData.dinner_complexity === complexity
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-semibold">
-                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
-                      </div>
-                      <div className="text-gray-600">
-                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <MealComplexityEditor
+                values={{
+                  breakfast: formData.breakfast_complexity,
+                  lunch: formData.lunch_complexity,
+                  dinner: formData.dinner_complexity,
+                }}
+                onChange={(values) => setFormData(prev => ({
+                  ...prev,
+                  breakfast_complexity: values.breakfast,
+                  lunch_complexity: values.lunch,
+                  dinner_complexity: values.dinner,
+                }))}
+              />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
@@ -571,55 +317,15 @@ export default function OnboardingPage() {
                 and easier meal prep. More items means more variety in your meals.
               </p>
 
-              <div className="space-y-4">
-                {(Object.keys(INGREDIENT_CATEGORY_LABELS) as IngredientCategory[]).map((category) => {
-                  const range = INGREDIENT_VARIETY_RANGES[category]
-                  const currentValue = formData.ingredient_variety_prefs[category]
-
-                  return (
-                    <div key={category} className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-gray-900">
-                          {INGREDIENT_CATEGORY_LABELS[category]}
-                        </span>
-                        <span className="text-primary-600 font-semibold">
-                          {currentValue} {currentValue === 1 ? 'item' : 'items'}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={range.min}
-                        max={range.max}
-                        value={currentValue}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          ingredient_variety_prefs: {
-                            ...prev.ingredient_variety_prefs,
-                            [category]: parseInt(e.target.value),
-                          },
-                        }))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>{range.min}</span>
-                        <span>{range.max}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <IngredientVarietyEditor
+                prefs={formData.ingredient_variety_prefs}
+                onChange={(prefs) => setFormData(prev => ({ ...prev, ingredient_variety_prefs: prefs }))}
+              />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
                   <strong>Tip:</strong> A typical efficient grocery list has 3 proteins, 5 vegetables, 2 fruits, 2 grains, 3 fats,
-                  and 3 pantry items. This creates variety while keeping shopping simple.
-                </p>
-              </div>
-
-              <div className="p-4 bg-gray-100 rounded-lg">
-                <p className="text-sm text-gray-700">
-                  <strong>Total items:</strong>{' '}
-                  {Object.values(formData.ingredient_variety_prefs).reduce((a, b) => a + b, 0)} items on your shopping list
+                  and 2 dairy items. This creates variety while keeping shopping simple.
                 </p>
               </div>
             </div>

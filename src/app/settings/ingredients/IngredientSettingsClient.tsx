@@ -15,7 +15,7 @@ const CATEGORY_LABELS: Record<IngredientCategoryType, string> = {
   grain: 'Grains & Starches',
   fat: 'Fats & Nuts',
   dairy: 'Dairy',
-  pantry: 'Pantry Items',
+  pantry: 'Other', // Legacy category - items should be redistributed to other categories
   other: 'Other',
 }
 
@@ -26,7 +26,7 @@ const CATEGORY_COLORS: Record<IngredientCategoryType, string> = {
   grain: 'bg-amber-100 text-amber-800 border-amber-200',
   fat: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   dairy: 'bg-blue-100 text-blue-800 border-blue-200',
-  pantry: 'bg-purple-100 text-purple-800 border-purple-200',
+  pantry: 'bg-gray-100 text-gray-800 border-gray-200', // Legacy - same as other
   other: 'bg-gray-100 text-gray-800 border-gray-200',
 }
 

@@ -2,50 +2,30 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import {
-  DIETARY_PREFERENCE_LABELS,
-  PREP_TIME_OPTIONS,
-  MEALS_PER_DAY_OPTIONS,
-} from '@/lib/types'
 import type { DietaryPreference, PrepTime, MealsPerDay } from '@/lib/types'
+import DietaryPrefsEditor from './DietaryPrefsEditor'
+import MealsPerDaySelector from './MealsPerDaySelector'
+import PrepTimeSelector from './PrepTimeSelector'
+
+interface PreferenceValues {
+  dietary_prefs: DietaryPreference[]
+  meals_per_day: MealsPerDay
+  prep_time: PrepTime
+}
 
 interface Props {
   isOpen: boolean
   onClose: () => void
-  currentValues: {
-    dietary_prefs: DietaryPreference[]
-    meals_per_day: MealsPerDay
-    prep_time: PrepTime
-  }
-  onSave: (values: {
-    dietary_prefs: DietaryPreference[]
-    meals_per_day: MealsPerDay
-    prep_time: PrepTime
-  }) => void
+  currentValues: PreferenceValues
+  onSave: (values: PreferenceValues) => void
 }
 
 export default function EditPreferencesModal({ isOpen, onClose, currentValues, onSave }: Props) {
-  const [dietaryPrefs, setDietaryPrefs] = useState<DietaryPreference[]>(currentValues.dietary_prefs)
-  const [mealsPerDay, setMealsPerDay] = useState<MealsPerDay>(currentValues.meals_per_day)
-  const [prepTime, setPrepTime] = useState<PrepTime>(currentValues.prep_time)
+  const [values, setValues] = useState<PreferenceValues>(currentValues)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
-
-  const toggleDietaryPref = (pref: DietaryPreference) => {
-    if (pref === 'no_restrictions') {
-      setDietaryPrefs(['no_restrictions'])
-    } else {
-      const withoutNoRestrictions = dietaryPrefs.filter(p => p !== 'no_restrictions')
-      if (withoutNoRestrictions.includes(pref)) {
-        const newPrefs = withoutNoRestrictions.filter(p => p !== pref)
-        setDietaryPrefs(newPrefs.length === 0 ? ['no_restrictions'] : newPrefs)
-      } else {
-        setDietaryPrefs([...withoutNoRestrictions, pref])
-      }
-    }
-  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -58,19 +38,15 @@ export default function EditPreferencesModal({ isOpen, onClose, currentValues, o
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
-          dietary_prefs: dietaryPrefs,
-          meals_per_day: mealsPerDay,
-          prep_time: prepTime,
+          dietary_prefs: values.dietary_prefs,
+          meals_per_day: values.meals_per_day,
+          prep_time: values.prep_time,
         })
         .eq('id', user.id)
 
       if (updateError) throw updateError
 
-      onSave({
-        dietary_prefs: dietaryPrefs,
-        meals_per_day: mealsPerDay,
-        prep_time: prepTime,
-      })
+      onSave(values)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -93,73 +69,34 @@ export default function EditPreferencesModal({ isOpen, onClose, currentValues, o
         )}
 
         <div className="space-y-6">
-          {/* Dietary Preferences */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Dietary Preferences
             </label>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(DIETARY_PREFERENCE_LABELS) as DietaryPreference[]).map((pref) => (
-                <button
-                  key={pref}
-                  type="button"
-                  onClick={() => toggleDietaryPref(pref)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    dietaryPrefs.includes(pref)
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {DIETARY_PREFERENCE_LABELS[pref]}
-                </button>
-              ))}
-            </div>
+            <DietaryPrefsEditor
+              selectedPrefs={values.dietary_prefs}
+              onChange={(prefs) => setValues(prev => ({ ...prev, dietary_prefs: prefs }))}
+            />
           </div>
 
-          {/* Meals Per Day */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Meals Per Day
             </label>
-            <div className="flex gap-2">
-              {MEALS_PER_DAY_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setMealsPerDay(option)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    mealsPerDay === option
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+            <MealsPerDaySelector
+              value={values.meals_per_day}
+              onChange={(value) => setValues(prev => ({ ...prev, meals_per_day: value }))}
+            />
           </div>
 
-          {/* Prep Time */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Max Prep Time
             </label>
-            <div className="flex flex-wrap gap-2">
-              {PREP_TIME_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setPrepTime(option.value)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    prepTime === option.value
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <PrepTimeSelector
+              value={values.prep_time}
+              onChange={(value) => setValues(prev => ({ ...prev, prep_time: value }))}
+            />
           </div>
         </div>
 
