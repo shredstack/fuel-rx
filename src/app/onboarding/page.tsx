@@ -612,7 +612,7 @@ export default function OnboardingPage() {
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
                   <strong>Tip:</strong> A typical efficient grocery list has 3 proteins, 5 vegetables, 2 fruits, 2 grains, 3 fats,
-                  and 3 pantry items. This creates variety while keeping shopping simple.
+                  and 2 dairy items. This creates variety while keeping shopping simple.
                 </p>
               </div>
 

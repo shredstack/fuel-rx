@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import type {
   UserProfile,
   DayPlan,
@@ -21,8 +22,120 @@ import type {
   PrepSessionType,
   HouseholdServingsPrefs,
 } from './types';
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS } from './types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS, normalizeCoreIngredients } from './types';
 import { createClient } from './supabase/server';
+import {
+  coreIngredientsSchema,
+  mealsSchema,
+  prepSessionsSchema,
+  groceryListSchema,
+  simpleMealsSchema,
+  consolidatedGrocerySchema,
+} from './llm-schemas';
+
+// ============================================
+// Tool Use Helpers for Guaranteed JSON Output
+// ============================================
+
+/**
+ * Extract the tool use result from an Anthropic message response.
+ * When using tool_choice: { type: 'tool', name: '...' }, the response
+ * is guaranteed to contain a tool_use block with valid JSON input.
+ */
+function extractToolUseResult<T>(message: Anthropic.Message, toolName: string): T {
+  const toolUseBlock = message.content.find(
+    (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === toolName
+  );
+
+  if (!toolUseBlock) {
+    throw new Error(`No tool use block found for tool: ${toolName}`);
+  }
+
+  // The input is already parsed JSON - guaranteed to match the schema
+  return toolUseBlock.input as T;
+}
+
+/**
+ * Call the LLM with tool use and automatic retry on transient failures.
+ * This provides guaranteed valid JSON output matching the tool's schema.
+ */
+async function callLLMWithToolUse<T>(options: {
+  prompt: string;
+  tool: Tool;
+  model?: string;
+  maxTokens?: number;
+  maxRetries?: number;
+  userId: string;
+  promptType: string;
+}): Promise<{ result: T; usage: { outputTokens: number }; durationMs: number }> {
+  const {
+    prompt,
+    tool,
+    model = 'claude-sonnet-4-20250514',
+    maxTokens = 16000,
+    maxRetries = 2,
+    userId,
+    promptType,
+  } = options;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const startTime = Date.now();
+
+      const message = await anthropic.messages.create({
+        model,
+        max_tokens: maxTokens,
+        tools: [tool],
+        tool_choice: { type: 'tool', name: tool.name },
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const duration = Date.now() - startTime;
+
+      // Log the LLM call
+      await logLLMCall({
+        user_id: userId,
+        prompt,
+        output: JSON.stringify(message.content),
+        model,
+        prompt_type: promptType,
+        tokens_used: message.usage?.output_tokens,
+        duration_ms: duration,
+      });
+
+      // Check for max_tokens stop reason (truncation)
+      if (message.stop_reason === 'max_tokens') {
+        throw new Error(`Response was truncated (used ${message.usage?.output_tokens} tokens). Consider increasing max_tokens.`);
+      }
+
+      const result = extractToolUseResult<T>(message, tool.name);
+
+      return {
+        result,
+        usage: { outputTokens: message.usage?.output_tokens || 0 },
+        durationMs: duration,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry on truncation errors - that's a config issue
+      if (lastError.message.includes('truncated')) {
+        throw lastError;
+      }
+
+      // Log retry attempt
+      if (attempt < maxRetries) {
+        console.warn(`LLM call failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`, lastError.message);
+        // Exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  }
+
+  throw lastError || new Error('LLM call failed after retries');
+}
 
 // ============================================
 // Ingredient Nutrition Cache Functions
@@ -462,69 +575,21 @@ Target macros per ${mealTypeLabel.toLowerCase()} (approximately):
 - Fat: ~${targetFatPerMeal}g
 
 ## Response Format
-Return ONLY valid JSON with this exact structure (no markdown, no code blocks, just raw JSON):
-{
-  "meals": [
-    {
-      "name": "Meal name",
-      "type": "${mealType}",
-      "prep_time_minutes": 15,
-      "ingredients": [
-        {
-          "name": "ingredient name",
-          "amount": "2",
-          "unit": "cups",
-          "category": "produce|protein|dairy|grains|pantry|frozen|other"
-        }
-      ],
-      "instructions": ["Step 1", "Step 2"],
-      "macros": {
-        "calories": 500,
-        "protein": 35,
-        "carbs": 45,
-        "fat": 20
-      }
-    }
-  ]
-}
-
 ${isConsistent
   ? 'Generate exactly 1 meal in the "meals" array.'
-  : 'Generate exactly 7 different meals in the "meals" array, in order for Monday through Sunday.'}`;
+  : 'Generate exactly 7 different meals in the "meals" array, in order for Monday through Sunday.'}
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const duration = Date.now() - startTime;
+Use the generate_simple_meals tool to provide your meals.`;
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-  // Log the LLM call
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result: parsed } = await callLLMWithToolUse<MealTypeResult>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: `meal_type_batch_${mealType}`,
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: simpleMealsSchema,
+    maxTokens: 8000,
+    userId,
+    promptType: `meal_type_batch_${mealType}`,
   });
 
-  // Check for truncation
-  if (message.stop_reason === 'max_tokens') {
-    throw new Error(`Response was truncated for ${mealType} meals. This should not happen with batched approach.`);
-  }
-
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: MealTypeResult = JSON.parse(jsonText);
   return parsed.meals;
 }
 
@@ -590,48 +655,19 @@ ${ingredientSummary}
 5. **Preserve categories**: Keep the same category for each ingredient
 
 ## Response Format
-Return ONLY valid JSON with this exact structure (no markdown, no code blocks, just raw JSON):
-{
-  "grocery_list": [
-    {
-      "name": "Ingredient name (capitalized, simple)",
-      "amount": "2",
-      "unit": "whole",
-      "category": "produce|protein|dairy|grains|pantry|frozen|other"
-    }
-  ]
-}
+Sort the list by category (produce, protein, dairy, grains, pantry, frozen, other) then alphabetically by name within each category.
 
-Sort the list by category (produce, protein, dairy, grains, pantry, frozen, other) then alphabetically by name within each category.`;
+Use the consolidate_grocery_list tool to provide your consolidated list.`;
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const duration = Date.now() - startTime;
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-  // Log the LLM call
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result: parsed } = await callLLMWithToolUse<{ grocery_list: Ingredient[] }>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: 'grocery_list_consolidation',
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: consolidatedGrocerySchema,
+    maxTokens: 8000,
+    userId,
+    promptType: 'grocery_list_consolidation',
   });
 
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  const parsed: { grocery_list: Ingredient[] } = JSON.parse(jsonText);
   return parsed.grocery_list;
 }
 
@@ -855,12 +891,12 @@ The user needs approximately ${weeklyCalories} calories for the week (${profile.
 
 ## INGREDIENT COUNTS REQUESTED BY USER
 The user wants their weekly grocery list to include:
-- Proteins: ${varietyPrefs.proteins} different options
+- Proteins: ${varietyPrefs.proteins} different options (includes eggs, which are an excellent whole-food protein)
 - Vegetables: ${varietyPrefs.vegetables} different options
 - Fruits: ${varietyPrefs.fruits} different options
-- Grains/Starches: ${varietyPrefs.grains} different options
+- Grains/Starches: ${varietyPrefs.grains} different options (includes legumes like beans, lentils)
 - Healthy Fats: ${varietyPrefs.fats} different options
-- Pantry Staples: ${varietyPrefs.pantry} different options
+- Dairy: ${varietyPrefs.dairy} different options (Greek yogurt, cottage cheese, milk, cheese)
 ${nutritionReference}
 ## INSTRUCTIONS
 Select ingredients AND estimate weekly quantities that:
@@ -876,15 +912,15 @@ A typical distribution for ${weeklyCalories} weekly calories:
 - Proteins should provide ~35-40% of calories (~${Math.round(weeklyCalories * 0.35)} cal)
 - Grains/Starches should provide ~25-30% of calories (~${Math.round(weeklyCalories * 0.25)} cal)
 - Fats should provide ~20-25% of calories (~${Math.round(weeklyCalories * 0.20)} cal)
-- Fruits, vegetables, and pantry items make up the rest
+- Fruits, vegetables, and dairy make up the rest
 
 ## INGREDIENT SELECTION GUIDELINES
-- **Proteins**: Focus on lean, versatile options. 4oz chicken breast = ~140 cal, 26g protein. 4oz salmon = ~180 cal, 25g protein.
+- **Proteins**: Focus on lean, versatile options. Includes eggs (70 cal each, 6g protein). 4oz chicken breast = ~140 cal, 26g protein. 4oz salmon = ~180 cal, 25g protein.
 - **Vegetables**: Mix of colors - broccoli, spinach, bell peppers, sweet potatoes. Low calorie but essential for nutrients.
 - **Fruits**: Fresh fruits for energy - banana = ~105 cal, berries = ~70-85 cal/cup.
-- **Grains/Starches**: 1 cup cooked rice = ~215 cal, 1 cup quinoa = ~220 cal, 1 medium sweet potato = ~105 cal.
+- **Grains/Starches**: Includes legumes. 1 cup cooked rice = ~215 cal, 1 cup quinoa = ~220 cal, black beans (110 cal/half cup, 7g protein).
 - **Healthy Fats**: Calorie-dense - 1 tbsp olive oil = 120 cal, 1 oz almonds = 165 cal, 1/2 avocado = 160 cal.
-- **Pantry Staples**: Eggs (70 cal each), Greek yogurt (130 cal/cup), beans (110 cal/half cup).
+- **Dairy**: Greek yogurt (130 cal/cup, 20g protein), cottage cheese (160 cal/cup, 28g protein), milk, cheese.
 
 ## CONSTRAINTS
 - Select EXACTLY the number of items requested per category
@@ -892,45 +928,23 @@ A typical distribution for ${weeklyCalories} weekly calories:
 - ONLY recommend healthy, whole foods that are non-processed or minimally processed
 - **Quantities must add up to approximately ${weeklyCalories} total weekly calories**
 
-Return ONLY valid JSON in this exact format (no markdown, no explanations):
-{
-  "proteins": ["Chicken breast", "Ground beef 90% lean", "Salmon"],
-  "vegetables": ["Broccoli", "Bell peppers", "Spinach", "Sweet potatoes", "Zucchini"],
-  "fruits": ["Bananas", "Mixed berries"],
-  "grains": ["Quinoa", "Brown rice"],
-  "fats": ["Avocado", "Olive oil", "Almonds"],
-  "pantry": ["Eggs", "Greek yogurt", "Black beans"]
-}`;
+Use the select_core_ingredients tool to provide your selection.`;
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const duration = Date.now() - startTime;
-
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-  // Log the LLM call
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result } = await callLLMWithToolUse<CoreIngredients>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: 'two_stage_core_ingredients',
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: coreIngredientsSchema,
+    maxTokens: 8000,
+    userId,
+    promptType: 'two_stage_core_ingredients',
   });
 
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  // Normalize to handle any legacy 'pantry' responses
+  const normalized = normalizeCoreIngredients(result);
+  if (!normalized) {
+    throw new Error('Failed to parse core ingredients from LLM response');
   }
-
-  const parsed: CoreIngredients = JSON.parse(jsonText);
-  return parsed;
+  return normalized;
 }
 
 /**
@@ -1042,7 +1056,7 @@ ${mealsList}
     ...coreIngredients.fruits,
     ...coreIngredients.grains,
     ...coreIngredients.fats,
-    ...coreIngredients.pantry,
+    ...coreIngredients.dairy,
   ];
   const nutritionCache = await fetchCachedNutrition(allIngredientNames);
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
@@ -1108,36 +1122,12 @@ ${snackInstructions}
 
 ## CRITICAL RULES
 - Use ONLY the provided ingredients (you may use basic seasonings like salt, pepper, garlic, onion, herbs, and spices)
-- Do NOT introduce new proteins, vegetables, fruits, grains, fats, or pantry items beyond what's listed
+- Do NOT introduce new proteins, vegetables, fruits, grains, fats, or dairy items beyond what's listed
 - Create variety through preparation methods, not new ingredients
 - Verify that calories approximately = (protein × 4) + (carbs × 4) + (fat × 9)
 - **MUST generate exactly ${totalMealsPerDay} meals per day (${totalMealsPerWeek} total)**
 
 ## RESPONSE FORMAT
-Return ONLY valid JSON with this exact structure:
-{
-  "meals": [
-    {
-      "day": "monday",
-      "type": "breakfast",${snacksPerDay > 1 ? '\n      "snack_number": 1,' : ''}
-      "name": "Greek Yogurt Power Bowl",
-      "ingredients": [
-        {"name": "Greek yogurt", "amount": "1", "unit": "cup", "category": "dairy", "calories": 130, "protein": 17, "carbs": 8, "fat": 0},
-        {"name": "Berries", "amount": "0.5", "unit": "cup", "category": "produce", "calories": 35, "protein": 0.5, "carbs": 8.5, "fat": 0.25},
-        {"name": "Almonds", "amount": "1", "unit": "oz", "category": "pantry", "calories": 165, "protein": 6, "carbs": 6, "fat": 14}
-      ],
-      "instructions": ["Add yogurt to bowl", "Top with berries and almonds"],
-      "prep_time_minutes": 5,
-      "macros": {
-        "calories": 330,
-        "protein": 23.5,
-        "carbs": 22.5,
-        "fat": 14.25
-      }
-    }
-  ]
-}
-
 **CRITICAL NUTRITION REQUIREMENTS**:
 1. **Each ingredient MUST include its individual nutrition values** (calories, protein, carbs, fat) for the specified amount
 2. The meal's total macros MUST equal the SUM of all ingredient macros (verify this before outputting)
@@ -1146,53 +1136,18 @@ Return ONLY valid JSON with this exact structure:
 
 Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
 Order by day (monday first), then by meal type (breakfast, snack, lunch, snack, dinner for 5 meals/day).
-${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}`;
+${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 32000, // Increased from 16000 to handle larger meal plans with detailed nutrition
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const duration = Date.now() - startTime;
+Use the generate_meals tool to provide your meal plan.`;
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-  // Log the LLM call
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result: parsed } = await callLLMWithToolUse<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: 'two_stage_meals_from_ingredients',
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: mealsSchema,
+    maxTokens: 32000,
+    userId,
+    promptType: 'two_stage_meals_from_ingredients',
   });
-
-  // Check for truncation
-  if (message.stop_reason === 'max_tokens') {
-    console.error('TRUNCATION ERROR: Meals response was truncated. Output tokens used:', message.usage?.output_tokens);
-    throw new Error('Response was truncated when generating meals from core ingredients.');
-  }
-
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (parseError) {
-    // Log detailed error info for debugging
-    console.error('JSON PARSE ERROR in generateMealsFromCoreIngredients:');
-    console.error('Stop reason:', message.stop_reason);
-    console.error('Output tokens:', message.usage?.output_tokens);
-    console.error('Response length:', responseText.length);
-    console.error('Last 500 chars:', responseText.slice(-500));
-    throw new Error(`Failed to parse meals JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-  }
 
   // Cache all unique ingredients to ingredient_nutrition table
   // This builds our ingredient database over time for consistency
@@ -1739,53 +1694,18 @@ Return ONLY valid JSON:
    - This tells the user how to assemble/reheat prepped food each day
    - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
    - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)
-   - For day_of style, daily_assembly can be empty since food is cooked fresh`;
+   - For day_of style, daily_assembly can be empty since food is cooked fresh
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 64000, // Maximum for detailed prep instructions
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const duration = Date.now() - startTime;
+Use the generate_prep_sessions tool to provide your prep schedule.`;
 
-  const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-  // Log the LLM call
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result: parsed } = await callLLMWithToolUse<NewPrepSessionsResponse>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: 'prep_mode_analysis',
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: prepSessionsSchema,
+    maxTokens: 64000,
+    userId,
+    promptType: 'prep_mode_analysis',
   });
-
-  // Check for truncation
-  if (message.stop_reason === 'max_tokens') {
-    console.error('TRUNCATION ERROR: Prep sessions response was truncated. Output tokens used:', message.usage?.output_tokens);
-    throw new Error('Response was truncated when generating prep sessions.');
-  }
-
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  let parsed: NewPrepSessionsResponse;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (parseError) {
-    // Log detailed error info for debugging
-    console.error('JSON PARSE ERROR in generatePrepSessions:');
-    console.error('Stop reason:', message.stop_reason);
-    console.error('Output tokens:', message.usage?.output_tokens);
-    console.error('Response length:', responseText.length);
-    console.error('Last 500 chars:', responseText.slice(-500));
-    throw new Error(`Failed to parse prep sessions JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-  }
 
   // Convert new format to PrepModeResponse format for backward compatibility
   // The new format includes prep_tasks with detailed_steps, cooking_temps, cooking_times, tips
@@ -1968,45 +1888,18 @@ Use practical shopping quantities:
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON:
-{
-  "grocery_list": [
-    {"name": "Chicken breast", "amount": "4", "unit": "lb", "category": "protein"},
-    {"name": "Bell peppers", "amount": "8", "unit": "whole", "category": "produce"},
-    {"name": "Greek yogurt", "amount": "2", "unit": "container", "category": "dairy"}
-  ]
-}
+Sort by category: produce, protein, dairy, grains, pantry, frozen, other.
 
-Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
+Use the generate_grocery_list tool to provide your grocery list.`;
 
-  const startTime = Date.now();
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 12000, // Increased from 8000 to handle larger household grocery lists
-    messages: [
-      { role: 'user', content: prompt },
-      { role: 'assistant', content: '{' }, // Prefill to force JSON output
-    ],
-  });
-  const duration = Date.now() - startTime;
-
-  // Prepend the '{' we used as prefill
-  const responseText = '{' + (message.content[0].type === 'text' ? message.content[0].text : '');
-
-  await logLLMCall({
-    user_id: userId,
+  // Use tool use for guaranteed valid JSON output
+  const { result: parsed } = await callLLMWithToolUse<{ grocery_list: Ingredient[] }>({
     prompt,
-    output: responseText,
-    model: 'claude-sonnet-4-20250514',
-    prompt_type: 'two_stage_grocery_list',
-    tokens_used: message.usage?.output_tokens,
-    duration_ms: duration,
+    tool: groceryListSchema,
+    maxTokens: 12000,
+    userId,
+    promptType: 'two_stage_grocery_list',
   });
-
-  // Check for truncation
-  if (message.stop_reason === 'max_tokens') {
-    console.error('TRUNCATION ERROR: Grocery list response was truncated. Output tokens used:', message.usage?.output_tokens);
-    throw new Error('Response was truncated when generating grocery list.');
-  }
 
   // Define reasonable maximum quantities for a week's worth of groceries
   // These limits are generous enough for a family of 4-5 but prevent absurd quantities
@@ -2033,25 +1926,6 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
     'pork': { max: 5, unit: 'lb' },
     'shrimp': { max: 3, unit: 'lb' },
   };
-
-  // Parse the JSON response
-  let jsonText = responseText.trim();
-  if (jsonText.startsWith('```')) {
-    jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  let parsed: { grocery_list: Ingredient[] };
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (parseError) {
-    // Log detailed error info for debugging
-    console.error('JSON PARSE ERROR in generateGroceryListFromCoreIngredients:');
-    console.error('Stop reason:', message.stop_reason);
-    console.error('Output tokens:', message.usage?.output_tokens);
-    console.error('Response length:', responseText.length);
-    console.error('Last 500 chars:', responseText.slice(-500));
-    throw new Error(`Failed to parse grocery list JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-  }
 
   // Validate and cap quantities
   const warnings: string[] = [];
@@ -2269,16 +2143,16 @@ export async function generatePrepModeForExistingPlan(
   }
 
   const days = mealPlan.plan_data as DayPlan[];
-  const coreIngredients = mealPlan.core_ingredients as CoreIngredients | null;
+  const rawCoreIngredients = mealPlan.core_ingredients as Record<string, string[]> | null;
 
-  // If no core ingredients stored, extract from meal plan
-  const ingredients: CoreIngredients = coreIngredients || {
+  // Normalize core ingredients to handle legacy 'pantry' field
+  const ingredients: CoreIngredients = normalizeCoreIngredients(rawCoreIngredients) || {
     proteins: [],
     vegetables: [],
     fruits: [],
     grains: [],
     fats: [],
-    pantry: [],
+    dairy: [],
   };
 
   return generatePrepSessions(days, ingredients, profile as UserProfile, userId);
