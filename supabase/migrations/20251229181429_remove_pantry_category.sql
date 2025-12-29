@@ -35,14 +35,14 @@ ALTER COLUMN ingredient_variety_prefs SET DEFAULT '{
 -- 2. Update meal_plan_ingredients table
 -- ============================================
 
--- First, migrate any existing "pantry" category items to "dairy"
+-- Drop the old constraint FIRST (must happen before updating values)
+ALTER TABLE meal_plan_ingredients
+DROP CONSTRAINT IF EXISTS meal_plan_ingredients_category_check;
+
+-- Now migrate any existing "pantry" category items to "dairy"
 UPDATE meal_plan_ingredients
 SET category = 'dairy'
 WHERE category = 'pantry';
-
--- Drop the old constraint
-ALTER TABLE meal_plan_ingredients
-DROP CONSTRAINT IF EXISTS meal_plan_ingredients_category_check;
 
 -- Add the new constraint with "dairy" instead of "pantry"
 ALTER TABLE meal_plan_ingredients
