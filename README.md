@@ -28,6 +28,8 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
   - [Environment Variables](#environment-variables)
   - [Installation](#installation)
   - [Database Setup](#database-setup)
+  - [Inngest Production Setup](#inngest-production-setup)
+  - [Ingest Developer Setup](#ingest-developer-setup)
 - [Project Structure](#project-structure)
 - [Deployment](#deployment)
   - [Deploy to Vercel](#deploy-to-vercel)
@@ -126,16 +128,18 @@ Built for athletes who know nutrition matters but struggle with meal planning an
 
 ## Environment Variables
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory and add the following environment variables (except the `INNGEST` ones).
 
-```bash
-SUPABASE_PROJECT_URL="https://localhost:54331"
-SUPABASE_ACCESS_TOKEN=""
-SUPABASE_API_KEY=""
-NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54331"
-NEXT_PUBLIC_SUPABASE_ANON_KEY=""
-ANTHROPIC_API_KEY=""
-```
+Add these environment variables in Vercel Project Settings > Environment Variables:
+
+| Variable | Description | Where to Get It |
+|----------|-------------|-----------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Supabase Dashboard > Settings > API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key | Supabase Dashboard > Settings > API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only) | Supabase Dashboard > Settings > API |
+| `ANTHROPIC_API_KEY` | Claude API key | https://console.anthropic.com |
+| `INNGEST_EVENT_KEY` | Inngest event key | Inngest Dashboard > App Settings |
+| `INNGEST_SIGNING_KEY` | Inngest signing key | Inngest Dashboard > App Settings |
 
 ## Installation
 
@@ -234,6 +238,32 @@ To totally reset (recreate) your local database, run this:
 ```bash
 supabase db reset
 ```
+
+## Inngest Production Setup
+
+Inngest handles background jobs (meal plan generation) in production:
+
+1. **Create Inngest Account**: Sign up at https://app.inngest.com
+2. **Connect to Vercel**:
+   - In Inngest dashboard, go to Settings > Integrations
+   - Click "Connect to Vercel" and authorize
+   - Select your FuelRx project
+3. **Sync Your App**:
+   - After deploying to Vercel, Inngest automatically discovers your `/api/inngest` endpoint
+   - Your functions appear in the Inngest dashboard
+4. **Get API Keys**:
+   - Go to Inngest Dashboard > Your App > Settings
+   - Copy `Event Key` and `Signing Key`
+   - Add them to Vercel environment variables (see table above)
+5. **Redeploy**: Trigger a new Vercel deployment to pick up the new env vars
+
+## Ingest Developer Setup
+
+You should just be able to start Next.js then in another terminal, start Inngest locally.
+
+1. `npm run dev`
+
+2. `npx inngest-cli@latest dev -u http://localhost:3000/api/inngest --no-discovery`
 
 # Project Structure
 
