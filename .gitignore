@@ -46,3 +46,6 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+
+# Directory for claude code instructions
+claude_instruction_docs/*

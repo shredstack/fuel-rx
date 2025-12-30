@@ -61,12 +61,34 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
     setProgressStage(null)
     setProgressMessage('Starting...')
 
+    // Set a client-side timeout as a safety net (15 minutes to match Vercel maxDuration)
+    const clientTimeoutMs = 15 * 60 * 1000
+    let timeoutId: NodeJS.Timeout | null = null
+    let completed = false
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
+
     try {
+      // Create abort controller for fetch timeout
+      const controller = new AbortController()
+      timeoutId = setTimeout(() => {
+        if (!completed) {
+          controller.abort()
+        }
+      }, clientTimeoutMs)
+
       const response = await fetch('/api/generate-meal-plan-stream', {
         method: 'POST',
+        signal: controller.signal,
       })
 
       if (!response.ok) {
+        cleanup()
         const data = await response.json()
         throw new Error(data.error || 'Failed to generate meal plan')
       }
@@ -74,11 +96,13 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
       // Handle SSE stream
       const reader = response.body?.getReader()
       if (!reader) {
+        cleanup()
         throw new Error('No response stream')
       }
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let receivedComplete = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -107,13 +131,22 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                   setProgressStage(data.stage as ProgressStage)
                   setProgressMessage(data.message)
                 } else if (eventType === 'complete') {
+                  completed = true
+                  receivedComplete = true
+                  cleanup()
                   router.push(`/meal-plan/${data.id}`)
                   return
                 } else if (eventType === 'error') {
+                  cleanup()
                   throw new Error(data.error)
                 }
               } catch (parseError) {
-                console.error('Error parsing SSE data:', parseError)
+                // Only log if it's a JSON parse error, not a thrown Error
+                if (parseError instanceof SyntaxError) {
+                  console.error('Error parsing SSE data:', parseError)
+                } else {
+                  throw parseError
+                }
               }
             }
 
@@ -122,8 +155,23 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           }
         }
       }
+
+      // Stream ended without a complete event - something went wrong
+      cleanup()
+      if (!receivedComplete) {
+        throw new Error('Meal plan generation was interrupted. Please try again.')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      cleanup()
+      let errorMessage = 'Something went wrong'
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          errorMessage = 'Request timed out. Meal plan generation is taking longer than expected. Please try again.'
+        } else {
+          errorMessage = err.message
+        }
+      }
+      setError(errorMessage)
       setGenerating(false)
       setProgressStage(null)
     }

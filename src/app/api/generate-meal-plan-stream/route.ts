@@ -117,6 +117,14 @@ export async function POST() {
         }
       }
 
+      // Send keepalive events every 20 seconds to prevent Vercel timeout
+      // Vercel times out if no data is sent for too long during streaming
+      const keepaliveInterval = setInterval(() => {
+        if (!isControllerClosed) {
+          sendEvent('keepalive', { timestamp: Date.now() })
+        }
+      }, 20000)
+
       try {
         // Generate meal plan with progress callbacks
         const mealPlanData = await generateMealPlanWithProgress(
@@ -224,6 +232,7 @@ export async function POST() {
         }
 
         // Send the final complete event
+        clearInterval(keepaliveInterval)
         sendEvent('complete', {
           id: savedPlan.id,
           week_start_date: savedPlan.week_start_date,
@@ -231,6 +240,7 @@ export async function POST() {
 
         closeController()
       } catch (error) {
+        clearInterval(keepaliveInterval)
         console.error('Error generating meal plan:', error)
         sendEvent('error', { error: 'Failed to generate meal plan' })
         closeController()
