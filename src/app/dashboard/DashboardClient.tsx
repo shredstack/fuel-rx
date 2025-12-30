@@ -21,18 +21,18 @@ interface Props {
   } | null
 }
 
-// Progress stage configuration for visual feedback
+// Progress stage configuration for visual feedback (updated for Inngest job statuses)
 const PROGRESS_STAGES = {
-  ingredients: { label: 'Selecting Ingredients', icon: '🥗', progress: 15 },
-  ingredients_done: { label: 'Ingredients Selected', icon: '✓', progress: 25 },
-  meals: { label: 'Creating Meals', icon: '🍽️', progress: 35 },
-  meals_done: { label: 'Meals Created', icon: '✓', progress: 60 },
-  finalizing: { label: 'Building Grocery List & Prep Schedule', icon: '📋', progress: 75 },
-  finalizing_done: { label: 'Almost Done', icon: '✓', progress: 90 },
+  pending: { label: 'Starting...', icon: '⏳', progress: 5 },
+  generating_ingredients: { label: 'Selecting Ingredients', icon: '🥗', progress: 25 },
+  generating_meals: { label: 'Creating Meals', icon: '🍽️', progress: 50 },
+  generating_prep: { label: 'Building Prep Schedule', icon: '📋', progress: 75 },
   saving: { label: 'Saving Your Plan', icon: '💾', progress: 95 },
+  completed: { label: 'Done!', icon: '✅', progress: 100 },
+  failed: { label: 'Failed', icon: '❌', progress: 0 },
 } as const
 
-type ProgressStage = keyof typeof PROGRESS_STAGES
+type JobStatus = keyof typeof PROGRESS_STAGES
 
 export default function DashboardClient({ profile: initialProfile, recentPlan }: Props) {
   const router = useRouter()
@@ -40,7 +40,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const [profile, setProfile] = useState(initialProfile)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [progressStage, setProgressStage] = useState<ProgressStage | null>(null)
+  const [progressStage, setProgressStage] = useState<JobStatus | null>(null)
   const [progressMessage, setProgressMessage] = useState<string>('')
 
   // Modal states
@@ -58,120 +58,61 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const handleGeneratePlan = async () => {
     setGenerating(true)
     setError(null)
-    setProgressStage(null)
+    setProgressStage('pending')
     setProgressMessage('Starting...')
 
-    // Set a client-side timeout as a safety net (15 minutes to match Vercel maxDuration)
-    const clientTimeoutMs = 15 * 60 * 1000
-    let timeoutId: NodeJS.Timeout | null = null
-    let completed = false
+    let pollInterval: NodeJS.Timeout | null = null
 
     const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
+      if (pollInterval) {
+        clearInterval(pollInterval)
+        pollInterval = null
       }
     }
 
     try {
-      // Create abort controller for fetch timeout
-      const controller = new AbortController()
-      timeoutId = setTimeout(() => {
-        if (!completed) {
-          controller.abort()
-        }
-      }, clientTimeoutMs)
-
-      const response = await fetch('/api/generate-meal-plan-stream', {
+      // Start the job
+      const startResponse = await fetch('/api/generate-meal-plan', {
         method: 'POST',
-        signal: controller.signal,
       })
 
-      if (!response.ok) {
-        cleanup()
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to generate meal plan')
+      if (!startResponse.ok) {
+        const data = await startResponse.json()
+        throw new Error(data.error || 'Failed to start meal plan generation')
       }
 
-      // Handle SSE stream
-      const reader = response.body?.getReader()
-      if (!reader) {
-        cleanup()
-        throw new Error('No response stream')
-      }
+      const { jobId } = await startResponse.json()
 
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let receivedComplete = false
+      // Poll for status
+      pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(`/api/job-status/${jobId}`)
+          const job = await statusResponse.json()
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        // Parse SSE events from buffer
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        let eventType = ''
-        let eventData = ''
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7)
-          } else if (line.startsWith('data: ')) {
-            eventData = line.slice(6)
-
-            if (eventType && eventData) {
-              try {
-                const data = JSON.parse(eventData)
-
-                if (eventType === 'progress') {
-                  setProgressStage(data.stage as ProgressStage)
-                  setProgressMessage(data.message)
-                } else if (eventType === 'complete') {
-                  completed = true
-                  receivedComplete = true
-                  cleanup()
-                  router.push(`/meal-plan/${data.id}`)
-                  return
-                } else if (eventType === 'error') {
-                  cleanup()
-                  throw new Error(data.error)
-                }
-              } catch (parseError) {
-                // Only log if it's a JSON parse error, not a thrown Error
-                if (parseError instanceof SyntaxError) {
-                  console.error('Error parsing SSE data:', parseError)
-                } else {
-                  throw parseError
-                }
-              }
-            }
-
-            eventType = ''
-            eventData = ''
+          if (job.error) {
+            cleanup()
+            throw new Error(job.error)
           }
-        }
-      }
 
-      // Stream ended without a complete event - something went wrong
-      cleanup()
-      if (!receivedComplete) {
-        throw new Error('Meal plan generation was interrupted. Please try again.')
-      }
+          setProgressStage(job.status as JobStatus)
+          setProgressMessage(job.progressMessage || '')
+
+          if (job.status === 'completed' && job.mealPlanId) {
+            cleanup()
+            router.push(`/meal-plan/${job.mealPlanId}`)
+          } else if (job.status === 'failed') {
+            cleanup()
+            throw new Error(job.errorMessage || 'Failed to generate meal plan')
+          }
+        } catch (pollError) {
+          cleanup()
+          throw pollError
+        }
+      }, 3000) // Poll every 3 seconds
+
     } catch (err) {
       cleanup()
-      let errorMessage = 'Something went wrong'
-      if (err instanceof Error) {
-        if (err.name === 'AbortError') {
-          errorMessage = 'Request timed out. Meal plan generation is taking longer than expected. Please try again.'
-        } else {
-          errorMessage = err.message
-        }
-      }
-      setError(errorMessage)
+      setError(err instanceof Error ? err.message : 'Something went wrong')
       setGenerating(false)
       setProgressStage(null)
     }
@@ -293,10 +234,10 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                   <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 25 ? 'text-primary-600' : ''}>
                     Ingredients
                   </span>
-                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 60 ? 'text-primary-600' : ''}>
+                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 50 ? 'text-primary-600' : ''}>
                     Meals
                   </span>
-                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 90 ? 'text-primary-600' : ''}>
+                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 75 ? 'text-primary-600' : ''}>
                     Prep Plan
                   </span>
                 </div>
