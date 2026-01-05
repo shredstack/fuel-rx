@@ -779,7 +779,7 @@ export async function generateMealPlan(
  * Stage 1: Generate core ingredients for the week with quantity estimates
  * Selects a focused set of ingredients and estimates quantities to meet weekly calorie targets
  */
-async function generateCoreIngredients(
+export async function generateCoreIngredients(
   profile: UserProfile,
   userId: string,
   recentMealNames?: string[],
@@ -965,7 +965,7 @@ Use the select_core_ingredients tool to provide your selection.`;
  * Creates meals constrained to the selected ingredients
  * Properly handles multiple snacks per day
  */
-async function generateMealsFromCoreIngredients(
+export async function generateMealsFromCoreIngredients(
   profile: UserProfile,
   coreIngredients: CoreIngredients,
   userId: string,
@@ -1260,7 +1260,7 @@ interface NewPrepSessionsResponse {
  * Creates prep sessions based on user's prep style preference
  * Supports: traditional_batch, night_before, day_of, mixed
  */
-async function generatePrepSessions(
+export async function generatePrepSessions(
   days: DayPlan[],
   coreIngredients: CoreIngredients,
   profile: UserProfile,
@@ -1712,7 +1712,7 @@ Return ONLY valid JSON:
 Use the generate_prep_sessions tool to provide your prep schedule.`;
 
   // Use tool use for guaranteed valid JSON output
-  const { result: parsed } = await callLLMWithToolUse<NewPrepSessionsResponse>({
+  const { result: rawParsed } = await callLLMWithToolUse<NewPrepSessionsResponse>({
     prompt,
     tool: prepSessionsSchema,
     maxTokens: 64000,
@@ -1720,15 +1720,210 @@ Use the generate_prep_sessions tool to provide your prep schedule.`;
     promptType: 'prep_mode_analysis',
   });
 
+  // Handle case where LLM returns prep_sessions as a JSON string instead of array
+  // This can happen due to LLM quirks with tool use schemas
+  // We need to cast to unknown first to check the actual runtime type
+  const rawResult = rawParsed as unknown as { prep_sessions: unknown; daily_assembly?: unknown };
+
+  let prepSessionsArray: NewPrepSessionsResponse['prep_sessions'] = [];
+  let dailyAssemblyObj: NewPrepSessionsResponse['daily_assembly'] = {};
+
+  if (typeof rawResult?.prep_sessions === 'string') {
+    let prepSessionsStr = rawResult.prep_sessions as string;
+    console.warn('LLM returned prep_sessions as string, parsing...');
+    console.warn(`  String length: ${prepSessionsStr.length} chars`);
+    console.warn(`  Last 200 chars: ${prepSessionsStr.slice(-200)}`);
+
+    // First attempt: try parsing as-is
+    try {
+      prepSessionsArray = JSON.parse(prepSessionsStr);
+    } catch (parseError) {
+      const parseErr = parseError as SyntaxError;
+      console.warn('Initial parse failed:', parseErr.message);
+
+      // Extract position from error message like "at position 2721"
+      const posMatch = parseErr.message.match(/at position (\d+)/);
+      const errorPosition = posMatch ? parseInt(posMatch[1], 10) : null;
+
+      if (errorPosition) {
+        console.warn(`  Error at position ${errorPosition}, attempting targeted repair...`);
+        console.warn(`  Context around error: ...${prepSessionsStr.slice(Math.max(0, errorPosition - 50), errorPosition + 50)}...`);
+      }
+
+      // Strategy 0: Fix common LLM bracket mismatch errors
+      // The LLM sometimes writes ] instead of } to close objects (especially cooking_times)
+      // Pattern: "key": "value"\n        ], should be "key": "value"\n        },
+      console.warn('Attempting bracket mismatch repair...');
+      let repairedStr = prepSessionsStr;
+
+      // Fix pattern: closing an object with ] instead of }
+      // Look for patterns like: "string_value"\n        ], (which should be })
+      // This commonly happens after cooking_times objects
+      repairedStr = repairedStr.replace(
+        /("(?:prep_time|cook_time|total_time|stovetop|oven|internal_temp)":\s*"[^"]*")\s*\n(\s*)\]/g,
+        '$1\n$2}'
+      );
+
+      let repaired = false;
+
+      if (repairedStr !== prepSessionsStr) {
+        console.warn('  Applied bracket mismatch fixes, attempting parse...');
+        try {
+          prepSessionsArray = JSON.parse(repairedStr);
+          console.warn(`  Bracket repair successful! Parsed ${prepSessionsArray.length} sessions.`);
+          repaired = true;
+        } catch (bracketRepairError) {
+          console.warn('  Bracket repair parse still failed:', (bracketRepairError as Error).message);
+          // Continue to other strategies with the partially repaired string
+          prepSessionsStr = repairedStr;
+        }
+      }
+
+      // Strategy 1: Find session boundaries and extract valid sessions
+      // Sessions end with "display_order": N } - find all such boundaries
+      const sessions: unknown[] = [];
+      if (!repaired) {
+        console.warn('Attempting to extract complete sessions by finding boundaries...');
+
+        // Find all potential session end positions (where "display_order": N } appears)
+        const sessionEndRegex = /"display_order"\s*:\s*\d+\s*\}/g;
+        const sessionEnds: number[] = [];
+        let endMatch;
+        while ((endMatch = sessionEndRegex.exec(prepSessionsStr)) !== null) {
+          sessionEnds.push(endMatch.index + endMatch[0].length);
+        }
+
+        console.warn(`  Found ${sessionEnds.length} potential session end positions`);
+
+        // Try parsing from start to each session end to find valid subsets
+        for (const endPos of sessionEnds) {
+          const candidate = prepSessionsStr.substring(0, endPos) + '\n]';
+          try {
+            const parsed = JSON.parse(candidate);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              sessions.length = 0; // Clear previous
+              sessions.push(...parsed);
+            }
+          } catch {
+            // This endpoint doesn't produce valid JSON, continue
+          }
+        }
+
+        if (sessions.length > 0) {
+          console.warn(`  Extracted ${sessions.length} complete sessions by boundary search`);
+          prepSessionsArray = sessions as NewPrepSessionsResponse['prep_sessions'];
+          repaired = true;
+        }
+      }
+
+      // Strategy 2: If error position is known, try truncating just before the error
+      if (!repaired && errorPosition && errorPosition > 100) {
+        console.warn('Boundary search failed, trying truncation before error position...');
+
+        // Search backwards from error position for a complete session boundary
+        const beforeError = prepSessionsStr.substring(0, errorPosition);
+        const lastSessionEnd = beforeError.lastIndexOf('},');
+
+        if (lastSessionEnd > 0) {
+          const truncated = prepSessionsStr.substring(0, lastSessionEnd + 1) + '\n]';
+          try {
+            prepSessionsArray = JSON.parse(truncated);
+            console.warn(`  Repair successful via truncation at position ${lastSessionEnd}! Recovered ${prepSessionsArray.length} sessions.`);
+            repaired = true;
+          } catch {
+            // Continue to next strategy
+          }
+        }
+      }
+
+      // Strategy 3: Look for the last complete "display_order" ending
+      if (!repaired) {
+        const lastCompleteSessionMatch = prepSessionsStr.match(/[\s\S]*"display_order":\s*\d+\s*\}/g);
+
+        if (lastCompleteSessionMatch) {
+          const lastMatch = lastCompleteSessionMatch[lastCompleteSessionMatch.length - 1];
+          const lastCompleteIndex = prepSessionsStr.lastIndexOf(lastMatch) + lastMatch.length;
+
+          // Truncate to last complete session and close the array
+          const truncatedStr = prepSessionsStr.substring(0, lastCompleteIndex) + '\n]';
+          console.warn(`  Attempting repair via display_order match: truncated to ${truncatedStr.length} chars`);
+
+          try {
+            prepSessionsArray = JSON.parse(truncatedStr);
+            console.warn(`  Repair successful! Recovered ${prepSessionsArray.length} sessions.`);
+            repaired = true;
+          } catch (repairError) {
+            console.error('Repair via display_order match failed:', repairError);
+          }
+        }
+      }
+
+      if (!repaired) {
+        console.error('All repair strategies failed');
+        console.error('=== TRUNCATED JSON STRING (first 500 chars) ===');
+        console.error(prepSessionsStr.slice(0, 500));
+        console.error('=== AROUND ERROR POSITION ===');
+        if (errorPosition) {
+          console.error(prepSessionsStr.slice(Math.max(0, errorPosition - 200), errorPosition + 200));
+        }
+        console.error('=== LAST 500 CHARS ===');
+        console.error(prepSessionsStr.slice(-500));
+        console.error('=== END DEBUG INFO ===');
+        const error = new Error('Failed to generate prep sessions - prep_sessions was string but not valid JSON') as Error & { rawResponse?: string };
+        error.rawResponse = prepSessionsStr.slice(0, 50000);
+        throw error;
+      }
+    }
+  } else {
+    prepSessionsArray = rawResult?.prep_sessions as NewPrepSessionsResponse['prep_sessions'];
+  }
+
+  // Also handle daily_assembly if it's a string
+  if (typeof rawResult?.daily_assembly === 'string') {
+    console.warn('LLM returned daily_assembly as string, parsing...');
+    try {
+      dailyAssemblyObj = JSON.parse(rawResult.daily_assembly);
+    } catch {
+      // daily_assembly is optional, just set to empty object if parsing fails
+      dailyAssemblyObj = {};
+    }
+  } else if (rawResult?.daily_assembly) {
+    dailyAssemblyObj = rawResult.daily_assembly as NewPrepSessionsResponse['daily_assembly'];
+  }
+
+  // Reconstruct the parsed object with properly typed values
+  const parsed: NewPrepSessionsResponse = {
+    prep_sessions: prepSessionsArray,
+    daily_assembly: dailyAssemblyObj,
+  };
+
   // Validate that we got a valid response with prep_sessions array
   if (!parsed || !parsed.prep_sessions || !Array.isArray(parsed.prep_sessions)) {
-    console.error('Invalid prep_sessions response from LLM:');
-    console.error('  parsed:', parsed);
+    console.error('=== PREP SESSIONS VALIDATION FAILED ===');
+    console.error('  parsed is null/undefined:', parsed == null);
     console.error('  typeof parsed:', typeof parsed);
-    console.error('  parsed?.prep_sessions:', parsed?.prep_sessions);
-    console.error('  typeof parsed?.prep_sessions:', typeof parsed?.prep_sessions);
-    console.error('  Full JSON:', JSON.stringify(parsed, null, 2));
-    throw new Error('Failed to generate prep sessions - LLM returned invalid response structure');
+    if (parsed) {
+      console.error('  Object.keys(parsed):', Object.keys(parsed));
+      console.error('  parsed.prep_sessions exists:', 'prep_sessions' in parsed);
+      console.error('  typeof parsed.prep_sessions:', typeof parsed.prep_sessions);
+      console.error('  Is array:', Array.isArray(parsed.prep_sessions));
+    }
+    const rawResponse = JSON.stringify(parsed, null, 2);
+    console.error('  Full response:', rawResponse.slice(0, 2000));
+    console.error('=== END VALIDATION FAILURE ===');
+
+    // Create an error with the raw response attached for debugging
+    const error = new Error('Failed to generate prep sessions - LLM returned invalid response structure') as Error & { rawResponse?: string };
+    error.rawResponse = rawResponse.slice(0, 50000); // Limit to 50KB for storage
+    throw error;
+  }
+
+  // Additional validation: ensure we have at least one prep session
+  if (parsed.prep_sessions.length === 0) {
+    console.error('LLM returned empty prep_sessions array');
+    const error = new Error('Failed to generate prep sessions - no sessions returned') as Error & { rawResponse?: string };
+    error.rawResponse = JSON.stringify(parsed, null, 2);
+    throw error;
   }
 
   // Convert new format to PrepModeResponse format for backward compatibility
@@ -1814,7 +2009,7 @@ function getHouseholdDescription(servings: HouseholdServingsPrefs): string {
  * Converts core ingredients to practical shopping quantities
  * Scales quantities based on household servings
  */
-async function generateGroceryListFromCoreIngredients(
+export async function generateGroceryListFromCoreIngredients(
   coreIngredients: CoreIngredients,
   days: DayPlan[],
   userId: string,
@@ -2003,7 +2198,7 @@ export type ProgressCallback = (stage: string, message: string) => void;
 /**
  * Helper function to organize meals into day plans
  */
-function organizeMealsIntoDays(mealsResult: { meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }): DayPlan[] {
+export function organizeMealsIntoDays(mealsResult: { meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }): DayPlan[] {
   const mealsByDay = new Map<DayOfWeek, Meal[]>();
   for (const day of DAYS) {
     mealsByDay.set(day, []);
