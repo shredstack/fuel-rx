@@ -1693,10 +1693,52 @@ Return ONLY valid JSON:
   }
 }
 
+## MEAL CONSOLIDATION RULES
+When the SAME EXACT meal appears on multiple days, consolidate into a SINGLE prep task:
+
+**Example - Identical Breakfast across days:**
+If "Overnight Oats with Berries" appears on Monday, Tuesday, AND Wednesday breakfast:
+
+Instead of 3 separate tasks, create ONE consolidated task:
+{
+  "id": "meal_breakfast_overnight_oats_mon_wed",
+  "description": "Overnight Oats with Berries (Mon-Wed, 3 servings)",
+  "detailed_steps": [
+    "In a large bowl, combine 1.5 cups rolled oats, 1.5 cups Greek yogurt, and 1.5 cups milk (3x recipe)",
+    "Stir in 3 tbsp chia seeds and 3 tsp honey",
+    "Divide evenly into 3 mason jars or containers",
+    "Refrigerate overnight (minimum 6 hours)",
+    "Each morning, top one serving with 1/4 cup fresh berries before eating"
+  ],
+  "estimated_minutes": 10,
+  "meal_ids": ["meal_monday_breakfast_0", "meal_tuesday_breakfast_0", "meal_wednesday_breakfast_0"],
+  "storage": "Refrigerate in individual jars for up to 5 days. Add fresh toppings just before serving.",
+  "tips": ["Batch prep all 3 at once to save time", "Keep berries separate until serving for best texture"],
+  "completed": false
+}
+
+**Consolidation rules:**
+- ALWAYS consolidate when the same meal name appears across 2+ days for the same meal type
+- Multiply ingredient quantities by the number of servings
+- Include ALL meal_ids that this task covers in the meal_ids array
+- Update description to show day range and total servings: "Meal Name (Mon-Wed, 3 servings)"
+- Adjust detailed_steps to describe making the full batch quantity
+- This creates shorter, cleaner prep instructions and better batch prep UX
+
+**When NOT to consolidate:**
+- Different meals even if similar (e.g., "Grilled Chicken Salad" vs "Greek Chicken Salad")
+- Same meal but different meal types (breakfast vs snack)
+
+**Multiple snacks per day:**
+Users may have multiple snacks per day. Use meal_ids with indices:
+- "meal_monday_snack_0" for first snack
+- "meal_monday_snack_1" for second snack
+Consolidate Snack 1 across days separately from Snack 2.
+
 ## IMPORTANT RULES
 1. Every meal_id in prep_tasks MUST match the format "meal_[day]_[type]_[index]" from the meal plan above
 2. Order sessions by display_order chronologically through the week
-3. ONE TASK PER MEAL - combine all components of a meal into a single task
+3. ONE TASK PER MEAL - combine all components of a meal into a single task (or ONE TASK PER CONSOLIDATED MEAL GROUP)
 4. EVERY MEAL must have a prep task - even simple assembly meals like "yogurt with fruit"
 5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
 6. Include cooking_temps and cooking_times whenever heat/cooking is involved
@@ -1708,6 +1750,7 @@ Return ONLY valid JSON:
    - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
    - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)
    - For day_of style, daily_assembly can be empty since food is cooked fresh
+10. CONSOLIDATE identical meals - if the same meal appears multiple days, create ONE consolidated task (see MEAL CONSOLIDATION RULES above)
 
 Use the generate_prep_sessions tool to provide your prep schedule.`;
 
