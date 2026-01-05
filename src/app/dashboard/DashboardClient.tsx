@@ -112,7 +112,13 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
 
     } catch (err) {
       cleanup()
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
+      // Show user-friendly message for generation failures
+      if (errorMessage.includes('prep sessions') || errorMessage.includes('generate')) {
+        setError('Failed to generate your meal plan. Please try again later.')
+      } else {
+        setError(errorMessage)
+      }
       setGenerating(false)
       setProgressStage(null)
     }

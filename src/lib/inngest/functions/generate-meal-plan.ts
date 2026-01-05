@@ -24,8 +24,9 @@ function createServiceRoleClient() {
 export const generateMealPlanFunction = inngest.createFunction(
   {
     id: 'generate-meal-plan',
-    // Inngest has no timeout by default, but you can set one if desired
-    // cancelOn: [{ event: 'meal-plan/cancel', match: 'data.jobId' }],
+    // Disable automatic retries - if generation fails, we want it to fail immediately
+    // and not restart from scratch (which would re-generate ingredients and meals)
+    retries: 0,
   },
   { event: 'meal-plan/generate' },
   async ({ event }) => {
@@ -166,8 +167,15 @@ export const generateMealPlanFunction = inngest.createFunction(
         await supabase.from('meal_plan_ingredients').insert(ingredientInserts);
       }
 
-      // Save prep sessions
-      const prepSessionInserts = mealPlanData.prep_sessions.prepSessions.map((session: {
+      // Save prep sessions (with defensive validation)
+      const prepSessions = mealPlanData.prep_sessions?.prepSessions;
+      if (!prepSessions || !Array.isArray(prepSessions)) {
+        console.error('Invalid prep_sessions structure:', mealPlanData.prep_sessions);
+        await updateJobStatus('failed', undefined, undefined, 'Failed to generate prep sessions - invalid response structure');
+        return { success: false, error: 'Failed to generate prep sessions' };
+      }
+
+      const prepSessionInserts = prepSessions.map((session: {
         sessionName: string;
         sessionOrder: number;
         estimatedMinutes: number;
@@ -184,10 +192,10 @@ export const generateMealPlanFunction = inngest.createFunction(
         session_name: session.sessionName,
         session_order: session.sessionOrder,
         estimated_minutes: session.estimatedMinutes,
-        prep_items: session.prepItems,
-        feeds_meals: session.prepItems.flatMap(item => item.feeds),
-        instructions: session.instructions,
-        daily_assembly: mealPlanData.prep_sessions.dailyAssembly,
+        prep_items: session.prepItems || [],
+        feeds_meals: (session.prepItems || []).flatMap(item => item.feeds || []),
+        instructions: session.instructions || '',
+        daily_assembly: mealPlanData.prep_sessions?.dailyAssembly || {},
         session_type: session.sessionType || 'weekly_batch',
         session_day: session.sessionDay || null,
         session_time_of_day: session.sessionTimeOfDay || null,

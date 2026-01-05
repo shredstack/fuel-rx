@@ -1707,6 +1707,12 @@ Use the generate_prep_sessions tool to provide your prep schedule.`;
     promptType: 'prep_mode_analysis',
   });
 
+  // Validate that we got a valid response with prep_sessions array
+  if (!parsed || !parsed.prep_sessions || !Array.isArray(parsed.prep_sessions)) {
+    console.error('Invalid prep_sessions response from LLM:', JSON.stringify(parsed, null, 2));
+    throw new Error('Failed to generate prep sessions - LLM returned invalid response structure');
+  }
+
   // Convert new format to PrepModeResponse format for backward compatibility
   // The new format includes prep_tasks with detailed_steps, cooking_temps, cooking_times, tips
   const prepModeResponse: PrepModeResponse = {
