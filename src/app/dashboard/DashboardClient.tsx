@@ -83,6 +83,18 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
 
       const { jobId } = await startResponse.json()
 
+      // Helper to handle errors (can't throw from setInterval async callback)
+      const handleError = (errorMessage: string) => {
+        cleanup()
+        if (errorMessage.includes('prep sessions') || errorMessage.includes('generate')) {
+          setError('Failed to generate your meal plan. Please try again later.')
+        } else {
+          setError(errorMessage)
+        }
+        setGenerating(false)
+        setProgressStage(null)
+      }
+
       // Poll for status
       pollInterval = setInterval(async () => {
         try {
@@ -90,8 +102,8 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           const job = await statusResponse.json()
 
           if (job.error) {
-            cleanup()
-            throw new Error(job.error)
+            handleError(job.error)
+            return
           }
 
           setProgressStage(job.status as JobStatus)
@@ -101,24 +113,17 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
             cleanup()
             router.push(`/meal-plan/${job.mealPlanId}`)
           } else if (job.status === 'failed') {
-            cleanup()
-            throw new Error(job.errorMessage || 'Failed to generate meal plan')
+            handleError(job.errorMessage || 'Failed to generate meal plan')
           }
         } catch (pollError) {
-          cleanup()
-          throw pollError
+          handleError(pollError instanceof Error ? pollError.message : 'Something went wrong')
         }
       }, 3000) // Poll every 3 seconds
 
     } catch (err) {
       cleanup()
       const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
-      // Show user-friendly message for generation failures
-      if (errorMessage.includes('prep sessions') || errorMessage.includes('generate')) {
-        setError('Failed to generate your meal plan. Please try again later.')
-      } else {
-        setError(errorMessage)
-      }
+      setError(errorMessage)
       setGenerating(false)
       setProgressStage(null)
     }

@@ -110,6 +110,19 @@ async function callLLMWithToolUse<T>(options: {
         throw new Error(`Response was truncated (used ${message.usage?.output_tokens} tokens). Consider increasing max_tokens.`);
       }
 
+      // Debug: Log the raw message content for prep_sessions
+      if (tool.name === 'generate_prep_sessions') {
+        console.log('[DEBUG] Raw LLM response for generate_prep_sessions:');
+        console.log('  stop_reason:', message.stop_reason);
+        console.log('  content blocks:', message.content.length);
+        message.content.forEach((block, i) => {
+          console.log(`  block ${i}: type=${block.type}${block.type === 'tool_use' ? `, name=${block.name}` : ''}`);
+          if (block.type === 'tool_use') {
+            console.log(`    input keys:`, Object.keys(block.input as Record<string, unknown>));
+          }
+        });
+      }
+
       const result = extractToolUseResult<T>(message, tool.name);
 
       return {
@@ -1709,7 +1722,12 @@ Use the generate_prep_sessions tool to provide your prep schedule.`;
 
   // Validate that we got a valid response with prep_sessions array
   if (!parsed || !parsed.prep_sessions || !Array.isArray(parsed.prep_sessions)) {
-    console.error('Invalid prep_sessions response from LLM:', JSON.stringify(parsed, null, 2));
+    console.error('Invalid prep_sessions response from LLM:');
+    console.error('  parsed:', parsed);
+    console.error('  typeof parsed:', typeof parsed);
+    console.error('  parsed?.prep_sessions:', parsed?.prep_sessions);
+    console.error('  typeof parsed?.prep_sessions:', typeof parsed?.prep_sessions);
+    console.error('  Full JSON:', JSON.stringify(parsed, null, 2));
     throw new Error('Failed to generate prep sessions - LLM returned invalid response structure');
   }
 
