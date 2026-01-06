@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardClient from './DashboardClient'
+import TestModeBanner from '@/components/TestModeBanner'
 
 // Disable caching for this page - always fetch fresh data
 export const dynamic = 'force-dynamic'
@@ -57,10 +58,16 @@ export default async function DashboardPage() {
     }
   }
 
+  // Get test mode from environment (only visible in development)
+  const testMode = process.env.MEAL_PLAN_TEST_MODE || null
+
   return (
-    <DashboardClient
-      profile={profile}
-      recentPlan={recentPlanWithTheme}
-    />
+    <>
+      <TestModeBanner testMode={testMode} />
+      <DashboardClient
+        profile={profile}
+        recentPlan={recentPlanWithTheme}
+      />
+    </>
   )
 }
