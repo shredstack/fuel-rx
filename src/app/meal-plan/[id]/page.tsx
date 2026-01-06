@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import MealPlanClient from './MealPlanClient'
+import type { MealPlanTheme } from '@/lib/types'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -26,6 +27,20 @@ export default async function MealPlanPage({ params }: Props) {
     notFound()
   }
 
+  // Fetch theme if meal plan has one
+  let theme: MealPlanTheme | null = null
+  if (mealPlan.theme_id) {
+    const { data: themeData } = await supabase
+      .from('meal_plan_themes')
+      .select('*')
+      .eq('id', mealPlan.theme_id)
+      .single()
+
+    if (themeData) {
+      theme = themeData as MealPlanTheme
+    }
+  }
+
   return (
     <MealPlanClient
       mealPlan={{
@@ -37,6 +52,7 @@ export default async function MealPlanPage({ params }: Props) {
         is_favorite: mealPlan.is_favorite,
         created_at: mealPlan.created_at,
         core_ingredients: mealPlan.core_ingredients,
+        theme,
       }}
     />
   )

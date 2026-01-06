@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride, IngredientPreferenceType, IngredientPreferenceWithDetails } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride, IngredientPreferenceType, IngredientPreferenceWithDetails, MealPlanTheme } from '@/lib/types'
 import { normalizeCoreIngredients } from '@/lib/types'
 import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
+import ThemeBadge from '@/components/ThemeBadge'
 
 interface PrepSessionData {
   id?: string
@@ -28,6 +29,7 @@ interface Props {
     is_favorite: boolean
     created_at: string
     core_ingredients?: CoreIngredients | null
+    theme?: MealPlanTheme | null
   }
 }
 
@@ -468,9 +470,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold text-gray-900">
-                  {mealPlan.title || 'Meal Plan'}
+                  {mealPlan.title || (mealPlan.theme ? `${mealPlan.theme.emoji || ''} ${mealPlan.theme.display_name} Meal Plan` : 'Meal Plan')}
                 </h1>
                 <button
                   onClick={() => setIsEditingTitle(true)}
@@ -560,6 +562,13 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             Prep View
           </button>
         </div>
+
+        {/* Theme Badge (shown in both views) */}
+        {mealPlan.theme && (
+          <div className="mb-6">
+            <ThemeBadge theme={mealPlan.theme} showDetails />
+          </div>
+        )}
 
         {/* Core Ingredients (shown in both views) */}
         {mealPlan.core_ingredients && normalizeCoreIngredients(mealPlan.core_ingredients) && (

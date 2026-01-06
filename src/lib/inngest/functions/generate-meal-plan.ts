@@ -163,7 +163,11 @@ export const generateMealPlanFunction = inngest.createFunction(
   },
   { event: 'meal-plan/generate' },
   async ({ event, step }) => {
-    const { jobId, userId } = event.data as { jobId: string; userId: string };
+    const { jobId, userId, themeSelection } = event.data as {
+      jobId: string;
+      userId: string;
+      themeSelection?: 'surprise' | 'none' | string; // 'surprise' = auto, 'none' = no theme, or specific theme ID
+    };
 
     try {
       // Step 1: Fetch all required data including theme-related data
@@ -238,9 +242,30 @@ export const generateMealPlanFunction = inngest.createFunction(
           .map(mp => mp.theme_id)
           .filter((id): id is string => id !== null);
 
-        // Select theme
+        // Select theme based on themeSelection parameter
         let selectedTheme: SelectedTheme | null = null;
-        if (allThemes.length > 0) {
+
+        // themeSelection: 'none' = no theme, 'surprise'/undefined = auto-select, otherwise = specific theme ID
+        if (themeSelection === 'none') {
+          // User explicitly chose no theme
+          console.log('[Theme Selection] User selected no theme (classic mode)');
+          selectedTheme = null;
+        } else if (themeSelection && themeSelection !== 'surprise') {
+          // User selected a specific theme by ID
+          const specificTheme = allThemes.find(t => t.id === themeSelection);
+          if (specificTheme) {
+            selectedTheme = {
+              theme: specificTheme,
+              selectionReason: 'you selected this theme',
+            };
+            console.log('[Theme Selection] User selected specific theme:', specificTheme.display_name, specificTheme.id);
+          } else {
+            console.warn('[Theme Selection] Specified theme not found, falling back to auto-selection');
+          }
+        }
+
+        // Auto-select if no specific theme was set (surprise mode or fallback)
+        if (selectedTheme === null && themeSelection !== 'none' && allThemes.length > 0) {
           const userDietaryPrefs = profile.dietary_prefs || ['no_restrictions'];
           const dislikedCuisinePatterns = detectDislikedCuisinePatterns(mealPreferences.disliked);
           const currentMonth = new Date().getMonth() + 1;
@@ -294,7 +319,7 @@ export const generateMealPlanFunction = inngest.createFunction(
               selectionReason: buildSelectionReason(selected.theme, context),
             };
 
-            console.log('[Theme Selection] Selected theme:', selectedTheme.theme.display_name, selectedTheme.theme.id);
+            console.log('[Theme Selection] Auto-selected theme:', selectedTheme.theme.display_name, selectedTheme.theme.id);
           }
         }
 

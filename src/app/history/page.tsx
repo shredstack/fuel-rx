@@ -13,9 +13,30 @@ export default async function HistoryPage() {
 
   const { data: mealPlans } = await supabase
     .from('meal_plans')
-    .select('id, week_start_date, title, is_favorite, created_at')
+    .select('id, week_start_date, title, is_favorite, created_at, theme_id')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
+
+  // Fetch themes for all meal plans that have one
+  const themeIds = [...new Set((mealPlans || []).filter(p => p.theme_id).map(p => p.theme_id))]
+  let themesMap: Record<string, { display_name: string; emoji: string | null }> = {}
+
+  if (themeIds.length > 0) {
+    const { data: themes } = await supabase
+      .from('meal_plan_themes')
+      .select('id, display_name, emoji')
+      .in('id', themeIds)
+
+    if (themes) {
+      themesMap = Object.fromEntries(themes.map(t => [t.id, { display_name: t.display_name, emoji: t.emoji }]))
+    }
+  }
+
+  // Add theme info to meal plans
+  const mealPlansWithThemes = (mealPlans || []).map(plan => ({
+    ...plan,
+    theme: plan.theme_id ? themesMap[plan.theme_id] : null,
+  }))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,7 +62,7 @@ export default async function HistoryPage() {
           My Meal Plans
         </h1>
 
-        <HistoryClient mealPlans={mealPlans || []} />
+        <HistoryClient mealPlans={mealPlansWithThemes} />
       </main>
     </div>
   )
