@@ -214,6 +214,228 @@ export const MEAL_TYPE_CONFIG: Record<MealType, { label: string; color: string }
 // Meal types in order
 export const MEAL_TYPES_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
 
+// ============================================
+// MEAL-FIRST ORGANIZATION TYPES AND FUNCTIONS
+// ============================================
+
+export interface ConsolidatedMeal {
+  mealType: MealType
+  snackNumber?: number // For multiple snacks per day (1, 2, 3, etc)
+  mealName: string
+  days: DayOfWeek[]
+  totalServings: number
+  tasks: PrepTaskWithSession[]
+  isIdentical: boolean // true if same meal all days
+}
+
+export interface MealTypeGroup {
+  mealType: MealType
+  snackNumber?: number
+  consolidatedMeals: ConsolidatedMeal[]
+  totalServings: number
+}
+
+/**
+ * Format day range for display
+ * Examples: "Mon-Fri", "All week", "Mon, Wed, Fri"
+ */
+export function formatDayRange(days: DayOfWeek[]): string {
+  if (days.length === 7) return 'All week'
+  if (days.length === 1) return DAY_LABELS[days[0]]
+
+  // Sort days by order
+  const sortedDays = [...days].sort((a, b) => DAYS_ORDER.indexOf(a) - DAYS_ORDER.indexOf(b))
+
+  // Check for consecutive days
+  const dayIndices = sortedDays.map(d => DAYS_ORDER.indexOf(d))
+  const isConsecutive = dayIndices.every((val, i, arr) =>
+    i === 0 || val === arr[i - 1] + 1
+  )
+
+  if (isConsecutive && days.length >= 3) {
+    // Format as range: Mon-Fri
+    const firstDay = sortedDays[0]
+    const lastDay = sortedDays[sortedDays.length - 1]
+    return `${DAY_LABELS[firstDay].slice(0, 3)}-${DAY_LABELS[lastDay].slice(0, 3)}`
+  }
+
+  // Format as comma-separated list: Mon, Wed, Fri
+  return sortedDays.map(d => DAY_LABELS[d].slice(0, 3)).join(', ')
+}
+
+/**
+ * Group prep data by meal type first, then consolidate identical meals across days
+ * This transforms from day-first to meal-first organization
+ */
+export function groupPrepDataByMealType(
+  mealPlanDays: DayPlan[],
+  prepSessions: PrepSession[]
+): MealTypeGroup[] {
+  // Build a map of existing prep tasks by meal_id for quick lookup
+  const prepTasksByMealId = new Map<string, PrepTaskWithSession>()
+
+  for (const session of prepSessions) {
+    if (session.session_type === 'weekly_batch') continue
+
+    const tasks = getSessionTasks(session)
+    for (const task of tasks) {
+      const taskWithSession: PrepTaskWithSession = {
+        ...task,
+        sessionId: session.id
+      }
+
+      // Index by all meal_ids
+      for (const mealId of task.meal_ids) {
+        prepTasksByMealId.set(mealId, taskWithSession)
+      }
+
+      // Also index by task.id
+      if (task.id && !prepTasksByMealId.has(task.id)) {
+        prepTasksByMealId.set(task.id, taskWithSession)
+      }
+    }
+  }
+
+  // Step 1: Group meals by meal type and track snack numbers
+  // Key format: "breakfast", "lunch", "dinner", "snack_1", "snack_2", etc.
+  const mealsByType = new Map<string, Map<string, ConsolidatedMeal>>()
+
+  // Initialize structure for main meal types
+  for (const mealType of ['breakfast', 'lunch', 'dinner']) {
+    mealsByType.set(mealType, new Map())
+  }
+
+  // Track max snack count across all days
+  let maxSnacks = 0
+
+  // Step 2: Iterate through each day and categorize meals
+  for (const dayPlan of mealPlanDays) {
+    const day = dayPlan.day as DayOfWeek
+    let snackCounter = 0
+
+    for (const meal of dayPlan.meals) {
+      const mealType = meal.type as MealType
+      let typeKey = mealType
+      let snackNumber: number | undefined
+
+      // Handle multiple snacks per day
+      if (mealType === 'snack') {
+        snackCounter++
+        snackNumber = snackCounter
+        typeKey = `snack_${snackNumber}` as MealType
+        maxSnacks = Math.max(maxSnacks, snackCounter)
+      }
+
+      // Ensure the type group exists
+      if (!mealsByType.has(typeKey)) {
+        mealsByType.set(typeKey, new Map())
+      }
+
+      const typeGroup = mealsByType.get(typeKey)!
+
+      // Normalize meal name for comparison (trim, lowercase)
+      const normalizedName = meal.name.trim().toLowerCase()
+
+      // Find or create consolidated meal entry
+      let consolidated = typeGroup.get(normalizedName)
+      if (!consolidated) {
+        consolidated = {
+          mealType: mealType,
+          snackNumber,
+          mealName: meal.name, // Keep original casing for display
+          days: [],
+          totalServings: 0,
+          tasks: [],
+          isIdentical: true,
+        }
+        typeGroup.set(normalizedName, consolidated)
+      }
+
+      // Add this day to the consolidated meal
+      if (!consolidated.days.includes(day)) {
+        consolidated.days.push(day)
+        consolidated.totalServings += 1
+      }
+
+      // Find associated prep task for this meal
+      const typeIndex = dayPlan.meals
+        .filter(m => m.type === mealType)
+        .indexOf(meal)
+      const mealIdWithIndex = `meal_${day}_${mealType}_${typeIndex}`
+      const mealIdWithoutIndex = `meal_${day}_${mealType}`
+
+      // Look up prep task
+      let existingTask = prepTasksByMealId.get(mealIdWithIndex)
+      if (!existingTask && typeIndex === 0) {
+        existingTask = prepTasksByMealId.get(mealIdWithoutIndex)
+      }
+
+      // If we found a prep task, add it (avoid duplicates)
+      if (existingTask && !consolidated.tasks.find(t => t.id === existingTask!.id)) {
+        consolidated.tasks.push(existingTask)
+      }
+
+      // If no prep task exists, create one from meal data
+      if (!existingTask) {
+        const mealTask: PrepTaskWithSession = {
+          id: mealIdWithIndex,
+          sessionId: 'meal_plan',
+          description: meal.name,
+          detailed_steps: meal.instructions || [],
+          estimated_minutes: meal.prep_time_minutes || 10,
+          meal_ids: [mealIdWithIndex],
+          completed: false,
+          ingredients_to_prep: meal.ingredients?.map(ing =>
+            `${ing.amount} ${ing.unit} ${ing.name}`
+          ),
+        }
+
+        // Only add if not already present
+        if (!consolidated.tasks.find(t => t.id === mealTask.id)) {
+          consolidated.tasks.push(mealTask)
+        }
+      }
+    }
+  }
+
+  // Step 3: Convert to array and sort
+  const result: MealTypeGroup[] = []
+
+  // Order: breakfast, lunch, dinner, then snacks
+  const orderedTypes = ['breakfast', 'lunch', 'dinner']
+  for (let i = 1; i <= maxSnacks; i++) {
+    orderedTypes.push(`snack_${i}`)
+  }
+
+  for (const typeKey of orderedTypes) {
+    const typeGroup = mealsByType.get(typeKey)
+    if (!typeGroup || typeGroup.size === 0) continue
+
+    const consolidatedMeals = Array.from(typeGroup.values())
+    const totalServings = consolidatedMeals.reduce((sum, m) => sum + m.totalServings, 0)
+
+    // Determine meal type and snack number
+    let mealType: MealType
+    let snackNumber: number | undefined
+
+    if (typeKey.startsWith('snack_')) {
+      mealType = 'snack'
+      snackNumber = parseInt(typeKey.split('_')[1])
+    } else {
+      mealType = typeKey as MealType
+    }
+
+    result.push({
+      mealType,
+      snackNumber,
+      consolidatedMeals,
+      totalServings,
+    })
+  }
+
+  return result
+}
+
 // Generate a unique meal ID for a specific meal on a specific day
 function generateMealId(day: DayOfWeek, mealType: MealType, index: number): string {
   return `meal_${day}_${mealType}_${index}`

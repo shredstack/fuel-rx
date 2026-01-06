@@ -6,14 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 import type { PrepSession, PrepStyle, DayOfWeek, MealType, DailyAssembly, DayPlan } from '@/lib/types'
 import { PREP_STYLE_LABELS } from '@/lib/types'
 import {
-  groupPrepDataFromMealPlan,
+  groupPrepDataByMealType,
   getSessionTasks,
   DAYS_ORDER,
   DAY_LABELS,
-  MEAL_TYPES_ORDER,
   MEAL_TYPE_CONFIG,
 } from '@/components/prep/prepUtils'
-import DayPrepSection from '@/components/prep/DayPrepSection'
+import MealTypeSection from '@/components/prep/MealTypeSection'
 import BatchPrepSection from '@/components/prep/BatchPrepSection'
 
 interface PrepViewClientProps {
@@ -38,9 +37,12 @@ export default function PrepViewClient({
   // Get meal plan days from plan_data (plan_data is directly the array of days)
   const mealPlanDays: DayPlan[] = mealPlan.plan_data || []
 
-  // Group prep data using meal plan as source of truth
-  // This ensures every meal (including multiple snacks) appears as a task
-  const groupedData = groupPrepDataFromMealPlan(mealPlanDays, prepSessions)
+  // Separate batch sessions from day-of sessions
+  const batchSessions = prepSessions.filter(s => s.session_type === 'weekly_batch')
+  const dayOfSessions = prepSessions.filter(s => s.session_type !== 'weekly_batch')
+
+  // Use new meal-type grouping for day-of tasks
+  const mealTypeGroups = groupPrepDataByMealType(mealPlanDays, dayOfSessions)
 
   // Track completed tasks - initialize from database
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(() => {
@@ -103,29 +105,6 @@ export default function PrepViewClient({
   const totalTasks = prepSessions.reduce((sum, s) => sum + getSessionTasks(s).length, 0)
   const totalCompleted = completedTasks.size
 
-  // Check if there are any day-of tasks
-  const hasDayOfTasks = DAYS_ORDER.some(day => {
-    const dayMeals = groupedData.days[day]
-    if (!dayMeals) return false
-    return MEAL_TYPES_ORDER.some(mealType => {
-      const tasks = dayMeals[mealType]
-      return tasks && tasks.length > 0
-    })
-  })
-
-  // Determine which day to auto-expand
-  const today = new Date()
-  const todayDay = today.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() as DayOfWeek
-  const expandedDay = DAYS_ORDER.find(day => {
-    const dayMeals = groupedData.days[day]
-    if (!dayMeals) return false
-    // Check if this day has any tasks
-    return MEAL_TYPES_ORDER.some(mealType => {
-      const tasks = dayMeals[mealType]
-      return tasks && tasks.length > 0
-    })
-  }) || null
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 py-8 px-4">
       <div className="max-w-4xl mx-auto">
@@ -179,10 +158,10 @@ export default function PrepViewClient({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Batch Prep Sessions */}
-            {groupedData.batchSessions.length > 0 && (
+            {/* Batch Prep Sessions (if any) */}
+            {batchSessions.length > 0 && (
               <div className="space-y-4">
-                {groupedData.batchSessions.map(session => (
+                {batchSessions.map(session => (
                   <BatchPrepSection
                     key={session.id}
                     session={session}
@@ -190,40 +169,26 @@ export default function PrepViewClient({
                     completedSteps={completedSteps}
                     onToggleTaskComplete={toggleTaskComplete}
                     onToggleStepComplete={toggleStepComplete}
-                    defaultExpanded={groupedData.batchSessions.length === 1}
+                    defaultExpanded={batchSessions.length === 1}
                   />
                 ))}
               </div>
             )}
 
-            {/* Day-of Prep Sections */}
-            {hasDayOfTasks && (
+            {/* Meal Type Sections */}
+            {mealTypeGroups.length > 0 && (
               <div className="space-y-4">
-                {DAYS_ORDER.map(day => {
-                  const dayMeals = groupedData.days[day]
-                  if (!dayMeals) return null
-
-                  // Check if this day has any tasks
-                  const hasTasks = MEAL_TYPES_ORDER.some(mealType => {
-                    const tasks = dayMeals[mealType]
-                    return tasks && tasks.length > 0
-                  })
-
-                  if (!hasTasks) return null
-
-                  return (
-                    <DayPrepSection
-                      key={day}
-                      day={day}
-                      meals={dayMeals}
-                      completedTasks={completedTasks}
-                      completedSteps={completedSteps}
-                      onToggleTaskComplete={toggleTaskComplete}
-                      onToggleStepComplete={toggleStepComplete}
-                      defaultExpanded={day === expandedDay}
-                    />
-                  )
-                })}
+                {mealTypeGroups.map((group, index) => (
+                  <MealTypeSection
+                    key={`${group.mealType}-${group.snackNumber || 0}`}
+                    group={group}
+                    completedTasks={completedTasks}
+                    completedSteps={completedSteps}
+                    onToggleTaskComplete={toggleTaskComplete}
+                    onToggleStepComplete={toggleStepComplete}
+                    defaultExpanded={false}
+                  />
+                ))}
               </div>
             )}
           </div>
