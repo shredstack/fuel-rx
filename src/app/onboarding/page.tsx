@@ -188,8 +188,9 @@ export default function OnboardingPage() {
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
-                  <strong>Tip:</strong> Most CrossFit athletes need 1.6-2.2g of protein per kg of body weight.
+                  <strong>Tip:</strong> Most CrossFit athletes need 0.7%-1.2% of their body weight in grams of protein.
                   Carbs fuel your WODs, and healthy fats support brain + hormone function.
+                  Don't forget your veggies and fruits - you should try for 800g per day!
                 </p>
               </div>
             </div>
@@ -270,7 +271,7 @@ export default function OnboardingPage() {
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
-                  <strong>Tip:</strong> Most people find &quot;Mixed/Flexible&quot; works best - batch cook proteins on the weekend,
+                  <strong>Tip:</strong> A lot of people find &quot;Mixed/Flexible&quot; works well - batch cook proteins on the weekend,
                   but make fresh dinners during the week.
                 </p>
               </div>
