@@ -2,6 +2,12 @@ import { createClient } from '@/lib/supabase/server'
 import { generateMealPlanWithProgress } from '@/lib/claude'
 import type { UserProfile, IngredientCategory } from '@/lib/types'
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types'
+import {
+  selectThemeForMealPlan,
+  getRecentThemeIds,
+  getUserThemePreferences,
+  detectDislikedCuisinePatterns,
+} from '@/lib/theme-selection'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -94,6 +100,44 @@ export async function POST() {
     ingredient_variety_prefs: profile.ingredient_variety_prefs || DEFAULT_INGREDIENT_VARIETY_PREFS,
   } as UserProfile
 
+  // Fetch user's theme preferences and recent themes for theme selection
+  const [themePrefs, recentThemeIds] = await Promise.all([
+    getUserThemePreferences(user.id),
+    getRecentThemeIds(user.id, 3),
+  ])
+
+  // Detect cuisine patterns from disliked meals to avoid similar themes
+  const dislikedCuisinePatterns = detectDislikedCuisinePatterns(mealPreferences.disliked)
+
+  // Get current month for seasonal weighting (1-12)
+  const currentMonth = new Date().getMonth() + 1
+
+  // Select theme for this meal plan
+  let selectedTheme;
+  try {
+    console.log('[Theme Selection] Starting theme selection with context:', {
+      userDietaryPrefs: profileWithDefaults.dietary_prefs || ['no_restrictions'],
+      recentThemeIds,
+      preferredThemeIds: themePrefs.preferred,
+      blockedThemeIds: themePrefs.blocked,
+      dislikedMealPatterns: dislikedCuisinePatterns,
+      currentMonth,
+    })
+    selectedTheme = await selectThemeForMealPlan({
+      userDietaryPrefs: profileWithDefaults.dietary_prefs || ['no_restrictions'],
+      recentThemeIds,
+      preferredThemeIds: themePrefs.preferred,
+      blockedThemeIds: themePrefs.blocked,
+      dislikedMealPatterns: dislikedCuisinePatterns,
+      currentMonth,
+    })
+    console.log('[Theme Selection] Selected theme:', selectedTheme?.theme?.display_name, selectedTheme?.theme?.id)
+  } catch (error) {
+    console.error('[Theme Selection] Error selecting theme:', error)
+    // Continue without a theme if selection fails
+    selectedTheme = null
+  }
+
   // Create a readable stream for SSE
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -126,6 +170,21 @@ export async function POST() {
       }, 20000)
 
       try {
+        // Send theme selection event if a theme was selected
+        if (selectedTheme) {
+          sendEvent('progress', {
+            stage: 'theme_selected',
+            message: `This week's theme: ${selectedTheme.theme.display_name} ${selectedTheme.theme.emoji || ''}`,
+            theme: {
+              id: selectedTheme.theme.id,
+              name: selectedTheme.theme.display_name,
+              emoji: selectedTheme.theme.emoji,
+              description: selectedTheme.theme.description,
+              reason: selectedTheme.selectionReason,
+            }
+          })
+        }
+
         // Generate meal plan with progress callbacks
         const mealPlanData = await generateMealPlanWithProgress(
           profileWithDefaults,
@@ -134,6 +193,7 @@ export async function POST() {
           mealPreferences,
           validatedMeals,
           ingredientPreferences,
+          selectedTheme?.theme,
           (stage, message) => {
             sendEvent('progress', { stage, message })
           }
@@ -149,7 +209,7 @@ export async function POST() {
 
         sendEvent('progress', { stage: 'saving', message: 'Saving your meal plan...' })
 
-        // Save meal plan to database with core ingredients
+        // Save meal plan to database with core ingredients and theme
         const { data: savedPlan, error: saveError } = await supabase
           .from('meal_plans')
           .insert({
@@ -158,6 +218,7 @@ export async function POST() {
             plan_data: mealPlanData.days,
             grocery_list: mealPlanData.grocery_list,
             core_ingredients: mealPlanData.core_ingredients,
+            theme_id: selectedTheme?.theme.id || null,
             is_favorite: false,
           })
           .select()
