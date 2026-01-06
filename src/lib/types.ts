@@ -364,14 +364,27 @@ export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number
   dairy: { min: 0, max: 4 },
 };
 
+// Core ingredient can be a simple string or an object with swapped flag
+export type CoreIngredientItem = string | { name: string; swapped: true };
+
+// Helper to get the name from a CoreIngredientItem
+export function getCoreIngredientName(item: CoreIngredientItem): string {
+  return typeof item === 'string' ? item : item.name;
+}
+
+// Helper to check if a core ingredient was swapped in
+export function isCoreIngredientSwapped(item: CoreIngredientItem): boolean {
+  return typeof item !== 'string' && item.swapped === true;
+}
+
 // Core ingredients selected in Stage 1
 export interface CoreIngredients {
-  proteins: string[];
-  vegetables: string[];
-  fruits: string[];
-  grains: string[];
-  fats: string[];
-  dairy: string[];
+  proteins: CoreIngredientItem[];
+  vegetables: CoreIngredientItem[];
+  fruits: CoreIngredientItem[];
+  grains: CoreIngredientItem[];
+  fats: CoreIngredientItem[];
+  dairy: CoreIngredientItem[];
 }
 
 /**
@@ -738,4 +751,182 @@ export interface ThemeSelectionContext {
 export interface SelectedTheme {
   theme: MealPlanTheme;
   selectionReason: string; // For display/debugging
+}
+
+// ============================================
+// Meal Entity Types (Normalized Meal Storage)
+// ============================================
+
+export type MealSourceType = 'ai_generated' | 'user_created' | 'community_shared';
+
+/**
+ * MealEntity represents a normalized meal record from the meals table.
+ * This is the new structure that replaces embedded JSONB meals in plan_data.
+ */
+export interface MealEntity {
+  id: string;
+  name: string;
+  name_normalized: string;
+  meal_type: MealType;
+  ingredients: IngredientWithNutrition[];
+  instructions: string[];
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  prep_time_minutes: number;
+  prep_instructions?: string;
+
+  // User flags (migrated from validated_meals_by_user)
+  is_user_created: boolean;
+  is_nutrition_edited_by_user: boolean;
+
+  source_type: MealSourceType;
+  source_user_id?: string;
+  source_meal_plan_id?: string;
+  is_public: boolean;
+  theme_id?: string;
+  theme_name?: string;
+  times_used: number;
+  times_swapped_in: number;
+  times_swapped_out: number;
+  image_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * MealPlanMeal represents a junction table record linking meals to meal plan slots.
+ * This enables meal swapping by simply updating the meal_id reference.
+ */
+export interface MealPlanMeal {
+  id: string;
+  meal_plan_id: string;
+  meal_id: string;
+  day: DayOfWeek;
+  meal_type: MealType;
+  snack_number?: number;
+  position: number;
+  is_original: boolean;
+  swapped_from_meal_id?: string;
+  swapped_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// Normalized Meal Plan Types
+// ============================================
+
+/**
+ * MealSlot represents a meal in a specific slot with junction table info.
+ * Used for display in the meal plan view.
+ */
+export interface MealSlot {
+  id: string;            // meal_plan_meals.id (for swap operations)
+  meal: MealEntity;      // Full meal data
+  meal_type: MealType;
+  snack_number?: number;
+  position: number;
+  is_original: boolean;
+  swapped_at?: string;
+}
+
+/**
+ * DayPlanNormalized replaces the old DayPlan for normalized meal plans.
+ */
+export interface DayPlanNormalized {
+  day: DayOfWeek;
+  meals: MealSlot[];
+  daily_totals: Macros;
+}
+
+/**
+ * MealPlanNormalized is the new structure for meal plans with normalized meals.
+ * Replaces MealPlan for the new architecture.
+ */
+export interface MealPlanNormalized {
+  id: string;
+  user_id: string;
+  week_start_date: string;
+  title?: string;
+  theme_id?: string;
+  theme?: MealPlanTheme;
+  core_ingredients?: CoreIngredients;
+  is_favorite: boolean;
+  created_at: string;
+  days: DayPlanNormalized[];
+  grocery_list: Ingredient[];  // Computed on-demand
+  prep_sessions?: PrepSession[];
+}
+
+// ============================================
+// Swap Types
+// ============================================
+
+export type SwapCandidateSource = 'custom' | 'community' | 'previous';
+
+/**
+ * SwapCandidate represents a meal that can be swapped into a meal plan slot.
+ */
+export interface SwapCandidate {
+  meal: MealEntity;
+  source: SwapCandidateSource;
+}
+
+/**
+ * SwapRequest is the payload for the swap API endpoint.
+ */
+export interface SwapRequest {
+  mealPlanMealId: string;  // The meal_plan_meals.id to replace
+  newMealId: string;       // The meals.id to swap in
+}
+
+/**
+ * GroceryListDelta shows what changed in the grocery list after a swap.
+ * Not currently used since we do full recomputation, but kept for future use.
+ */
+export interface GroceryListDelta {
+  added: Ingredient[];
+  removed: Ingredient[];
+  modified: Array<{
+    name: string;
+    unit: string;
+    oldAmount: string;
+    newAmount: string;
+  }>;
+}
+
+/**
+ * SwapResponse is returned from the swap API endpoint.
+ */
+export interface SwapResponse {
+  success: boolean;
+  swappedCount: number;  // >1 if consistent meal type (same meal all week)
+  mealPlanMeals: MealPlanMeal[];
+  newMeal: MealEntity;  // The new meal that was swapped in
+  updatedDailyTotals: Record<DayOfWeek, Macros>;
+  groceryList: Ingredient[];  // Full recomputed list
+  updatedCoreIngredients?: CoreIngredients;  // Updated core ingredients (if new ingredients were added)
+  message?: string;
+}
+
+/**
+ * SwapCandidatesQuery is the query params for the swap candidates endpoint.
+ */
+export interface SwapCandidatesQuery {
+  mealPlanId: string;
+  mealType?: MealType;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * SwapCandidatesResponse is returned from the swap candidates endpoint.
+ */
+export interface SwapCandidatesResponse {
+  candidates: SwapCandidate[];
+  total: number;
+  hasMore: boolean;
 }

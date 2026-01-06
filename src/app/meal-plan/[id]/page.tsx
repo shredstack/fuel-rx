@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import MealPlanClient from './MealPlanClient'
-import type { MealPlanTheme } from '@/lib/types'
+import { getMealPlanNormalized, computeGroceryListFromPlan } from '@/lib/meal-plan-service'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -16,43 +16,36 @@ export default async function MealPlanPage({ params }: Props) {
     redirect('/login')
   }
 
-  const { data: mealPlan, error } = await supabase
+  // Verify the meal plan belongs to this user
+  const { data: mealPlanCheck, error: checkError } = await supabase
     .from('meal_plans')
-    .select('*')
+    .select('user_id')
     .eq('id', id)
-    .eq('user_id', user.id)
     .single()
 
-  if (error || !mealPlan) {
+  if (checkError || !mealPlanCheck) {
     notFound()
   }
 
-  // Fetch theme if meal plan has one
-  let theme: MealPlanTheme | null = null
-  if (mealPlan.theme_id) {
-    const { data: themeData } = await supabase
-      .from('meal_plan_themes')
-      .select('*')
-      .eq('id', mealPlan.theme_id)
-      .single()
-
-    if (themeData) {
-      theme = themeData as MealPlanTheme
-    }
+  if (mealPlanCheck.user_id !== user.id) {
+    notFound()
   }
+
+  // Fetch the normalized meal plan with all meals expanded
+  const mealPlan = await getMealPlanNormalized(id)
+
+  if (!mealPlan) {
+    notFound()
+  }
+
+  // Compute the grocery list
+  const groceryList = await computeGroceryListFromPlan(id)
 
   return (
     <MealPlanClient
       mealPlan={{
-        id: mealPlan.id,
-        week_start_date: mealPlan.week_start_date,
-        title: mealPlan.title,
-        days: mealPlan.plan_data,
-        grocery_list: mealPlan.grocery_list,
-        is_favorite: mealPlan.is_favorite,
-        created_at: mealPlan.created_at,
-        core_ingredients: mealPlan.core_ingredients,
-        theme,
+        ...mealPlan,
+        grocery_list: groceryList,
       }}
     />
   )

@@ -1,91 +1,129 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import type { ValidatedMealIngredient, CustomMealPrepTime } from '@/lib/types'
+/**
+ * Custom Meals API - Now uses the normalized `meals` table
+ *
+ * POST - Create a new custom meal
+ * GET - List user's custom meals
+ * PUT - Update a custom meal
+ * DELETE - Delete a custom meal
+ */
+
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { normalizeForMatching } from '@/lib/meal-service';
+import type { IngredientWithNutrition, MealType } from '@/lib/types';
+
+interface CustomMealIngredient {
+  name: string;
+  amount: string;
+  unit: string;
+  category?: 'produce' | 'protein' | 'dairy' | 'grains' | 'pantry' | 'frozen' | 'other';
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
 
 interface CreateCustomMealRequest {
-  meal_name: string
-  ingredients: ValidatedMealIngredient[]
-  image_url?: string | null
-  share_with_community?: boolean
-  prep_time?: CustomMealPrepTime | null
-  meal_prep_instructions?: string | null
+  meal_name: string;
+  meal_type?: MealType;
+  ingredients: CustomMealIngredient[];
+  instructions?: string[];
+  image_url?: string | null;
+  share_with_community?: boolean;
+  prep_time?: number | null;
+  meal_prep_instructions?: string | null;
 }
 
 interface UpdateCustomMealRequest extends CreateCustomMealRequest {
-  id: string
+  id: string;
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
   // Get current user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const body: CreateCustomMealRequest = await request.json()
+    const body: CreateCustomMealRequest = await request.json();
 
     // Validate request
     if (!body.meal_name || typeof body.meal_name !== 'string' || body.meal_name.trim() === '') {
-      return NextResponse.json({ error: 'Meal name is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Meal name is required' }, { status: 400 });
     }
 
     if (!body.ingredients || !Array.isArray(body.ingredients) || body.ingredients.length === 0) {
-      return NextResponse.json({ error: 'At least one ingredient is required' }, { status: 400 })
+      return NextResponse.json({ error: 'At least one ingredient is required' }, { status: 400 });
     }
 
     // Validate each ingredient has required fields
     for (const ingredient of body.ingredients) {
       if (!ingredient.name || typeof ingredient.name !== 'string') {
-        return NextResponse.json({ error: 'Each ingredient must have a name' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have a name' }, { status: 400 });
       }
       if (typeof ingredient.calories !== 'number' || ingredient.calories < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid calories' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid calories' }, { status: 400 });
       }
       if (typeof ingredient.protein !== 'number' || ingredient.protein < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid protein' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid protein' }, { status: 400 });
       }
       if (typeof ingredient.carbs !== 'number' || ingredient.carbs < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid carbs' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid carbs' }, { status: 400 });
       }
       if (typeof ingredient.fat !== 'number' || ingredient.fat < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid fat' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid fat' }, { status: 400 });
       }
     }
 
     // Calculate total macros from ingredients
-    const totalCalories = body.ingredients.reduce((sum, ing) => sum + ing.calories, 0)
-    const totalProtein = body.ingredients.reduce((sum, ing) => sum + ing.protein, 0)
-    const totalCarbs = body.ingredients.reduce((sum, ing) => sum + ing.carbs, 0)
-    const totalFat = body.ingredients.reduce((sum, ing) => sum + ing.fat, 0)
+    const totalCalories = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.calories, 0));
+    const totalProtein = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.protein, 0) * 10) / 10;
+    const totalCarbs = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.carbs, 0) * 10) / 10;
+    const totalFat = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.fat, 0) * 10) / 10;
 
-    // Save to validated_meals_by_user
+    // Convert ingredients to the normalized format
+    const normalizedIngredients: IngredientWithNutrition[] = body.ingredients.map(ing => ({
+      name: ing.name,
+      amount: ing.amount || '1',
+      unit: ing.unit || 'serving',
+      category: ing.category || 'other',
+      calories: ing.calories,
+      protein: ing.protein,
+      carbs: ing.carbs,
+      fat: ing.fat,
+    }));
+
+    // Save to meals table
     const { data: savedMeal, error: saveError } = await supabase
-      .from('validated_meals_by_user')
-      .upsert({
-        user_id: user.id,
-        meal_name: body.meal_name.trim(),
+      .from('meals')
+      .insert({
+        name: body.meal_name.trim(),
+        name_normalized: normalizeForMatching(body.meal_name),
+        meal_type: body.meal_type || 'dinner', // Default to dinner if not specified
+        ingredients: normalizedIngredients,
+        instructions: body.instructions || [],
         calories: totalCalories,
         protein: totalProtein,
         carbs: totalCarbs,
         fat: totalFat,
-        ingredients: body.ingredients,
+        prep_time_minutes: body.prep_time || 15,
+        prep_instructions: body.meal_prep_instructions || null,
+        source_type: 'user_created',
+        source_user_id: user.id,
         is_user_created: true,
+        is_nutrition_edited_by_user: true,
+        is_public: body.share_with_community || false,
         image_url: body.image_url || null,
-        share_with_community: body.share_with_community || false,
-        prep_time: body.prep_time || null,
-        meal_prep_instructions: body.meal_prep_instructions || null,
-      }, {
-        onConflict: 'user_id,meal_name',
       })
       .select()
-      .single()
+      .single();
 
     if (saveError) {
-      console.error('Error saving custom meal:', saveError)
-      return NextResponse.json({ error: 'Failed to save custom meal' }, { status: 500 })
+      console.error('Error saving custom meal:', saveError);
+      return NextResponse.json({ error: 'Failed to save custom meal' }, { status: 500 });
     }
 
     // If sharing and user has social feed enabled, post to social feed
@@ -94,135 +132,183 @@ export async function POST(request: Request) {
         .from('user_profiles')
         .select('social_feed_enabled')
         .eq('id', user.id)
-        .single()
+        .single();
 
       if (profile?.social_feed_enabled) {
         await supabase.from('social_feed_posts').upsert({
           user_id: user.id,
           source_type: 'custom_meal',
           source_meal_id: savedMeal.id,
-          meal_name: savedMeal.meal_name,
+          meal_name: savedMeal.name,
           calories: savedMeal.calories,
           protein: savedMeal.protein,
           carbs: savedMeal.carbs,
           fat: savedMeal.fat,
           image_url: savedMeal.image_url,
-          prep_time: savedMeal.prep_time,
+          prep_time: savedMeal.prep_time_minutes,
           ingredients: savedMeal.ingredients,
-          meal_prep_instructions: savedMeal.meal_prep_instructions,
+          meal_prep_instructions: savedMeal.prep_instructions,
         }, {
           onConflict: 'user_id,source_type,source_meal_id',
           ignoreDuplicates: false,
-        })
+        });
       }
     }
 
-    return NextResponse.json(savedMeal)
+    // Return in a format compatible with the old API for the client
+    return NextResponse.json({
+      id: savedMeal.id,
+      meal_name: savedMeal.name,
+      calories: savedMeal.calories,
+      protein: savedMeal.protein,
+      carbs: savedMeal.carbs,
+      fat: savedMeal.fat,
+      ingredients: savedMeal.ingredients,
+      is_user_created: savedMeal.is_user_created,
+      image_url: savedMeal.image_url,
+      share_with_community: savedMeal.is_public,
+      prep_time: savedMeal.prep_time_minutes,
+      meal_prep_instructions: savedMeal.prep_instructions,
+      created_at: savedMeal.created_at,
+    });
   } catch (error) {
-    console.error('Error creating custom meal:', error)
-    return NextResponse.json({ error: 'Failed to create custom meal' }, { status: 500 })
+    console.error('Error creating custom meal:', error);
+    return NextResponse.json({ error: 'Failed to create custom meal' }, { status: 500 });
   }
 }
 
 export async function GET() {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
   // Get current user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Fetch user's custom meals
+  // Fetch user's custom meals from the new meals table
   const { data: customMeals, error } = await supabase
-    .from('validated_meals_by_user')
+    .from('meals')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('source_user_id', user.id)
     .eq('is_user_created', true)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching custom meals:', error)
-    return NextResponse.json({ error: 'Failed to fetch custom meals' }, { status: 500 })
+    console.error('Error fetching custom meals:', error);
+    return NextResponse.json({ error: 'Failed to fetch custom meals' }, { status: 500 });
   }
 
-  return NextResponse.json(customMeals)
+  // Transform to the format expected by the client
+  const transformedMeals = customMeals.map(meal => ({
+    id: meal.id,
+    meal_name: meal.name,
+    calories: meal.calories,
+    protein: meal.protein,
+    carbs: meal.carbs,
+    fat: meal.fat,
+    ingredients: meal.ingredients,
+    is_user_created: meal.is_user_created,
+    image_url: meal.image_url,
+    share_with_community: meal.is_public,
+    prep_time: meal.prep_time_minutes,
+    meal_prep_instructions: meal.prep_instructions,
+    created_at: meal.created_at,
+  }));
+
+  return NextResponse.json(transformedMeals);
 }
 
 export async function PUT(request: Request) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
   // Get current user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const body: UpdateCustomMealRequest = await request.json()
+    const body: UpdateCustomMealRequest = await request.json();
 
     // Validate request
     if (!body.id) {
-      return NextResponse.json({ error: 'Meal ID is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Meal ID is required' }, { status: 400 });
     }
 
     if (!body.meal_name || typeof body.meal_name !== 'string' || body.meal_name.trim() === '') {
-      return NextResponse.json({ error: 'Meal name is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Meal name is required' }, { status: 400 });
     }
 
     if (!body.ingredients || !Array.isArray(body.ingredients) || body.ingredients.length === 0) {
-      return NextResponse.json({ error: 'At least one ingredient is required' }, { status: 400 })
+      return NextResponse.json({ error: 'At least one ingredient is required' }, { status: 400 });
     }
 
     // Validate each ingredient has required fields
     for (const ingredient of body.ingredients) {
       if (!ingredient.name || typeof ingredient.name !== 'string') {
-        return NextResponse.json({ error: 'Each ingredient must have a name' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have a name' }, { status: 400 });
       }
       if (typeof ingredient.calories !== 'number' || ingredient.calories < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid calories' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid calories' }, { status: 400 });
       }
       if (typeof ingredient.protein !== 'number' || ingredient.protein < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid protein' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid protein' }, { status: 400 });
       }
       if (typeof ingredient.carbs !== 'number' || ingredient.carbs < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid carbs' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid carbs' }, { status: 400 });
       }
       if (typeof ingredient.fat !== 'number' || ingredient.fat < 0) {
-        return NextResponse.json({ error: 'Each ingredient must have valid fat' }, { status: 400 })
+        return NextResponse.json({ error: 'Each ingredient must have valid fat' }, { status: 400 });
       }
     }
 
     // Calculate total macros from ingredients
-    const totalCalories = body.ingredients.reduce((sum, ing) => sum + ing.calories, 0)
-    const totalProtein = body.ingredients.reduce((sum, ing) => sum + ing.protein, 0)
-    const totalCarbs = body.ingredients.reduce((sum, ing) => sum + ing.carbs, 0)
-    const totalFat = body.ingredients.reduce((sum, ing) => sum + ing.fat, 0)
+    const totalCalories = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.calories, 0));
+    const totalProtein = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.protein, 0) * 10) / 10;
+    const totalCarbs = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.carbs, 0) * 10) / 10;
+    const totalFat = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.fat, 0) * 10) / 10;
+
+    // Convert ingredients to the normalized format
+    const normalizedIngredients: IngredientWithNutrition[] = body.ingredients.map(ing => ({
+      name: ing.name,
+      amount: ing.amount || '1',
+      unit: ing.unit || 'serving',
+      category: ing.category || 'other',
+      calories: ing.calories,
+      protein: ing.protein,
+      carbs: ing.carbs,
+      fat: ing.fat,
+    }));
 
     // Update the meal
     const { data: updatedMeal, error: updateError } = await supabase
-      .from('validated_meals_by_user')
+      .from('meals')
       .update({
-        meal_name: body.meal_name.trim(),
+        name: body.meal_name.trim(),
+        name_normalized: normalizeForMatching(body.meal_name),
+        meal_type: body.meal_type || 'dinner',
+        ingredients: normalizedIngredients,
+        instructions: body.instructions || [],
         calories: totalCalories,
         protein: totalProtein,
         carbs: totalCarbs,
         fat: totalFat,
-        ingredients: body.ingredients,
+        prep_time_minutes: body.prep_time || 15,
+        prep_instructions: body.meal_prep_instructions || null,
+        is_public: body.share_with_community || false,
         image_url: body.image_url || null,
-        share_with_community: body.share_with_community || false,
-        prep_time: body.prep_time || null,
-        meal_prep_instructions: body.meal_prep_instructions || null,
+        is_nutrition_edited_by_user: true,
       })
       .eq('id', body.id)
-      .eq('user_id', user.id)
+      .eq('source_user_id', user.id)
       .eq('is_user_created', true)
       .select()
-      .single()
+      .single();
 
     if (updateError) {
-      console.error('Error updating custom meal:', updateError)
-      return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 })
+      console.error('Error updating custom meal:', updateError);
+      return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 });
     }
 
     // Handle social feed post based on sharing setting
@@ -230,7 +316,7 @@ export async function PUT(request: Request) {
       .from('user_profiles')
       .select('social_feed_enabled')
       .eq('id', user.id)
-      .single()
+      .single();
 
     if (body.share_with_community && profile?.social_feed_enabled) {
       // Create or update feed post
@@ -238,19 +324,19 @@ export async function PUT(request: Request) {
         user_id: user.id,
         source_type: 'custom_meal',
         source_meal_id: updatedMeal.id,
-        meal_name: updatedMeal.meal_name,
+        meal_name: updatedMeal.name,
         calories: updatedMeal.calories,
         protein: updatedMeal.protein,
         carbs: updatedMeal.carbs,
         fat: updatedMeal.fat,
         image_url: updatedMeal.image_url,
-        prep_time: updatedMeal.prep_time,
+        prep_time: updatedMeal.prep_time_minutes,
         ingredients: updatedMeal.ingredients,
-        meal_prep_instructions: updatedMeal.meal_prep_instructions,
+        meal_prep_instructions: updatedMeal.prep_instructions,
       }, {
         onConflict: 'user_id,source_type,source_meal_id',
         ignoreDuplicates: false,
-      })
+      });
     } else {
       // Remove from feed if sharing disabled
       await supabase
@@ -258,48 +344,72 @@ export async function PUT(request: Request) {
         .delete()
         .eq('user_id', user.id)
         .eq('source_type', 'custom_meal')
-        .eq('source_meal_id', updatedMeal.id)
+        .eq('source_meal_id', updatedMeal.id);
     }
 
-    return NextResponse.json(updatedMeal)
+    // Return in a format compatible with the old API for the client
+    return NextResponse.json({
+      id: updatedMeal.id,
+      meal_name: updatedMeal.name,
+      calories: updatedMeal.calories,
+      protein: updatedMeal.protein,
+      carbs: updatedMeal.carbs,
+      fat: updatedMeal.fat,
+      ingredients: updatedMeal.ingredients,
+      is_user_created: updatedMeal.is_user_created,
+      image_url: updatedMeal.image_url,
+      share_with_community: updatedMeal.is_public,
+      prep_time: updatedMeal.prep_time_minutes,
+      meal_prep_instructions: updatedMeal.prep_instructions,
+      created_at: updatedMeal.created_at,
+    });
   } catch (error) {
-    console.error('Error updating custom meal:', error)
-    return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 })
+    console.error('Error updating custom meal:', error);
+    return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: Request) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
   // Get current user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const { searchParams } = new URL(request.url)
-    const mealId = searchParams.get('id')
+    const { searchParams } = new URL(request.url);
+    const mealId = searchParams.get('id');
 
     if (!mealId) {
-      return NextResponse.json({ error: 'Meal ID is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Meal ID is required' }, { status: 400 });
     }
 
+    // Delete from social feed first (if exists)
+    await supabase
+      .from('social_feed_posts')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('source_type', 'custom_meal')
+      .eq('source_meal_id', mealId);
+
+    // Delete the meal
     const { error: deleteError } = await supabase
-      .from('validated_meals_by_user')
+      .from('meals')
       .delete()
       .eq('id', mealId)
-      .eq('user_id', user.id)
-      .eq('is_user_created', true)
+      .eq('source_user_id', user.id)
+      .eq('is_user_created', true);
 
     if (deleteError) {
-      console.error('Error deleting custom meal:', deleteError)
-      return NextResponse.json({ error: 'Failed to delete custom meal' }, { status: 500 })
+      console.error('Error deleting custom meal:', deleteError);
+      return NextResponse.json({ error: 'Failed to delete custom meal' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting custom meal:', error)
-    return NextResponse.json({ error: 'Failed to delete custom meal' }, { status: 500 })
+    console.error('Error deleting custom meal:', error);
+    return NextResponse.json({ error: 'Failed to delete custom meal' }, { status: 500 });
   }
 }

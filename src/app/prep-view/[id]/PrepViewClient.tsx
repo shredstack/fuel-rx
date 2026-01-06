@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { PrepSession, PrepStyle, DayOfWeek, MealType, DailyAssembly, DayPlan } from '@/lib/types'
+import type { PrepSession, PrepStyle, DayOfWeek, MealType, DailyAssembly, DayPlan, DayPlanNormalized } from '@/lib/types'
 import { PREP_STYLE_LABELS } from '@/lib/types'
 import {
   groupPrepDataByMealType,
@@ -19,23 +19,52 @@ interface PrepViewClientProps {
   mealPlan: {
     id: string
     week_start_date: string
-    plan_data: DayPlan[] | null  // plan_data is directly an array of DayPlan
   }
+  days: DayPlanNormalized[]
   prepSessions: PrepSession[]
   prepStyle: string
   dailyAssembly?: DailyAssembly
 }
 
+// Helper function to convert DayPlanNormalized to legacy DayPlan format
+function convertToLegacyDayPlan(day: DayPlanNormalized): DayPlan {
+  return {
+    day: day.day,
+    meals: day.meals.map(slot => ({
+      name: slot.meal.name,
+      type: slot.meal.meal_type,
+      prep_time_minutes: slot.meal.prep_time_minutes,
+      ingredients: slot.meal.ingredients,
+      instructions: slot.meal.instructions,
+      macros: {
+        calories: slot.meal.calories,
+        protein: slot.meal.protein,
+        carbs: slot.meal.carbs,
+        fat: slot.meal.fat,
+      },
+    })),
+    daily_totals: day.daily_totals,
+  }
+}
+
 export default function PrepViewClient({
   mealPlan,
-  prepSessions,
+  days,
+  prepSessions: initialPrepSessions,
   prepStyle,
-  dailyAssembly,
+  dailyAssembly: initialDailyAssembly,
 }: PrepViewClientProps) {
   const supabase = createClient()
 
-  // Get meal plan days from plan_data (plan_data is directly the array of days)
-  const mealPlanDays: DayPlan[] = mealPlan.plan_data || []
+  // Convert normalized days to legacy DayPlan format for prep utilities
+  const mealPlanDays: DayPlan[] = days.map(convertToLegacyDayPlan)
+
+  // Note: We no longer trigger LLM regeneration when prep sessions are missing.
+  // Instead, groupPrepDataByMealType() creates prep tasks directly from meal data.
+  // This makes the prep view load instantly after meal swaps instead of waiting for LLM.
+  // The meal's instructions and ingredients are already stored in the database.
+  const prepSessions = initialPrepSessions
+  const dailyAssembly = initialDailyAssembly
 
   // Separate batch sessions from day-of sessions
   const batchSessions = prepSessions.filter(s => s.session_type === 'weekly_batch')
@@ -47,7 +76,7 @@ export default function PrepViewClient({
   // Track completed tasks - initialize from database
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(() => {
     const completed = new Set<string>()
-    prepSessions.forEach(session => {
+    initialPrepSessions.forEach(session => {
       const tasks = getSessionTasks(session)
       tasks.forEach(task => {
         if (task.completed) {
@@ -146,53 +175,42 @@ export default function PrepViewClient({
           </div>
         )}
 
-        {/* Empty State */}
-        {prepSessions.length === 0 ? (
-          <div className="card text-center py-12">
-            <p className="text-gray-600 mb-4">
-              No prep sessions found for this meal plan.
-            </p>
-            <p className="text-sm text-gray-500">
-              Prep sessions are generated automatically when you create a meal plan.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Batch Prep Sessions (if any) */}
-            {batchSessions.length > 0 && (
-              <div className="space-y-4">
-                {batchSessions.map(session => (
-                  <BatchPrepSection
-                    key={session.id}
-                    session={session}
-                    completedTasks={completedTasks}
-                    completedSteps={completedSteps}
-                    onToggleTaskComplete={toggleTaskComplete}
-                    onToggleStepComplete={toggleStepComplete}
-                    defaultExpanded={batchSessions.length === 1}
-                  />
-                ))}
-              </div>
-            )}
+        {/* Main Content */}
+        <div className="space-y-4">
+          {/* Batch Prep Sessions (if any) */}
+          {batchSessions.length > 0 && (
+            <div className="space-y-4">
+              {batchSessions.map(session => (
+                <BatchPrepSection
+                  key={session.id}
+                  session={session}
+                  completedTasks={completedTasks}
+                  completedSteps={completedSteps}
+                  onToggleTaskComplete={toggleTaskComplete}
+                  onToggleStepComplete={toggleStepComplete}
+                  defaultExpanded={batchSessions.length === 1}
+                />
+              ))}
+            </div>
+          )}
 
-            {/* Meal Type Sections */}
-            {mealTypeGroups.length > 0 && (
-              <div className="space-y-4">
-                {mealTypeGroups.map((group, index) => (
-                  <MealTypeSection
-                    key={`${group.mealType}-${group.snackNumber || 0}`}
-                    group={group}
-                    completedTasks={completedTasks}
-                    completedSteps={completedSteps}
-                    onToggleTaskComplete={toggleTaskComplete}
-                    onToggleStepComplete={toggleStepComplete}
-                    defaultExpanded={false}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          {/* Meal Type Sections */}
+          {mealTypeGroups.length > 0 && (
+            <div className="space-y-4">
+              {mealTypeGroups.map((group) => (
+                <MealTypeSection
+                  key={`${group.mealType}-${group.snackNumber || 0}`}
+                  group={group}
+                  completedTasks={completedTasks}
+                  completedSteps={completedSteps}
+                  onToggleTaskComplete={toggleTaskComplete}
+                  onToggleStepComplete={toggleStepComplete}
+                  defaultExpanded={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Daily Assembly Guide - shown for batch prep and night-before styles */}
         {dailyAssembly && Object.keys(dailyAssembly).length > 0 && (prepStyle === 'traditional_batch' || prepStyle === 'night_before') && (
