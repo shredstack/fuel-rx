@@ -9,6 +9,7 @@ import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexit
 import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
+import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 
 interface Props {
   profile: UserProfile | null
@@ -18,7 +19,21 @@ interface Props {
     created_at: string
     is_favorite: boolean
     title: string | null
+    theme?: { display_name: string; emoji: string | null } | null
   } | null
+}
+
+function getMealPlanTitle(plan: Props['recentPlan']): string {
+  if (!plan) return 'Meal Plan'
+  if (plan.title) return plan.title
+  if (plan.theme) {
+    return `${plan.theme.emoji || ''} ${plan.theme.display_name} Meal Plan`.trim()
+  }
+  return `Week of ${new Date(plan.week_start_date).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })}`
 }
 
 // Progress stage configuration for visual feedback (updated for Inngest job statuses)
@@ -49,6 +64,9 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const [showVarietyModal, setShowVarietyModal] = useState(false)
   const [showOnboardingWarning, setShowOnboardingWarning] = useState(false)
 
+  // Theme selection state
+  const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
@@ -71,9 +89,17 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
     }
 
     try {
+      // Determine themeSelection value to send to API
+      const themeSelectionValue =
+        themeSelection.type === 'surprise' ? 'surprise' :
+        themeSelection.type === 'none' ? 'none' :
+        themeSelection.themeId
+
       // Start the job
       const startResponse = await fetch('/api/generate-meal-plan', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ themeSelection: themeSelectionValue }),
       })
 
       if (!startResponse.ok) {
@@ -178,10 +204,22 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
               Generate New Meal Plan
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-4">
               Create a new 7-day meal plan based on your macro targets and preferences.
-              All meals feature healthy, whole foods.
             </p>
+
+            {/* Theme selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Choose a theme
+              </label>
+              <ThemeSelector
+                value={themeSelection}
+                onChange={setThemeSelection}
+                disabled={generating}
+              />
+            </div>
+
             <button
               onClick={handleGeneratePlan}
               disabled={generating}
@@ -258,12 +296,15 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
 
           {/* Recent plan card */}
           <div className="card">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">
-              {recentPlan ? (recentPlan.title || 'Your Latest Plan') : 'No Plans Yet'}
-            </h3>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
+              {recentPlan ? 'Your Latest Plan' : 'No Plans Yet'}
+            </p>
             {recentPlan ? (
               <>
-                <p className="text-gray-600 mb-2">
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                  {getMealPlanTitle(recentPlan)}
+                </h3>
+                <p className="text-gray-600 mb-1">
                   Week of {new Date(recentPlan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
@@ -295,7 +336,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                 </div>
               </>
             ) : (
-              <p className="text-gray-600">
+              <p className="text-gray-600 mt-2">
                 Generate your first meal plan to get started!
               </p>
             )}

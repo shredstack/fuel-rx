@@ -7,8 +7,107 @@ import {
   generateGroceryListFromCoreIngredients,
   organizeMealsIntoDays,
 } from '@/lib/claude';
-import type { UserProfile, IngredientCategory } from '@/lib/types';
+import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme } from '@/lib/types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
+
+// Detect cuisine patterns from disliked meals to avoid similar themes
+function detectDislikedCuisinePatterns(dislikedMeals: string[]): string[] {
+  const cuisineKeywords: Record<string, string[]> = {
+    'asian': ['teriyaki', 'stir-fry', 'stir fry', 'soy', 'ginger', 'sesame', 'rice bowl', 'noodle', 'thai', 'chinese', 'japanese', 'korean'],
+    'mediterranean': ['greek', 'mediterranean', 'feta', 'olive', 'hummus', 'pita', 'tzatziki', 'italian', 'tuscan'],
+    'mexican': ['taco', 'burrito', 'fajita', 'mexican', 'chipotle', 'cilantro lime', 'salsa', 'enchilada', 'quesadilla'],
+    'middle eastern': ['shawarma', 'falafel', 'tahini', 'za\'atar', 'kebab', 'kofta', 'hummus'],
+    'tropical': ['hawaiian', 'poke', 'coconut', 'mango', 'pineapple', 'jerk'],
+  };
+
+  const detectedCuisines = new Set<string>();
+  const lowerDisliked = dislikedMeals.map(m => m.toLowerCase());
+
+  for (const [cuisine, keywords] of Object.entries(cuisineKeywords)) {
+    const matches = lowerDisliked.filter(meal =>
+      keywords.some(keyword => meal.includes(keyword))
+    );
+    if (matches.length >= 2) {
+      detectedCuisines.add(cuisine);
+    }
+  }
+
+  return Array.from(detectedCuisines);
+}
+
+// Check if theme is compatible with user's dietary preferences
+function isThemeCompatible(theme: MealPlanTheme, userDietaryPrefs: string[]): boolean {
+  if (userDietaryPrefs.includes('no_restrictions') || userDietaryPrefs.length === 0) {
+    return true;
+  }
+
+  for (const diet of userDietaryPrefs) {
+    if (theme.incompatible_diets?.includes(diet)) {
+      return false;
+    }
+  }
+
+  if (theme.compatible_diets && theme.compatible_diets.length > 0) {
+    const hasCompatibleDiet = userDietaryPrefs.some(diet =>
+      theme.compatible_diets.includes(diet)
+    );
+    if (!hasCompatibleDiet) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Calculate theme score for selection
+function calculateThemeScore(theme: MealPlanTheme, context: ThemeSelectionContext): number {
+  let score = 50;
+
+  if (context.preferredThemeIds.includes(theme.id)) {
+    score += 30;
+  }
+
+  if (theme.peak_seasons && theme.peak_seasons.length > 0) {
+    if (theme.peak_seasons.includes(context.currentMonth)) {
+      score += 20;
+    }
+  }
+
+  if (context.dislikedMealPatterns && context.dislikedMealPatterns.length > 0) {
+    const themeCuisineHints = [
+      theme.name.toLowerCase(),
+      theme.display_name.toLowerCase(),
+      theme.description.toLowerCase(),
+    ].join(' ');
+
+    for (const pattern of context.dislikedMealPatterns) {
+      if (themeCuisineHints.includes(pattern.toLowerCase())) {
+        score -= 15;
+      }
+    }
+  }
+
+  return score;
+}
+
+// Build selection reason for display
+function buildSelectionReason(theme: MealPlanTheme, context: ThemeSelectionContext): string {
+  const reasons: string[] = [];
+
+  if (context.preferredThemeIds.includes(theme.id)) {
+    reasons.push('one of your preferred themes');
+  }
+
+  if (theme.peak_seasons?.includes(context.currentMonth)) {
+    reasons.push('perfect for this time of year');
+  }
+
+  if (reasons.length === 0) {
+    reasons.push('selected for variety');
+  }
+
+  return reasons.join(' and ');
+}
 
 // Create a service-role client for Inngest (no cookie context available)
 function createServiceRoleClient() {
@@ -64,18 +163,35 @@ export const generateMealPlanFunction = inngest.createFunction(
   },
   { event: 'meal-plan/generate' },
   async ({ event, step }) => {
-    const { jobId, userId } = event.data as { jobId: string; userId: string };
+    const { jobId, userId, themeSelection } = event.data as {
+      jobId: string;
+      userId: string;
+      themeSelection?: 'surprise' | 'none' | string; // 'surprise' = auto, 'none' = no theme, or specific theme ID
+    };
 
     try {
-      // Step 1: Fetch all required data
+      // Step 1: Fetch all required data including theme-related data
       const userData = await step.run('fetch-user-data', async () => {
         const supabase = createServiceRoleClient();
-        const [profileResult, recentPlansResult, mealPrefsResult, ingredientPrefsResult, validatedMealsResult] = await Promise.all([
+        const [
+          profileResult,
+          recentPlansResult,
+          mealPrefsResult,
+          ingredientPrefsResult,
+          validatedMealsResult,
+          themesResult,
+          themePrefsResult,
+          recentThemesResult,
+        ] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', userId).single(),
           supabase.from('meal_plans').select('plan_data').eq('user_id', userId).order('created_at', { ascending: false }).limit(3),
           supabase.from('meal_preferences').select('meal_name, preference').eq('user_id', userId),
           supabase.from('ingredient_preferences_with_details').select('ingredient_name, preference').eq('user_id', userId),
           supabase.from('validated_meals_by_user').select('meal_name, calories, protein, carbs, fat').eq('user_id', userId),
+          // Theme-related queries
+          supabase.from('meal_plan_themes').select('*').eq('is_active', true),
+          supabase.from('user_theme_preferences').select('theme_id, preference').eq('user_id', userId),
+          supabase.from('meal_plans').select('theme_id').eq('user_id', userId).not('theme_id', 'is', null).order('created_at', { ascending: false }).limit(3),
         ]);
 
         if (profileResult.error || !profileResult.data) {
@@ -116,39 +232,139 @@ export const generateMealPlanFunction = inngest.createFunction(
           fat: m.fat,
         })) || [];
 
+        // Process theme data
+        const allThemes = (themesResult.data || []) as MealPlanTheme[];
+        const themePrefs = {
+          preferred: themePrefsResult.data?.filter(p => p.preference === 'preferred').map(p => p.theme_id) || [],
+          blocked: themePrefsResult.data?.filter(p => p.preference === 'blocked').map(p => p.theme_id) || [],
+        };
+        const recentThemeIds = (recentThemesResult.data || [])
+          .map(mp => mp.theme_id)
+          .filter((id): id is string => id !== null);
+
+        // Select theme based on themeSelection parameter
+        let selectedTheme: SelectedTheme | null = null;
+
+        // themeSelection: 'none' = no theme, 'surprise'/undefined = auto-select, otherwise = specific theme ID
+        if (themeSelection === 'none') {
+          // User explicitly chose no theme
+          console.log('[Theme Selection] User selected no theme (classic mode)');
+          selectedTheme = null;
+        } else if (themeSelection && themeSelection !== 'surprise') {
+          // User selected a specific theme by ID
+          const specificTheme = allThemes.find(t => t.id === themeSelection);
+          if (specificTheme) {
+            selectedTheme = {
+              theme: specificTheme,
+              selectionReason: 'you selected this theme',
+            };
+            console.log('[Theme Selection] User selected specific theme:', specificTheme.display_name, specificTheme.id);
+          } else {
+            console.warn('[Theme Selection] Specified theme not found, falling back to auto-selection');
+          }
+        }
+
+        // Auto-select if no specific theme was set (surprise mode or fallback)
+        if (selectedTheme === null && themeSelection !== 'none' && allThemes.length > 0) {
+          const userDietaryPrefs = profile.dietary_prefs || ['no_restrictions'];
+          const dislikedCuisinePatterns = detectDislikedCuisinePatterns(mealPreferences.disliked);
+          const currentMonth = new Date().getMonth() + 1;
+
+          const context: ThemeSelectionContext = {
+            userDietaryPrefs,
+            recentThemeIds,
+            preferredThemeIds: themePrefs.preferred,
+            blockedThemeIds: themePrefs.blocked,
+            dislikedMealPatterns: dislikedCuisinePatterns,
+            currentMonth,
+          };
+
+          // Filter eligible themes
+          let eligibleThemes = allThemes.filter(theme => {
+            if (!isThemeCompatible(theme, userDietaryPrefs)) return false;
+            if (recentThemeIds.includes(theme.id)) return false;
+            if (themePrefs.blocked.includes(theme.id)) return false;
+            return true;
+          });
+
+          // Relax constraints if no themes left
+          if (eligibleThemes.length === 0) {
+            eligibleThemes = allThemes.filter(theme =>
+              isThemeCompatible(theme, userDietaryPrefs) &&
+              !themePrefs.blocked.includes(theme.id)
+            );
+          }
+
+          if (eligibleThemes.length === 0) {
+            eligibleThemes = allThemes.filter(theme =>
+              isThemeCompatible(theme, userDietaryPrefs)
+            );
+          }
+
+          if (eligibleThemes.length > 0) {
+            // Score and sort themes
+            const scoredThemes = eligibleThemes.map(theme => ({
+              theme,
+              score: calculateThemeScore(theme, context),
+            }));
+            scoredThemes.sort((a, b) => b.score - a.score);
+
+            // Add randomness among top themes
+            const topThemes = scoredThemes.slice(0, Math.min(3, scoredThemes.length));
+            const selectedIndex = Math.floor(Math.random() * topThemes.length);
+            const selected = topThemes[selectedIndex];
+
+            selectedTheme = {
+              theme: selected.theme,
+              selectionReason: buildSelectionReason(selected.theme, context),
+            };
+
+            console.log('[Theme Selection] Auto-selected theme:', selectedTheme.theme.display_name, selectedTheme.theme.id);
+          }
+        }
+
         return {
           profile,
           recentMealNames,
           mealPreferences,
           ingredientPreferences,
           validatedMeals,
+          selectedTheme,
         };
       });
 
       // Step 2: Generate core ingredients (status update is INSIDE the step)
       const coreIngredients = await step.run('generate-core-ingredients', async () => {
         // Update status at the START of this step (only runs once per step execution)
-        await updateJobStatus(jobId, 'generating_ingredients', 'Selecting ingredients for your week...');
+        const themeMessage = userData.selectedTheme
+          ? `Selecting ${userData.selectedTheme.theme.display_name} ingredients...`
+          : 'Selecting ingredients for your week...';
+        await updateJobStatus(jobId, 'generating_ingredients', themeMessage);
 
         return await generateCoreIngredients(
           userData.profile,
           userId,
           userData.recentMealNames,
           userData.mealPreferences,
-          userData.ingredientPreferences
+          userData.ingredientPreferences,
+          userData.selectedTheme?.theme
         );
       });
 
       // Step 3: Generate meals from core ingredients
       const mealsResult = await step.run('generate-meals', async () => {
-        await updateJobStatus(jobId, 'generating_meals', 'Creating your 7-day meal plan...');
+        const themeMessage = userData.selectedTheme
+          ? `Creating your ${userData.selectedTheme.theme.display_name} meal plan...`
+          : 'Creating your 7-day meal plan...';
+        await updateJobStatus(jobId, 'generating_meals', themeMessage);
 
         return await generateMealsFromCoreIngredients(
           userData.profile,
           coreIngredients,
           userId,
           userData.mealPreferences,
-          userData.validatedMeals
+          userData.validatedMeals,
+          userData.selectedTheme?.theme
         );
       });
 
@@ -232,7 +448,7 @@ export const generateMealPlanFunction = inngest.createFunction(
         weekStart.setDate(today.getDate() + daysUntilMonday);
         const weekStartDate = weekStart.toISOString().split('T')[0];
 
-        // Save meal plan
+        // Save meal plan with theme_id
         const { data: savedPlan, error: saveError } = await supabase
           .from('meal_plans')
           .insert({
@@ -241,6 +457,7 @@ export const generateMealPlanFunction = inngest.createFunction(
             plan_data: days,
             grocery_list: groceryList,
             core_ingredients: coreIngredients,
+            theme_id: userData.selectedTheme?.theme.id || null,
             is_favorite: false,
           })
           .select()

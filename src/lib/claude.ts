@@ -21,6 +21,8 @@ import type {
   MealComplexity,
   PrepSessionType,
   HouseholdServingsPrefs,
+  MealPlanTheme,
+  ThemeIngredientGuidance,
 } from './types';
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS, normalizeCoreIngredients } from './types';
 import { createClient } from './supabase/server';
@@ -784,7 +786,8 @@ export async function generateCoreIngredients(
   userId: string,
   recentMealNames?: string[],
   mealPreferences?: { liked: string[]; disliked: string[] },
-  ingredientPreferences?: { liked: string[]; disliked: string[] }
+  ingredientPreferences?: { liked: string[]; disliked: string[] },
+  theme?: MealPlanTheme
 ): Promise<CoreIngredients> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -878,6 +881,40 @@ ${ingredientPreferences.disliked.map(i => `- ${i}`).join('\n')}
     }
   }
 
+  // Build theme section if a theme is provided
+  let themeSection = '';
+  if (theme) {
+    const guidance = theme.ingredient_guidance as ThemeIngredientGuidance;
+    themeSection = `
+## 🎨 THIS WEEK'S THEME: ${theme.display_name} ${theme.emoji || ''}
+
+**CRITICAL: You MUST select ingredients that fit this theme.**
+
+### Theme Description
+${theme.description}
+
+### Theme Flavor Profile
+${guidance.flavor_profile}
+
+### Suggested Ingredients by Category
+Use these as your PRIMARY selection pool. You may add complementary ingredients, but the majority should come from this list:
+
+**Proteins**: ${guidance.proteins.join(', ')}
+**Vegetables**: ${guidance.vegetables.join(', ')}
+**Fruits**: ${guidance.fruits.join(', ')}
+**Grains**: ${guidance.grains.join(', ')}
+**Healthy Fats**: ${guidance.fats.join(', ')}
+**Key Seasonings**: ${guidance.seasonings.join(', ')}
+
+### Selection Rules
+1. At least 70% of proteins should come from the theme's suggested list
+2. At least 60% of vegetables should come from the theme's suggested list
+3. Seasonings should heavily favor the theme's flavor profile
+4. The overall ingredient selection should unmistakably represent "${theme.display_name}"
+
+`;
+  }
+
   // Fetch cached nutrition data for common ingredients to provide as reference
   const commonIngredients = [
     'chicken breast', 'ground beef', 'salmon', 'eggs', 'greek yogurt',
@@ -888,7 +925,7 @@ ${ingredientPreferences.disliked.map(i => `- ${i}`).join('\n')}
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
   const prompt = `You are a meal planning assistant for CrossFit athletes. Your job is to select a focused set of core ingredients for one week of meals that will MEET THE USER'S CALORIE AND MACRO TARGETS.
-${exclusionsSection}${preferencesSection}${ingredientPreferencesSection}
+${themeSection}${exclusionsSection}${preferencesSection}${ingredientPreferencesSection}
 ## CRITICAL: WEEKLY CALORIE TARGET
 The user needs approximately ${weeklyCalories} calories for the week (${profile.target_calories} per day).
 - Weekly Protein Target: ${weeklyProtein}g (${profile.target_protein}g/day)
@@ -970,7 +1007,8 @@ export async function generateMealsFromCoreIngredients(
   coreIngredients: CoreIngredients,
   userId: string,
   mealPreferences?: { liked: string[]; disliked: string[] },
-  validatedMeals?: ValidatedMealMacros[]
+  validatedMeals?: ValidatedMealMacros[],
+  theme?: MealPlanTheme
 ): Promise<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -1094,10 +1132,31 @@ The user has ${snacksPerDay} snack slots per day. You MUST generate ${snacksPerD
   const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
   const householdSection = buildHouseholdContextSection(householdServings);
 
+  // Build theme styling section if a theme is provided
+  let themeStyleSection = '';
+  if (theme) {
+    themeStyleSection = `
+## 🎨 THEME STYLING: ${theme.display_name} ${theme.emoji || ''}
+
+### Cooking Style
+${theme.cooking_style_guidance}
+
+${theme.meal_name_style ? `### Meal Naming
+${theme.meal_name_style}` : ''}
+
+### Requirements
+- All meal names should clearly reflect the "${theme.display_name}" theme
+- Cooking methods should align with the theme's style
+- Flavor combinations should be cohesive with the theme
+- The week should feel like a curated "${theme.display_name}" meal plan
+
+`;
+  }
+
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
-${preferencesSection}${validatedMealsSection}${householdSection}
+${themeStyleSection}${preferencesSection}${validatedMealsSection}${householdSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
 ${nutritionReference}
@@ -2287,7 +2346,8 @@ export async function generateMealPlanTwoStage(
   recentMealNames?: string[],
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
-  ingredientPreferences?: { liked: string[]; disliked: string[] }
+  ingredientPreferences?: { liked: string[]; disliked: string[] },
+  selectedTheme?: MealPlanTheme
 ): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
@@ -2302,6 +2362,7 @@ export async function generateMealPlanTwoStage(
     mealPreferences,
     validatedMeals,
     ingredientPreferences,
+    selectedTheme,
     () => {} // No-op progress callback
   );
 }
@@ -2318,6 +2379,7 @@ export async function generateMealPlanWithProgress(
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
   ingredientPreferences?: { liked: string[]; disliked: string[] },
+  selectedTheme?: MealPlanTheme,
   onProgress?: ProgressCallback
 ): Promise<{
   days: DayPlan[];
@@ -2327,25 +2389,31 @@ export async function generateMealPlanWithProgress(
 }> {
   const progress = onProgress || (() => {});
 
-  // Stage 1: Generate core ingredients
-  progress('ingredients', 'Selecting ingredients based on your macros...');
+  // Stage 1: Generate core ingredients (with theme)
+  progress('ingredients', selectedTheme
+    ? `Selecting ${selectedTheme.display_name} ingredients...`
+    : 'Selecting ingredients based on your macros...');
   const coreIngredients = await generateCoreIngredients(
     profile,
     userId,
     recentMealNames,
     mealPreferences,
-    ingredientPreferences
+    ingredientPreferences,
+    selectedTheme
   );
   progress('ingredients_done', 'Ingredients selected!');
 
-  // Stage 2: Generate meals from core ingredients
-  progress('meals', 'Creating your 7-day meal plan...');
+  // Stage 2: Generate meals from core ingredients (with theme)
+  progress('meals', selectedTheme
+    ? `Creating your ${selectedTheme.display_name} meal plan...`
+    : 'Creating your 7-day meal plan...');
   const mealsResult = await generateMealsFromCoreIngredients(
     profile,
     coreIngredients,
     userId,
     mealPreferences,
-    validatedMeals
+    validatedMeals,
+    selectedTheme
   );
   progress('meals_done', 'Meals created!');
 

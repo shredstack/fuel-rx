@@ -11,6 +11,19 @@ interface MealPlanSummary {
   title: string | null
   is_favorite: boolean
   created_at: string
+  theme?: { display_name: string; emoji: string | null } | null
+}
+
+function getMealPlanTitle(plan: MealPlanSummary): string {
+  if (plan.title) return plan.title
+  if (plan.theme) {
+    return `${plan.theme.emoji || ''} ${plan.theme.display_name} Meal Plan`.trim()
+  }
+  return `Week of ${new Date(plan.week_start_date).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })}`
 }
 
 interface Props {
@@ -108,11 +121,7 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {plan.title || `Week of ${new Date(plan.week_start_date).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}`}
+                      {getMealPlanTitle(plan)}
                     </h3>
                     {plan.is_favorite && (
                       <svg

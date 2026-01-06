@@ -676,3 +676,66 @@ export interface CoreIngredientWithQuantity {
   estimatedWeeklyCarbs: number;
   estimatedWeeklyFat: number;
 }
+
+// ============================================
+// Theme Types
+// ============================================
+
+export interface ThemeIngredientGuidance {
+  proteins: string[];
+  vegetables: string[];
+  fruits: string[];
+  grains: string[];
+  fats: string[];
+  seasonings: string[];
+  flavor_profile: string;
+}
+
+export interface MealPlanTheme {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  emoji: string | null;
+  ingredient_guidance: ThemeIngredientGuidance;
+  cooking_style_guidance: string;
+  meal_name_style: string | null;
+  compatible_diets: string[];
+  incompatible_diets: string[];
+  peak_seasons: number[];
+  is_system_theme: boolean;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ThemePreferenceType = 'preferred' | 'blocked';
+
+export interface UserThemePreference {
+  id: string;
+  user_id: string;
+  theme_id: string;
+  preference: ThemePreferenceType;
+  created_at: string;
+}
+
+export interface UserThemePreferenceWithTheme extends UserThemePreference {
+  theme: MealPlanTheme;
+}
+
+// For theme selection logic
+export interface ThemeSelectionContext {
+  userDietaryPrefs: string[];
+  recentThemeIds: string[]; // Last 2-3 theme IDs to exclude
+  preferredThemeIds: string[];
+  blockedThemeIds: string[];
+  dislikedMealPatterns?: string[]; // Cuisines to avoid based on disliked meals
+  currentMonth: number; // 1-12
+  userOverrideThemeId?: string; // If user explicitly selected a theme
+}
+
+export interface SelectedTheme {
+  theme: MealPlanTheme;
+  selectionReason: string; // For display/debugging
+}

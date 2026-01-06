@@ -29,16 +29,38 @@ export default async function DashboardPage() {
   // Get most recent meal plan - use maybeSingle() to handle no results gracefully
   const { data: recentPlan } = await supabase
     .from('meal_plans')
-    .select('id, week_start_date, created_at, is_favorite, title')
+    .select('id, week_start_date, created_at, is_favorite, title, theme_id')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
+  // Fetch theme if recent plan has one
+  let recentPlanWithTheme: {
+    id: string
+    week_start_date: string
+    created_at: string
+    is_favorite: boolean
+    title: string | null
+    theme?: { display_name: string; emoji: string | null } | null
+  } | null = recentPlan ? { ...recentPlan, theme: null } : null
+
+  if (recentPlan?.theme_id) {
+    const { data: theme } = await supabase
+      .from('meal_plan_themes')
+      .select('display_name, emoji')
+      .eq('id', recentPlan.theme_id)
+      .single()
+
+    if (theme && recentPlanWithTheme) {
+      recentPlanWithTheme.theme = { display_name: theme.display_name, emoji: theme.emoji }
+    }
+  }
+
   return (
     <DashboardClient
       profile={profile}
-      recentPlan={recentPlan}
+      recentPlan={recentPlanWithTheme}
     />
   )
 }
