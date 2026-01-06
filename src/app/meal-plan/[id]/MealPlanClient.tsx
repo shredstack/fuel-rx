@@ -9,8 +9,6 @@ import type {
   MealPreferenceType,
   Macros,
   CoreIngredients,
-  PrepModeResponse,
-  DailyAssembly,
   IngredientPreferenceType,
   IngredientPreferenceWithDetails,
   MealPlanTheme,
@@ -23,19 +21,9 @@ import type {
   SwapResponse,
 } from '@/lib/types'
 import { normalizeCoreIngredients } from '@/lib/types'
-import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapButton, SwapModal } from '@/components/meal'
-
-interface PrepSessionData {
-  id?: string
-  sessionName: string
-  sessionOrder: number
-  estimatedMinutes: number
-  instructions: string
-  prepItems: PrepModeResponse['prepSessions'][0]['prepItems']
-}
 
 interface Props {
   mealPlan: MealPlanNormalized & {
@@ -85,14 +73,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
   // Ingredient preferences state
   const [ingredientPreferences, setIngredientPreferences] = useState<IngredientPreferencesMap>({})
-
-  // View mode state (meal view vs prep view)
-  const [viewMode, setViewMode] = useState<'meals' | 'prep'>('meals')
-
-  // Prep sessions state
-  const [prepSessions, setPrepSessions] = useState<PrepSessionData[]>([])
-  const [dailyAssembly, setDailyAssembly] = useState<DailyAssembly>({})
-  const [loadingPrepMode, setLoadingPrepMode] = useState(false)
 
   // Swap modal state
   const [swapModalOpen, setSwapModalOpen] = useState(false)
@@ -146,40 +126,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     loadIngredientPreferences()
   }, [])
 
-  // Load prep sessions when switching to prep view
-  useEffect(() => {
-    const loadPrepSessions = async () => {
-      if (viewMode !== 'prep' || prepSessions.length > 0) return
-
-      setLoadingPrepMode(true)
-      try {
-        // First try GET to fetch existing prep sessions
-        const response = await fetch(`/api/meal-plans/${mealPlan.id}/prep-mode`)
-        if (response.ok) {
-          const data = await response.json()
-          if (data.prepSessions && data.prepSessions.length > 0) {
-            setPrepSessions(data.prepSessions)
-            setDailyAssembly(data.dailyAssembly || {})
-          } else {
-            // No existing prep sessions - generate them via POST
-            const generateResponse = await fetch(`/api/meal-plans/${mealPlan.id}/prep-mode`, {
-              method: 'POST',
-            })
-            if (generateResponse.ok) {
-              const generateData = await generateResponse.json()
-              setPrepSessions(generateData.prepSessions || [])
-              setDailyAssembly(generateData.dailyAssembly || {})
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading prep sessions:', error)
-      }
-      setLoadingPrepMode(false)
-    }
-    loadPrepSessions()
-  }, [viewMode, mealPlan.id, prepSessions.length])
-
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay) as DayPlanNormalized | undefined
 
   const sortedMeals = currentDayPlan?.meals.slice().sort((a, b) => {
@@ -211,9 +157,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       days: updatedDays,
       grocery_list: response.groceryList,
     })
-
-    // Clear prep sessions so they regenerate
-    setPrepSessions([])
 
     setSwapModalOpen(false)
     setSwapTarget(null)
@@ -619,145 +562,101 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           </div>
         </div>
 
-        {/* View Mode Toggle */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setViewMode('meals')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              viewMode === 'meals'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Meal View
-          </button>
-          <button
-            onClick={() => setViewMode('prep')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              viewMode === 'prep'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-            </svg>
-            Prep View
-          </button>
-        </div>
-
-        {/* Theme Badge (shown in both views) */}
+        {/* Theme Badge */}
         {mealPlan.theme && (
           <div className="mb-6">
             <ThemeBadge theme={mealPlan.theme} showDetails />
           </div>
         )}
 
-        {/* Core Ingredients (shown in both views) */}
+        {/* Core Ingredients */}
         {mealPlan.core_ingredients && normalizeCoreIngredients(mealPlan.core_ingredients) && (
           <div className="mb-6">
             <CoreIngredientsCard coreIngredients={normalizeCoreIngredients(mealPlan.core_ingredients)!} />
           </div>
         )}
 
-        {viewMode === 'meals' ? (
-          <>
-            {/* Day selector */}
-            <div className="flex overflow-x-auto gap-2 mb-6 pb-2">
-              {mealPlan.days.map((day) => (
-                <button
-                  key={day.day}
-                  onClick={() => setSelectedDay(day.day)}
-                  className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                    selectedDay === day.day
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {DAY_LABELS[day.day]}
-                </button>
-              ))}
-            </div>
+        {/* Day selector */}
+        <div className="flex overflow-x-auto gap-2 mb-6 pb-2">
+          {mealPlan.days.map((day) => (
+            <button
+              key={day.day}
+              onClick={() => setSelectedDay(day.day)}
+              className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                selectedDay === day.day
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              {DAY_LABELS[day.day]}
+            </button>
+          ))}
+        </div>
 
-            {/* Daily totals */}
-            {currentDayPlan && (
-              <div className="card mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  {DAY_LABELS[selectedDay]} Daily Totals
-                </h3>
-                <div className="grid grid-cols-4 gap-4 text-center">
-                  <div>
-                    <p className="text-2xl font-bold text-primary-600">
-                      {Math.round(currentDayPlan.daily_totals.calories)}
-                    </p>
-                    <p className="text-sm text-gray-500">Calories</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-blue-600">
-                      {Math.round(currentDayPlan.daily_totals.protein)}g
-                    </p>
-                    <p className="text-sm text-gray-500">Protein</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-orange-600">
-                      {Math.round(currentDayPlan.daily_totals.carbs)}g
-                    </p>
-                    <p className="text-sm text-gray-500">Carbs</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {Math.round(currentDayPlan.daily_totals.fat)}g
-                    </p>
-                    <p className="text-sm text-gray-500">Fat</p>
-                  </div>
-                </div>
+        {/* Daily totals */}
+        {currentDayPlan && (
+          <div className="card mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              {DAY_LABELS[selectedDay]} Daily Totals
+            </h3>
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold text-primary-600">
+                  {Math.round(currentDayPlan.daily_totals.calories)}
+                </p>
+                <p className="text-sm text-gray-500">Calories</p>
               </div>
-            )}
-
-            {/* Meals */}
-            <div className="space-y-4">
-              {sortedMeals.map((mealSlot, index) => {
-                return (
-                  <MealCard
-                    key={mealSlot.id}
-                    mealSlot={mealSlot}
-                    isExpanded={expandedMeal === mealSlot.id}
-                    onToggle={() =>
-                      setExpandedMeal(
-                        expandedMeal === mealSlot.id ? null : mealSlot.id
-                      )
-                    }
-                    preference={mealPreferences[mealSlot.meal.name]}
-                    onLike={() => toggleMealPreference(mealSlot.meal.name, 'liked')}
-                    onDislike={() => toggleMealPreference(mealSlot.meal.name, 'disliked')}
-                    onMacrosChange={(newMacros) => updateMealMacros(mealSlot, newMacros)}
-                    onIngredientChange={(ingredientIndex, newIngredient) =>
-                      updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
-                    }
-                    mealPlanId={mealPlan.id}
-                    ingredientPreferences={ingredientPreferences}
-                    onIngredientLike={(name) => toggleIngredientPreference(name, 'liked')}
-                    onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
-                    onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
-                  />
-                )
-              })}
+              <div>
+                <p className="text-2xl font-bold text-blue-600">
+                  {Math.round(currentDayPlan.daily_totals.protein)}g
+                </p>
+                <p className="text-sm text-gray-500">Protein</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-600">
+                  {Math.round(currentDayPlan.daily_totals.carbs)}g
+                </p>
+                <p className="text-sm text-gray-500">Carbs</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-purple-600">
+                  {Math.round(currentDayPlan.daily_totals.fat)}g
+                </p>
+                <p className="text-sm text-gray-500">Fat</p>
+              </div>
             </div>
-          </>
-        ) : (
-          /* Prep Mode View */
-          loadingPrepMode ? (
-            <div className="card text-center py-8">
-              <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4" />
-              <p className="text-gray-500">Loading prep mode...</p>
-            </div>
-          ) : (
-            <PrepModeView mealPlanDays={mealPlan.days} prepSessions={prepSessions} dailyAssembly={dailyAssembly} />
-          )
+          </div>
         )}
+
+        {/* Meals */}
+        <div className="space-y-4">
+          {sortedMeals.map((mealSlot) => {
+            return (
+              <MealCard
+                key={mealSlot.id}
+                mealSlot={mealSlot}
+                isExpanded={expandedMeal === mealSlot.id}
+                onToggle={() =>
+                  setExpandedMeal(
+                    expandedMeal === mealSlot.id ? null : mealSlot.id
+                  )
+                }
+                preference={mealPreferences[mealSlot.meal.name]}
+                onLike={() => toggleMealPreference(mealSlot.meal.name, 'liked')}
+                onDislike={() => toggleMealPreference(mealSlot.meal.name, 'disliked')}
+                onMacrosChange={(newMacros) => updateMealMacros(mealSlot, newMacros)}
+                onIngredientChange={(ingredientIndex, newIngredient) =>
+                  updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
+                }
+                mealPlanId={mealPlan.id}
+                ingredientPreferences={ingredientPreferences}
+                onIngredientLike={(name) => toggleIngredientPreference(name, 'liked')}
+                onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
+                onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
+              />
+            )
+          })}
+        </div>
 
         {/* Swap Modal */}
         {swapTarget && (
