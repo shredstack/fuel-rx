@@ -4,11 +4,29 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride, IngredientPreferenceType, IngredientPreferenceWithDetails, MealPlanTheme } from '@/lib/types'
+import type {
+  Ingredient,
+  MealPreferenceType,
+  Macros,
+  CoreIngredients,
+  PrepModeResponse,
+  DailyAssembly,
+  IngredientPreferenceType,
+  IngredientPreferenceWithDetails,
+  MealPlanTheme,
+  MealPlanNormalized,
+  DayPlanNormalized,
+  MealSlot,
+  MealEntity,
+  DayOfWeek,
+  IngredientWithNutrition,
+  SwapResponse,
+} from '@/lib/types'
 import { normalizeCoreIngredients } from '@/lib/types'
 import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
+import { SwapButton, SwapModal } from '@/components/meal'
 
 interface PrepSessionData {
   id?: string
@@ -20,16 +38,8 @@ interface PrepSessionData {
 }
 
 interface Props {
-  mealPlan: {
-    id: string
-    week_start_date: string
-    title: string | null
-    days: DayPlan[]
+  mealPlan: MealPlanNormalized & {
     grocery_list: Ingredient[]
-    is_favorite: boolean
-    created_at: string
-    core_ingredients?: CoreIngredients | null
-    theme?: MealPlanTheme | null
   }
 }
 
@@ -60,7 +70,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [mealPlan, setMealPlan] = useState(initialMealPlan)
-  const [selectedDay, setSelectedDay] = useState<string>(mealPlan.days[0]?.day || 'monday')
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(mealPlan.days[0]?.day || 'monday')
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null)
   const [isFavorite, setIsFavorite] = useState(mealPlan.is_favorite)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
@@ -83,6 +93,13 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   const [prepSessions, setPrepSessions] = useState<PrepSessionData[]>([])
   const [dailyAssembly, setDailyAssembly] = useState<DailyAssembly>({})
   const [loadingPrepMode, setLoadingPrepMode] = useState(false)
+
+  // Swap modal state
+  const [swapModalOpen, setSwapModalOpen] = useState(false)
+  const [swapTarget, setSwapTarget] = useState<{
+    mealSlot: MealSlot
+    day: DayOfWeek
+  } | null>(null)
 
   // Load meal preferences on mount
   useEffect(() => {
@@ -150,11 +167,47 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     loadPrepSessions()
   }, [viewMode, mealPlan.id, prepSessions.length])
 
-  const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay)
+  const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay) as DayPlanNormalized | undefined
 
-  const sortedMeals = currentDayPlan?.meals.sort((a, b) => {
-    return MEAL_TYPE_ORDER.indexOf(a.type) - MEAL_TYPE_ORDER.indexOf(b.type)
+  const sortedMeals = currentDayPlan?.meals.slice().sort((a, b) => {
+    return MEAL_TYPE_ORDER.indexOf(a.meal_type) - MEAL_TYPE_ORDER.indexOf(b.meal_type)
   }) || []
+
+  // Handle opening the swap modal
+  const handleOpenSwapModal = (mealSlot: MealSlot, day: DayOfWeek) => {
+    setSwapTarget({ mealSlot, day })
+    setSwapModalOpen(true)
+  }
+
+  // Handle swap completion
+  const handleSwapComplete = (response: SwapResponse) => {
+    // Update the meal plan state with new data
+    const updatedDays = mealPlan.days.map(dayPlan => {
+      const updatedTotals = response.updatedDailyTotals[dayPlan.day]
+      if (updatedTotals) {
+        return {
+          ...dayPlan,
+          daily_totals: updatedTotals,
+        }
+      }
+      return dayPlan
+    })
+
+    setMealPlan({
+      ...mealPlan,
+      days: updatedDays,
+      grocery_list: response.groceryList,
+    })
+
+    // Clear prep sessions so they regenerate
+    setPrepSessions([])
+
+    setSwapModalOpen(false)
+    setSwapTarget(null)
+
+    // Refresh the page to get the updated meal data
+    router.refresh()
+  }
 
   const toggleFavorite = async () => {
     setTogglingFavorite(true)
@@ -184,72 +237,84 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       .eq('id', mealPlan.id)
 
     if (!error) {
-      setMealPlan({ ...mealPlan, title: titleValue || null })
+      setMealPlan({ ...mealPlan, title: titleValue || undefined })
       setIsEditingTitle(false)
     }
     setSavingTitle(false)
   }
 
-  const updateMealMacros = async (dayIndex: number, mealIndex: number, newMacros: Macros) => {
-    const updatedDays = [...mealPlan.days]
-    const day = updatedDays[dayIndex]
-    const meal = day.meals[mealIndex]
+  const updateMealMacros = async (mealSlot: MealSlot, newMacros: Macros) => {
+    const mealId = mealSlot.meal.id
 
-    // Update the meal's macros
-    meal.macros = { ...newMacros }
+    // Update the meal in the database
+    const { error: mealError } = await supabase
+      .from('meals')
+      .update({
+        calories: newMacros.calories,
+        protein: newMacros.protein,
+        carbs: newMacros.carbs,
+        fat: newMacros.fat,
+        is_nutrition_edited_by_user: true,
+      })
+      .eq('id', mealId)
 
-    // Recalculate daily totals
-    day.daily_totals.calories = day.meals.reduce((sum, m) => sum + m.macros.calories, 0)
-    day.daily_totals.protein = day.meals.reduce((sum, m) => sum + m.macros.protein, 0)
-    day.daily_totals.carbs = day.meals.reduce((sum, m) => sum + m.macros.carbs, 0)
-    day.daily_totals.fat = day.meals.reduce((sum, m) => sum + m.macros.fat, 0)
-
-    // Save to database
-    const { error: planError } = await supabase
-      .from('meal_plans')
-      .update({ plan_data: updatedDays })
-      .eq('id', mealPlan.id)
-
-    if (planError) {
+    if (mealError) {
+      console.error('Error updating meal macros:', mealError)
       return false
     }
 
-    // Save to validated_meals_by_user for future meal plan generation
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase
-        .from('validated_meals_by_user')
-        .upsert({
-          user_id: user.id,
-          meal_name: meal.name,
-          calories: newMacros.calories,
-          protein: newMacros.protein,
-          carbs: newMacros.carbs,
-          fat: newMacros.fat,
-        }, {
-          onConflict: 'user_id,meal_name',
-        })
-    }
+    // Update local state
+    const updatedDays = mealPlan.days.map(day => {
+      const updatedMeals = day.meals.map(slot => {
+        if (slot.meal.id === mealId) {
+          return {
+            ...slot,
+            meal: {
+              ...slot.meal,
+              calories: newMacros.calories,
+              protein: newMacros.protein,
+              carbs: newMacros.carbs,
+              fat: newMacros.fat,
+              is_nutrition_edited_by_user: true,
+            },
+          }
+        }
+        return slot
+      })
+
+      // Recalculate daily totals
+      const daily_totals = updatedMeals.reduce(
+        (totals, slot) => ({
+          calories: totals.calories + slot.meal.calories,
+          protein: totals.protein + slot.meal.protein,
+          carbs: totals.carbs + slot.meal.carbs,
+          fat: totals.fat + slot.meal.fat,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      )
+
+      return {
+        ...day,
+        meals: updatedMeals,
+        daily_totals,
+      }
+    })
 
     setMealPlan({ ...mealPlan, days: updatedDays })
     return true
   }
 
   const updateIngredientInMeal = async (
-    dayIndex: number,
-    mealIndex: number,
+    mealSlot: MealSlot,
     ingredientIndex: number,
-    newIngredient: Ingredient
+    newIngredient: IngredientWithNutrition
   ) => {
-    const updatedDays = [...mealPlan.days]
-    const day = updatedDays[dayIndex]
-    const meal = day.meals[mealIndex]
-
-    // Update the ingredient
-    meal.ingredients[ingredientIndex] = { ...newIngredient }
+    const mealId = mealSlot.meal.id
+    const updatedIngredients = [...mealSlot.meal.ingredients]
+    updatedIngredients[ingredientIndex] = { ...newIngredient }
 
     // Recalculate meal macros from ingredient totals
-    const newMealMacros = meal.ingredients.reduce(
+    const newMealMacros = updatedIngredients.reduce(
       (totals, ing) => ({
         calories: totals.calories + (ing.calories || 0),
         protein: totals.protein + (ing.protein || 0),
@@ -260,60 +325,68 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     )
 
     // Round to reasonable precision
-    meal.macros = {
+    const roundedMacros = {
       calories: Math.round(newMealMacros.calories),
       protein: Math.round(newMealMacros.protein * 10) / 10,
       carbs: Math.round(newMealMacros.carbs * 10) / 10,
       fat: Math.round(newMealMacros.fat * 10) / 10,
     }
 
-    // Recalculate daily totals
-    day.daily_totals = day.meals.reduce(
-      (totals, m) => ({
-        calories: totals.calories + m.macros.calories,
-        protein: totals.protein + m.macros.protein,
-        carbs: totals.carbs + m.macros.carbs,
-        fat: totals.fat + m.macros.fat,
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 }
-    )
+    // Update the meal in the database
+    const { error: mealError } = await supabase
+      .from('meals')
+      .update({
+        ingredients: updatedIngredients,
+        calories: roundedMacros.calories,
+        protein: roundedMacros.protein,
+        carbs: roundedMacros.carbs,
+        fat: roundedMacros.fat,
+        is_nutrition_edited_by_user: true,
+      })
+      .eq('id', mealId)
 
-    // Save to database
-    const { error: planError } = await supabase
-      .from('meal_plans')
-      .update({ plan_data: updatedDays })
-      .eq('id', mealPlan.id)
-
-    if (planError) {
-      console.error('Error saving meal plan:', planError)
+    if (mealError) {
+      console.error('Error updating meal ingredients:', mealError)
       return false
     }
 
-    // Also update validated_meals_by_user with the new macros and ingredient nutrition
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase
-        .from('validated_meals_by_user')
-        .upsert({
-          user_id: user.id,
-          meal_name: meal.name,
-          calories: meal.macros.calories,
-          protein: meal.macros.protein,
-          carbs: meal.macros.carbs,
-          fat: meal.macros.fat,
-          ingredients: meal.ingredients.map(ing => ({
-            name: ing.name,
-            amount: ing.amount,
-            unit: ing.unit,
-            calories: ing.calories || 0,
-            protein: ing.protein || 0,
-            carbs: ing.carbs || 0,
-            fat: ing.fat || 0,
-          })),
-        }, {
-          onConflict: 'user_id,meal_name',
-        })
-    }
+    // Update local state
+    const updatedDays = mealPlan.days.map(day => {
+      const updatedMeals = day.meals.map(slot => {
+        if (slot.meal.id === mealId) {
+          return {
+            ...slot,
+            meal: {
+              ...slot.meal,
+              ingredients: updatedIngredients,
+              calories: roundedMacros.calories,
+              protein: roundedMacros.protein,
+              carbs: roundedMacros.carbs,
+              fat: roundedMacros.fat,
+              is_nutrition_edited_by_user: true,
+            },
+          }
+        }
+        return slot
+      })
+
+      // Recalculate daily totals
+      const daily_totals = updatedMeals.reduce(
+        (totals, slot) => ({
+          calories: totals.calories + slot.meal.calories,
+          protein: totals.protein + slot.meal.protein,
+          carbs: totals.carbs + slot.meal.carbs,
+          fat: totals.fat + slot.meal.fat,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      )
+
+      return {
+        ...day,
+        meals: updatedMeals,
+        daily_totals,
+      }
+    })
 
     setMealPlan({ ...mealPlan, days: updatedDays })
     return true
@@ -633,30 +706,29 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
             {/* Meals */}
             <div className="space-y-4">
-              {sortedMeals.map((meal, index) => {
-                const dayIndex = mealPlan.days.findIndex(d => d.day === selectedDay)
-                const mealIndex = currentDayPlan?.meals.findIndex(m => m === meal) ?? index
+              {sortedMeals.map((mealSlot, index) => {
                 return (
                   <MealCard
-                    key={`${meal.name}-${index}`}
-                    meal={meal}
-                    isExpanded={expandedMeal === `${meal.name}-${index}`}
+                    key={mealSlot.id}
+                    mealSlot={mealSlot}
+                    isExpanded={expandedMeal === mealSlot.id}
                     onToggle={() =>
                       setExpandedMeal(
-                        expandedMeal === `${meal.name}-${index}` ? null : `${meal.name}-${index}`
+                        expandedMeal === mealSlot.id ? null : mealSlot.id
                       )
                     }
-                    preference={mealPreferences[meal.name]}
-                    onLike={() => toggleMealPreference(meal.name, 'liked')}
-                    onDislike={() => toggleMealPreference(meal.name, 'disliked')}
-                    onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
+                    preference={mealPreferences[mealSlot.meal.name]}
+                    onLike={() => toggleMealPreference(mealSlot.meal.name, 'liked')}
+                    onDislike={() => toggleMealPreference(mealSlot.meal.name, 'disliked')}
+                    onMacrosChange={(newMacros) => updateMealMacros(mealSlot, newMacros)}
                     onIngredientChange={(ingredientIndex, newIngredient) =>
-                      updateIngredientInMeal(dayIndex, mealIndex, ingredientIndex, newIngredient)
+                      updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
                     }
                     mealPlanId={mealPlan.id}
                     ingredientPreferences={ingredientPreferences}
                     onIngredientLike={(name) => toggleIngredientPreference(name, 'liked')}
                     onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
+                    onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
                   />
                 )
               })}
@@ -673,13 +745,29 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             <PrepModeView mealPlanDays={mealPlan.days} prepSessions={prepSessions} dailyAssembly={dailyAssembly} />
           )
         )}
+
+        {/* Swap Modal */}
+        {swapTarget && (
+          <SwapModal
+            isOpen={swapModalOpen}
+            onClose={() => {
+              setSwapModalOpen(false)
+              setSwapTarget(null)
+            }}
+            currentMeal={swapTarget.mealSlot.meal}
+            mealPlanMealId={swapTarget.mealSlot.id}
+            mealPlanId={mealPlan.id}
+            mealType={swapTarget.mealSlot.meal_type}
+            onSwapComplete={handleSwapComplete}
+          />
+        )}
       </main>
     </div>
   )
 }
 
 function MealCard({
-  meal,
+  mealSlot,
   isExpanded,
   onToggle,
   preference,
@@ -691,26 +779,29 @@ function MealCard({
   ingredientPreferences,
   onIngredientLike,
   onIngredientDislike,
+  onSwap,
 }: {
-  meal: Meal
+  mealSlot: MealSlot
   isExpanded: boolean
   onToggle: () => void
   preference?: MealPreferenceType
   onLike: () => void
   onDislike: () => void
   onMacrosChange: (macros: Macros) => Promise<boolean>
-  onIngredientChange: (ingredientIndex: number, newIngredient: Ingredient) => Promise<boolean>
+  onIngredientChange: (ingredientIndex: number, newIngredient: IngredientWithNutrition) => Promise<boolean>
   mealPlanId: string
   ingredientPreferences: IngredientPreferencesMap
   onIngredientLike: (ingredientName: string) => void
   onIngredientDislike: (ingredientName: string) => void
+  onSwap: () => void
 }) {
+  const meal = mealSlot.meal
   const [isEditingMacros, setIsEditingMacros] = useState(false)
   const [macrosValue, setMacrosValue] = useState({
-    calories: meal.macros.calories.toString(),
-    protein: meal.macros.protein.toString(),
-    carbs: meal.macros.carbs.toString(),
-    fat: meal.macros.fat.toString(),
+    calories: meal.calories.toString(),
+    protein: meal.protein.toString(),
+    carbs: meal.carbs.toString(),
+    fat: meal.fat.toString(),
   })
   const [savingMacros, setSavingMacros] = useState(false)
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
@@ -725,10 +816,10 @@ function MealCard({
 
   const resetMacrosValue = () => {
     setMacrosValue({
-      calories: meal.macros.calories.toString(),
-      protein: meal.macros.protein.toString(),
-      carbs: meal.macros.carbs.toString(),
-      fat: meal.macros.fat.toString(),
+      calories: meal.calories.toString(),
+      protein: meal.protein.toString(),
+      carbs: meal.carbs.toString(),
+      fat: meal.fat.toString(),
     })
   }
 
@@ -809,12 +900,17 @@ function MealCard({
           className="flex-1 text-left"
         >
           <div className="flex items-center gap-3 mb-2">
-            <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${mealTypeColors[meal.type]}`}>
-              {meal.type}
+            <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${mealTypeColors[meal.meal_type]}`}>
+              {meal.meal_type}
             </span>
             <span className="text-sm text-gray-500">
               {meal.prep_time_minutes} min prep
             </span>
+            {!mealSlot.is_original && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+                Swapped
+              </span>
+            )}
           </div>
           <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
           {isEditingMacros ? (
@@ -876,16 +972,16 @@ function MealCard({
               title="Click to edit macros"
             >
               <span className="text-gray-600">
-                <span className="font-medium">{Math.round(meal.macros.calories)}</span> kcal
+                <span className="font-medium">{Math.round(meal.calories)}</span> kcal
               </span>
               <span className="text-blue-600">
-                <span className="font-medium">{Math.round(meal.macros.protein)}g</span> protein
+                <span className="font-medium">{Math.round(meal.protein)}g</span> protein
               </span>
               <span className="text-orange-600">
-                <span className="font-medium">{Math.round(meal.macros.carbs)}g</span> carbs
+                <span className="font-medium">{Math.round(meal.carbs)}g</span> carbs
               </span>
               <span className="text-purple-600">
-                <span className="font-medium">{Math.round(meal.macros.fat)}g</span> fat
+                <span className="font-medium">{Math.round(meal.fat)}g</span> fat
               </span>
               <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -894,8 +990,9 @@ function MealCard({
           )}
         </button>
 
-        {/* Like/Dislike and Expand buttons */}
+        {/* Swap, Like/Dislike and Expand buttons */}
         <div className="flex items-center gap-2 ml-4">
+          <SwapButton onClick={onSwap} />
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -1012,12 +1109,12 @@ function IngredientRow({
   onLike,
   onDislike,
 }: {
-  ingredient: Ingredient
+  ingredient: IngredientWithNutrition
   isEditing: boolean
   isSaving: boolean
   onStartEdit: () => void
   onCancelEdit: () => void
-  onSave: (updatedIngredient: Ingredient) => Promise<void>
+  onSave: (updatedIngredient: IngredientWithNutrition) => Promise<void>
   mealName: string
   mealPlanId: string
   preference?: IngredientPreferenceType
@@ -1025,13 +1122,14 @@ function IngredientRow({
   onDislike: () => void
 }) {
   const [editValues, setEditValues] = useState({
-    calories: ingredient.calories?.toString() || '0',
-    protein: ingredient.protein?.toString() || '0',
-    carbs: ingredient.carbs?.toString() || '0',
-    fat: ingredient.fat?.toString() || '0',
+    calories: ingredient.calories.toString(),
+    protein: ingredient.protein.toString(),
+    carbs: ingredient.carbs.toString(),
+    fat: ingredient.fat.toString(),
   })
 
-  const hasNutritionData = ingredient.calories !== undefined
+  // IngredientWithNutrition always has nutrition data
+  const hasNutritionData = true
 
   const handleSave = async () => {
     const newCalories = parseFloat(editValues.calories) || 0

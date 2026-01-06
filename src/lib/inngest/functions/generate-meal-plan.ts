@@ -4,12 +4,12 @@ import {
   generateCoreIngredients,
   generateMealsFromCoreIngredients,
   generatePrepSessions,
-  generateGroceryListFromCoreIngredients,
   organizeMealsIntoDays,
 } from '@/lib/claude';
-import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme } from '@/lib/types';
+import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme, MealType, DayOfWeek } from '@/lib/types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
 import { getTestConfig, FIXTURE_MEAL_PLAN, FIXTURE_GROCERY_LIST, FIXTURE_CORE_INGREDIENTS, FIXTURE_PREP_SESSIONS } from '@/lib/claude_test';
+import { normalizeForMatching } from '@/lib/meal-service';
 
 // Detect cuisine patterns from disliked meals to avoid similar themes
 function detectDislikedCuisinePatterns(dislikedMeals: string[]): string[] {
@@ -340,13 +340,13 @@ export const generateMealPlanFunction = inngest.createFunction(
         console.log('[TEST MODE] FIXTURE MODE: Using mock data (no LLM calls)');
 
         // Use fixture data directly, skip all LLM generation steps
-        const days = FIXTURE_MEAL_PLAN;
-        const groceryList = FIXTURE_GROCERY_LIST;
+        const fixtureDays = FIXTURE_MEAL_PLAN;
         const coreIngredients = FIXTURE_CORE_INGREDIENTS;
-        // Note: FIXTURE_PREP_SESSIONS is available but not saved in fixture mode for simplicity
+        // Note: FIXTURE_PREP_SESSIONS and FIXTURE_GROCERY_LIST are available but grocery is now computed
         void FIXTURE_PREP_SESSIONS; // Acknowledge import is used
+        void FIXTURE_GROCERY_LIST; // Grocery list now computed from normalized meals
 
-        // Skip to saving step with fixture data
+        // Skip to saving step with fixture data (using normalized structure)
         const savedPlanId = await step.run('save-meal-plan-fixture', async () => {
           await updateJobStatus(jobId, 'saving', '[TEST MODE] Saving fixture meal plan...');
 
@@ -360,14 +360,12 @@ export const generateMealPlanFunction = inngest.createFunction(
           weekStart.setDate(today.getDate() + daysUntilMonday);
           const weekStartDate = weekStart.toISOString().split('T')[0];
 
-          // Save meal plan
+          // Create meal plan (normalized - no plan_data or grocery_list)
           const { data: savedPlan, error: saveError } = await supabase
             .from('meal_plans')
             .insert({
               user_id: userId,
               week_start_date: weekStartDate,
-              plan_data: days,
-              grocery_list: groceryList,
               core_ingredients: coreIngredients,
               theme_id: null,
               is_favorite: false,
@@ -377,6 +375,77 @@ export const generateMealPlanFunction = inngest.createFunction(
 
           if (saveError || !savedPlan) {
             throw new Error('Failed to save meal plan');
+          }
+
+          // Save meals and create links for fixture data
+          const mealInserts: Array<{
+            meal_plan_id: string;
+            meal_id: string;
+            day: DayOfWeek;
+            meal_type: MealType;
+            snack_number: number | null;
+            position: number;
+            is_original: boolean;
+          }> = [];
+
+          const savedMealsByKey = new Map<string, string>();
+
+          for (const dayPlan of fixtureDays) {
+            let position = 0;
+            let snackCount = 0;
+
+            for (const meal of dayPlan.meals) {
+              const mealKey = `${meal.type}_${normalizeForMatching(meal.name)}`;
+              let mealId = savedMealsByKey.get(mealKey);
+
+              if (!mealId) {
+                // Create new meal
+                const { data: newMeal, error: mealError } = await supabase
+                  .from('meals')
+                  .insert({
+                    name: meal.name,
+                    name_normalized: normalizeForMatching(meal.name),
+                    meal_type: meal.type,
+                    ingredients: meal.ingredients,
+                    instructions: meal.instructions,
+                    calories: meal.macros.calories,
+                    protein: meal.macros.protein,
+                    carbs: meal.macros.carbs,
+                    fat: meal.macros.fat,
+                    prep_time_minutes: meal.prep_time_minutes,
+                    source_type: 'ai_generated',
+                    source_user_id: userId,
+                    source_meal_plan_id: savedPlan.id,
+                    is_user_created: false,
+                    is_nutrition_edited_by_user: false,
+                  })
+                  .select('id')
+                  .single();
+
+                if (mealError || !newMeal) {
+                  throw new Error(`Failed to save fixture meal: ${mealError?.message}`);
+                }
+                mealId = newMeal.id;
+                savedMealsByKey.set(mealKey, mealId!);
+              }
+
+              const finalMealId = mealId as string;
+              const snackNumber = meal.type === 'snack' ? ++snackCount : null;
+              mealInserts.push({
+                meal_plan_id: savedPlan.id,
+                meal_id: finalMealId,
+                day: dayPlan.day as DayOfWeek,
+                meal_type: meal.type as MealType,
+                snack_number: snackNumber,
+                position: position++,
+                is_original: true,
+              });
+            }
+          }
+
+          // Insert meal links
+          if (mealInserts.length > 0) {
+            await supabase.from('meal_plan_meals').insert(mealInserts);
           }
 
           // Save ingredients
@@ -442,16 +511,10 @@ export const generateMealPlanFunction = inngest.createFunction(
       // Organize meals into day plans (quick operation, no step needed)
       const days = organizeMealsIntoDays(mealsResult);
 
-      // Step 4: Generate grocery list
-      const groceryList = await step.run('generate-grocery-list', async () => {
-        await updateJobStatus(jobId, 'generating_prep', 'Building grocery list and prep schedule...');
-
-        return await generateGroceryListFromCoreIngredients(
-          coreIngredients,
-          days,
-          userId,
-          userData.profile
-        );
+      // Step 4: Update status for prep generation
+      // NOTE: Grocery list is now computed on-demand from normalized meal data
+      await step.run('update-status-prep', async () => {
+        await updateJobStatus(jobId, 'generating_prep', 'Building prep schedule...');
       });
 
       // Step 5: Generate prep sessions (with error capture for debugging)
@@ -505,7 +568,7 @@ export const generateMealPlanFunction = inngest.createFunction(
 
       const prepSessions = prepSessionsResult.data;
 
-      // Step 6: Save everything to the database
+      // Step 6: Save everything to the database using normalized structure
       const savedPlanId = await step.run('save-meal-plan', async () => {
         await updateJobStatus(jobId, 'saving', 'Saving your meal plan...');
 
@@ -519,14 +582,12 @@ export const generateMealPlanFunction = inngest.createFunction(
         weekStart.setDate(today.getDate() + daysUntilMonday);
         const weekStartDate = weekStart.toISOString().split('T')[0];
 
-        // Save meal plan with theme_id
+        // Create meal plan record (without plan_data and grocery_list - now normalized)
         const { data: savedPlan, error: saveError } = await supabase
           .from('meal_plans')
           .insert({
             user_id: userId,
             week_start_date: weekStartDate,
-            plan_data: days,
-            grocery_list: groceryList,
             core_ingredients: coreIngredients,
             theme_id: userData.selectedTheme?.theme.id || null,
             is_favorite: false,
@@ -535,10 +596,115 @@ export const generateMealPlanFunction = inngest.createFunction(
           .single();
 
         if (saveError || !savedPlan) {
-          throw new Error('Failed to save meal plan');
+          throw new Error(`Failed to save meal plan: ${saveError?.message}`);
         }
 
-        // Save ingredients
+        // Save each meal to the meals table with deduplication
+        // and create meal_plan_meals links
+        const mealInserts: Array<{
+          meal_plan_id: string;
+          meal_id: string;
+          day: DayOfWeek;
+          meal_type: MealType;
+          snack_number: number | null;
+          position: number;
+          is_original: boolean;
+        }> = [];
+
+        // Track meals we've already saved to avoid duplicates
+        const savedMealsByKey = new Map<string, string>(); // key -> meal_id
+
+        for (const dayPlan of days) {
+          let position = 0;
+          let snackCount = 0;
+
+          for (const meal of dayPlan.meals) {
+            const mealKey = `${meal.type}_${normalizeForMatching(meal.name)}`;
+
+            let mealId = savedMealsByKey.get(mealKey);
+
+            if (!mealId) {
+              // Check if meal already exists for this user
+              const { data: existingMeal } = await supabase
+                .from('meals')
+                .select('id, times_used')
+                .eq('source_user_id', userId)
+                .eq('name_normalized', normalizeForMatching(meal.name))
+                .single();
+
+              if (existingMeal) {
+                mealId = existingMeal.id;
+                // Increment usage count
+                await supabase
+                  .from('meals')
+                  .update({ times_used: (existingMeal.times_used || 1) + 1 })
+                  .eq('id', mealId);
+              } else {
+                // Create new meal
+                const { data: newMeal, error: mealError } = await supabase
+                  .from('meals')
+                  .insert({
+                    name: meal.name,
+                    name_normalized: normalizeForMatching(meal.name),
+                    meal_type: meal.type,
+                    ingredients: meal.ingredients,
+                    instructions: meal.instructions,
+                    calories: meal.macros.calories,
+                    protein: meal.macros.protein,
+                    carbs: meal.macros.carbs,
+                    fat: meal.macros.fat,
+                    prep_time_minutes: meal.prep_time_minutes,
+                    source_type: 'ai_generated',
+                    source_user_id: userId,
+                    source_meal_plan_id: savedPlan.id,
+                    is_user_created: false,
+                    is_nutrition_edited_by_user: false,
+                    theme_id: userData.selectedTheme?.theme.id || null,
+                    theme_name: userData.selectedTheme?.theme.display_name || null,
+                  })
+                  .select('id')
+                  .single();
+
+                if (mealError || !newMeal) {
+                  console.error('Failed to save meal:', mealError);
+                  throw new Error(`Failed to save meal: ${mealError?.message}`);
+                }
+
+                mealId = newMeal.id;
+              }
+
+              savedMealsByKey.set(mealKey, mealId!);
+            }
+
+            // At this point mealId is guaranteed to be defined
+            const finalMealId = mealId as string;
+
+            // Create meal_plan_meals link
+            const snackNumber = meal.type === 'snack' ? ++snackCount : null;
+            mealInserts.push({
+              meal_plan_id: savedPlan.id,
+              meal_id: finalMealId,
+              day: dayPlan.day as DayOfWeek,
+              meal_type: meal.type as MealType,
+              snack_number: snackNumber,
+              position: position++,
+              is_original: true,
+            });
+          }
+        }
+
+        // Insert all meal_plan_meals links
+        if (mealInserts.length > 0) {
+          const { error: linksError } = await supabase
+            .from('meal_plan_meals')
+            .insert(mealInserts);
+
+          if (linksError) {
+            throw new Error(`Failed to create meal plan links: ${linksError.message}`);
+          }
+        }
+
+        // Save core ingredients to meal_plan_ingredients table
         const ingredientInserts = Object.entries(coreIngredients).flatMap(
           ([category, ingredients]) =>
             (ingredients as string[]).map(ingredientName => ({

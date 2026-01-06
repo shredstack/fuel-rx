@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { PrepItem, DailyAssembly, DayOfWeek, MealType, DayPlan, PrepSession } from '@/lib/types'
+import type { PrepItem, DailyAssembly, DayOfWeek, MealType, DayPlan, PrepSession, DayPlanNormalized } from '@/lib/types'
 import {
   groupPrepDataByMealType,
   DAYS_ORDER,
@@ -20,9 +20,38 @@ interface LegacyPrepSession {
 }
 
 interface Props {
-  mealPlanDays: DayPlan[]
+  mealPlanDays: DayPlan[] | DayPlanNormalized[]
   prepSessions: LegacyPrepSession[]
   dailyAssembly: DailyAssembly
+}
+
+// Helper function to convert DayPlanNormalized to DayPlan for compatibility
+function convertToLegacyDayPlan(day: DayPlanNormalized): DayPlan {
+  return {
+    day: day.day,
+    meals: day.meals.map(slot => ({
+      name: slot.meal.name,
+      type: slot.meal.meal_type,
+      prep_time_minutes: slot.meal.prep_time_minutes,
+      ingredients: slot.meal.ingredients,
+      instructions: slot.meal.instructions,
+      macros: {
+        calories: slot.meal.calories,
+        protein: slot.meal.protein,
+        carbs: slot.meal.carbs,
+        fat: slot.meal.fat,
+      },
+    })),
+    daily_totals: day.daily_totals,
+  }
+}
+
+// Type guard to check if we have normalized days
+function isNormalizedDays(days: DayPlan[] | DayPlanNormalized[]): days is DayPlanNormalized[] {
+  if (days.length === 0) return false
+  const firstDay = days[0]
+  // DayPlanNormalized has meals as MealSlot[] which have a 'meal' property
+  return 'meals' in firstDay && firstDay.meals.length > 0 && 'meal' in firstDay.meals[0]
 }
 
 // Convert legacy format to PrepSession format for grouping
@@ -48,11 +77,15 @@ function convertToFullPrepSession(session: LegacyPrepSession, index: number): Pr
 }
 
 export default function PrepModeView({ mealPlanDays, prepSessions, dailyAssembly }: Props) {
+  // Convert normalized days to legacy format if needed
+  const legacyDays: DayPlan[] = isNormalizedDays(mealPlanDays)
+    ? mealPlanDays.map(convertToLegacyDayPlan)
+    : mealPlanDays
   // Convert legacy sessions to full format
   const fullSessions = prepSessions.map((s, i) => convertToFullPrepSession(s, i))
 
   // Group by meal type instead of day
-  const mealTypeGroups = groupPrepDataByMealType(mealPlanDays, fullSessions)
+  const mealTypeGroups = groupPrepDataByMealType(legacyDays, fullSessions)
 
   // Local state for completed tasks and steps (no database persistence in this view)
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set())
