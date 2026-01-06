@@ -153,11 +153,24 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
       setLoadingPrepMode(true)
       try {
+        // First try GET to fetch existing prep sessions
         const response = await fetch(`/api/meal-plans/${mealPlan.id}/prep-mode`)
         if (response.ok) {
           const data = await response.json()
-          setPrepSessions(data.prepSessions || [])
-          setDailyAssembly(data.dailyAssembly || {})
+          if (data.prepSessions && data.prepSessions.length > 0) {
+            setPrepSessions(data.prepSessions)
+            setDailyAssembly(data.dailyAssembly || {})
+          } else {
+            // No existing prep sessions - generate them via POST
+            const generateResponse = await fetch(`/api/meal-plans/${mealPlan.id}/prep-mode`, {
+              method: 'POST',
+            })
+            if (generateResponse.ok) {
+              const generateData = await generateResponse.json()
+              setPrepSessions(generateData.prepSessions || [])
+              setDailyAssembly(generateData.dailyAssembly || {})
+            }
+          }
         }
       } catch (error) {
         console.error('Error loading prep sessions:', error)

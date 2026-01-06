@@ -185,7 +185,8 @@ export const generateMealPlanFunction = inngest.createFunction(
           recentThemesResult,
         ] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', userId).single(),
-          supabase.from('meal_plans').select('plan_data').eq('user_id', userId).order('created_at', { ascending: false }).limit(3),
+          // Fetch recent meal plans with their linked meals (normalized structure)
+          supabase.from('meal_plans').select('id').eq('user_id', userId).order('created_at', { ascending: false }).limit(3),
           supabase.from('meal_preferences').select('meal_name, preference').eq('user_id', userId),
           supabase.from('ingredient_preferences_with_details').select('ingredient_name, preference').eq('user_id', userId),
           supabase.from('validated_meals_by_user').select('meal_name, calories, protein, carbs, fat').eq('user_id', userId),
@@ -204,15 +205,26 @@ export const generateMealPlanFunction = inngest.createFunction(
           ingredient_variety_prefs: profileResult.data.ingredient_variety_prefs || DEFAULT_INGREDIENT_VARIETY_PREFS,
         } as UserProfile;
 
-        // Extract recent meal names
+        // Extract recent meal names from normalized structure
         let recentMealNames: string[] = [];
         if (recentPlansResult.data && recentPlansResult.data.length > 0) {
-          recentMealNames = recentPlansResult.data.flatMap(plan => {
-            if (!plan.plan_data) return [];
-            const planData = plan.plan_data as { day: string; meals: { name: string }[] }[];
-            return planData.flatMap(day => day.meals.map(meal => meal.name));
-          });
-          recentMealNames = [...new Set(recentMealNames)];
+          const recentPlanIds = recentPlansResult.data.map(p => p.id);
+          // Fetch meals linked to recent meal plans
+          const { data: recentMealsData } = await supabase
+            .from('meal_plan_meals')
+            .select('meals!meal_plan_meals_meal_id_fkey(name)')
+            .in('meal_plan_id', recentPlanIds);
+
+          if (recentMealsData) {
+            recentMealNames = recentMealsData
+              .map(mpm => {
+                // Supabase returns the joined meal as an object (single relation via FK)
+                const meal = mpm.meals as unknown as { name: string } | null;
+                return meal?.name;
+              })
+              .filter((name): name is string => !!name);
+            recentMealNames = [...new Set(recentMealNames)];
+          }
         }
 
         const mealPreferences = {
@@ -755,7 +767,13 @@ export const generateMealPlanFunction = inngest.createFunction(
         }));
 
         if (prepSessionInserts.length > 0) {
-          await supabase.from('prep_sessions').insert(prepSessionInserts);
+          const { error: prepError } = await supabase.from('prep_sessions').insert(prepSessionInserts);
+          if (prepError) {
+            console.error('Failed to save prep sessions:', prepError);
+            // Don't throw - prep sessions are non-critical, meal plan is still usable
+          }
+        } else {
+          console.warn('No prep sessions to save - prepSessionsArray may have been empty');
         }
 
         return savedPlan.id;
