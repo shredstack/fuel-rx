@@ -891,6 +891,7 @@ export interface SwapResponse {
   success: boolean;
   swappedCount: number;  // >1 if consistent meal type (same meal all week)
   mealPlanMeals: MealPlanMeal[];
+  newMeal: MealEntity;  // The new meal that was swapped in
   updatedDailyTotals: Record<DayOfWeek, Macros>;
   groceryList: Ingredient[];  // Full recomputed list
   message?: string;

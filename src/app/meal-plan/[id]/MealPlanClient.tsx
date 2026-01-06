@@ -140,16 +140,34 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
   // Handle swap completion
   const handleSwapComplete = (response: SwapResponse) => {
+    if (!swapTarget) return
+
+    // Get set of all swapped meal slot IDs (for consistent meals, multiple slots are updated)
+    const swappedSlotIds = new Set(response.mealPlanMeals.map(m => m.id))
+
     // Update the meal plan state with new data
     const updatedDays = mealPlan.days.map(dayPlan => {
-      const updatedTotals = response.updatedDailyTotals[dayPlan.day]
-      if (updatedTotals) {
-        return {
-          ...dayPlan,
-          daily_totals: updatedTotals,
+      // Update daily totals
+      const updatedTotals = response.updatedDailyTotals[dayPlan.day] || dayPlan.daily_totals
+
+      // Update all swapped meals in the meals array
+      const updatedMeals = dayPlan.meals.map(mealSlot => {
+        if (swappedSlotIds.has(mealSlot.id)) {
+          return {
+            ...mealSlot,
+            meal: response.newMeal,
+            is_original: false,
+            swapped_from_meal_id: swapTarget.mealSlot.meal.id,
+          }
         }
+        return mealSlot
+      })
+
+      return {
+        ...dayPlan,
+        meals: updatedMeals,
+        daily_totals: updatedTotals,
       }
-      return dayPlan
     })
 
     setMealPlan({
@@ -160,9 +178,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
     setSwapModalOpen(false)
     setSwapTarget(null)
-
-    // Refresh the page to get the updated meal data
-    router.refresh()
   }
 
   const toggleFavorite = async () => {

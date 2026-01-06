@@ -347,6 +347,7 @@ export async function swapMeal(
   success: boolean;
   swappedCount: number;
   updatedMealPlanMeals: MealPlanMeal[];
+  newMeal?: MealEntity;
   message?: string;
 }> {
   const supabase = await createClient();
@@ -446,6 +447,7 @@ export async function swapMeal(
     success: true,
     swappedCount: slotsToUpdate.length,
     updatedMealPlanMeals: updated as MealPlanMeal[],
+    newMeal: newMeal as MealEntity,
     message:
       slotsToUpdate.length > 1
         ? `Swapped ${slotsToUpdate.length} ${mealSlot.meal_type} meals (consistent preference)`

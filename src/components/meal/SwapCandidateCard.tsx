@@ -22,17 +22,21 @@ export function SwapCandidateCard({
 }: SwapCandidateCardProps) {
   // Calculate macro differences if we have current meal macros
   const showDiff = !!currentMealMacros;
-  const calDiff = currentMealMacros ? meal.calories - currentMealMacros.calories : 0;
-  const proteinDiff = currentMealMacros ? meal.protein - currentMealMacros.protein : 0;
+  const calDiff = currentMealMacros ? Math.round(meal.calories - currentMealMacros.calories) : 0;
+  const proteinDiff = currentMealMacros ? Math.round(meal.protein - currentMealMacros.protein) : 0;
+  const carbsDiff = currentMealMacros ? Math.round(meal.carbs - currentMealMacros.carbs) : 0;
+  const fatDiff = currentMealMacros ? Math.round(meal.fat - currentMealMacros.fat) : 0;
 
   const formatDiff = (diff: number) => {
     if (diff === 0) return null;
     return diff > 0 ? `+${diff}` : `${diff}`;
   };
 
-  const getDiffColor = (diff: number, isProtein: boolean) => {
+  // For protein: more is better (green), less is worse (red)
+  // For calories/carbs/fat: less is better (green), more is worse (red)
+  const getDiffColor = (diff: number, moreIsBetter: boolean) => {
     if (diff === 0) return 'text-gray-400';
-    if (isProtein) {
+    if (moreIsBetter) {
       return diff > 0 ? 'text-green-600' : 'text-red-600';
     }
     return diff > 0 ? 'text-red-600' : 'text-green-600';
@@ -85,10 +89,20 @@ export function SwapCandidateCard({
         <div className="flex flex-col">
           <span className="text-gray-500 text-xs">Carbs</span>
           <span className="font-medium">{Math.round(meal.carbs)}g</span>
+          {showDiff && formatDiff(carbsDiff) && (
+            <span className={`text-xs ${getDiffColor(carbsDiff, false)}`}>
+              {formatDiff(carbsDiff)}g
+            </span>
+          )}
         </div>
         <div className="flex flex-col">
           <span className="text-gray-500 text-xs">Fat</span>
           <span className="font-medium">{Math.round(meal.fat)}g</span>
+          {showDiff && formatDiff(fatDiff) && (
+            <span className={`text-xs ${getDiffColor(fatDiff, false)}`}>
+              {formatDiff(fatDiff)}g
+            </span>
+          )}
         </div>
       </div>
 

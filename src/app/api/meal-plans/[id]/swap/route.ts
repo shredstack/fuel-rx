@@ -36,7 +36,7 @@ export async function POST(
     // Perform the swap
     const swapResult = await swapMeal(mealPlanMealId, newMealId, user.id);
 
-    if (!swapResult.success) {
+    if (!swapResult.success || !swapResult.newMeal) {
       return NextResponse.json(
         { error: swapResult.message || 'Failed to swap meal' },
         { status: 400 }
@@ -53,6 +53,7 @@ export async function POST(
       success: true,
       swappedCount: swapResult.swappedCount,
       mealPlanMeals: swapResult.updatedMealPlanMeals,
+      newMeal: swapResult.newMeal,
       updatedDailyTotals: dailyTotals,
       groceryList,
       message: swapResult.message,
