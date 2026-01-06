@@ -56,6 +56,7 @@ export async function POST(
       newMeal: swapResult.newMeal,
       updatedDailyTotals: dailyTotals,
       groceryList,
+      updatedCoreIngredients: swapResult.updatedCoreIngredients,
       message: swapResult.message,
     };
 

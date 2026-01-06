@@ -18,11 +18,141 @@ import type {
   MealType,
   CoreIngredients,
   MealPlanTheme,
+  IngredientCategory,
+  CoreIngredientItem,
 } from '@/lib/types';
+import { getCoreIngredientName } from '@/lib/types';
 import { saveMealsWithDeduplication, type GeneratedMeal } from './meal-service';
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+/**
+ * Maps grocery list ingredient categories to core ingredient categories.
+ * Returns null if the ingredient doesn't map to a core category.
+ */
+function mapIngredientToCoreCategory(
+  ingredientCategory: string,
+  ingredientName: string
+): IngredientCategory | null {
+  // Direct mappings
+  switch (ingredientCategory) {
+    case 'protein':
+      return 'proteins';
+    case 'dairy':
+      return 'dairy';
+    case 'grains':
+      return 'grains';
+    case 'produce':
+      // Try to distinguish between vegetables and fruits
+      // Common fruits (can expand this list)
+      const fruitPatterns = [
+        'apple', 'banana', 'orange', 'berry', 'berries', 'strawberry', 'blueberry',
+        'raspberry', 'grape', 'mango', 'pineapple', 'melon', 'watermelon', 'peach',
+        'pear', 'plum', 'cherry', 'kiwi', 'lemon', 'lime', 'grapefruit', 'avocado',
+        'coconut', 'fig', 'date', 'pomegranate', 'papaya', 'passion fruit',
+      ];
+      const lowerName = ingredientName.toLowerCase();
+      if (fruitPatterns.some(fruit => lowerName.includes(fruit))) {
+        return 'fruits';
+      }
+      return 'vegetables';
+    case 'pantry':
+      // Pantry items that are fats
+      const fatPatterns = [
+        'oil', 'butter', 'ghee', 'lard', 'mayo', 'mayonnaise', 'nut butter',
+        'almond butter', 'peanut butter', 'tahini', 'coconut oil', 'olive oil',
+      ];
+      const lowerPantryName = ingredientName.toLowerCase();
+      if (fatPatterns.some(fat => lowerPantryName.includes(fat))) {
+        return 'fats';
+      }
+      // Other pantry items don't map to core ingredients
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Extracts potential core ingredients from a meal's ingredients.
+ * Only includes ingredients that map to core categories (proteins, vegetables, fruits, grains, fats, dairy).
+ */
+export function extractCoreIngredientsFromMeal(meal: MealEntity): Partial<Record<IngredientCategory, string[]>> {
+  const result: Partial<Record<IngredientCategory, string[]>> = {};
+
+  for (const ingredient of meal.ingredients) {
+    const coreCategory = mapIngredientToCoreCategory(ingredient.category, ingredient.name);
+    if (coreCategory) {
+      if (!result[coreCategory]) {
+        result[coreCategory] = [];
+      }
+      // Normalize the name for comparison
+      const normalizedName = ingredient.name.toLowerCase().trim();
+      if (!result[coreCategory]!.includes(normalizedName)) {
+        result[coreCategory]!.push(normalizedName);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Merges new ingredients into existing core ingredients, marking new ones as swapped.
+ * Returns the updated core ingredients and a flag indicating if any changes were made.
+ */
+export function mergeCoreIngredients(
+  existing: CoreIngredients | null | undefined,
+  newIngredients: Partial<Record<IngredientCategory, string[]>>
+): { updated: CoreIngredients; hasChanges: boolean } {
+  // Start with existing or empty structure
+  const updated: CoreIngredients = existing
+    ? {
+        proteins: [...existing.proteins],
+        vegetables: [...existing.vegetables],
+        fruits: [...existing.fruits],
+        grains: [...existing.grains],
+        fats: [...existing.fats],
+        dairy: [...existing.dairy],
+      }
+    : {
+        proteins: [],
+        vegetables: [],
+        fruits: [],
+        grains: [],
+        fats: [],
+        dairy: [],
+      };
+
+  let hasChanges = false;
+
+  // Check each category for new ingredients
+  const categories: IngredientCategory[] = ['proteins', 'vegetables', 'fruits', 'grains', 'fats', 'dairy'];
+
+  for (const category of categories) {
+    const newItems = newIngredients[category] || [];
+    const existingItems = updated[category];
+
+    // Get normalized names of existing items for comparison
+    const existingNames = new Set(
+      existingItems.map((item: CoreIngredientItem) => getCoreIngredientName(item).toLowerCase().trim())
+    );
+
+    for (const newItem of newItems) {
+      const normalizedNew = newItem.toLowerCase().trim();
+      if (!existingNames.has(normalizedNew)) {
+        // This is a new ingredient - add it with swapped tag
+        // Use the original casing from the ingredient name (capitalize first letter)
+        const displayName = newItem.charAt(0).toUpperCase() + newItem.slice(1);
+        updated[category].push({ name: displayName, swapped: true });
+        hasChanges = true;
+      }
+    }
+  }
+
+  return { updated, hasChanges };
+}
 
 /**
  * Create a meal plan and link all meals via meal_plan_meals junction table.
@@ -338,6 +468,7 @@ export async function computeDailyTotals(mealPlanId: string): Promise<Record<Day
 /**
  * Swap a meal in a meal plan slot.
  * Updates the meal_plan_meals junction and tracks swap history.
+ * Also updates core_ingredients if the new meal introduces new ingredients.
  */
 export async function swapMeal(
   mealPlanMealId: string,
@@ -348,11 +479,12 @@ export async function swapMeal(
   swappedCount: number;
   updatedMealPlanMeals: MealPlanMeal[];
   newMeal?: MealEntity;
+  updatedCoreIngredients?: CoreIngredients;
   message?: string;
 }> {
   const supabase = await createClient();
 
-  // Get the meal slot being swapped
+  // Get the meal slot being swapped, including the meal plan's core_ingredients
   const { data: mealSlot, error: fetchError } = await supabase
     .from('meal_plan_meals')
     .select(`
@@ -362,7 +494,7 @@ export async function swapMeal(
       day,
       meal_type,
       snack_number,
-      meal_plans!inner(user_id)
+      meal_plans!inner(user_id, core_ingredients)
     `)
     .eq('id', mealPlanMealId)
     .single();
@@ -443,11 +575,29 @@ export async function swapMeal(
     .delete()
     .eq('meal_plan_id', mealSlot.meal_plan_id);
 
+  // Update core_ingredients if new meal introduces new ingredients
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentCoreIngredients = (mealSlot.meal_plans as any).core_ingredients as CoreIngredients | null;
+  const newMealIngredients = extractCoreIngredientsFromMeal(newMeal as MealEntity);
+  const { updated: updatedCoreIngredients, hasChanges } = mergeCoreIngredients(
+    currentCoreIngredients,
+    newMealIngredients
+  );
+
+  // Only update the database if there are new ingredients
+  if (hasChanges) {
+    await supabase
+      .from('meal_plans')
+      .update({ core_ingredients: updatedCoreIngredients })
+      .eq('id', mealSlot.meal_plan_id);
+  }
+
   return {
     success: true,
     swappedCount: slotsToUpdate.length,
     updatedMealPlanMeals: updated as MealPlanMeal[],
     newMeal: newMeal as MealEntity,
+    updatedCoreIngredients: hasChanges ? updatedCoreIngredients : undefined,
     message:
       slotsToUpdate.length > 1
         ? `Swapped ${slotsToUpdate.length} ${mealSlot.meal_type} meals (consistent preference)`

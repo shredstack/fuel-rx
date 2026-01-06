@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import type { CoreIngredients, IngredientCategory } from '@/lib/types'
-import { INGREDIENT_CATEGORY_LABELS } from '@/lib/types'
+import type { CoreIngredients, IngredientCategory, CoreIngredientItem } from '@/lib/types'
+import { INGREDIENT_CATEGORY_LABELS, getCoreIngredientName, isCoreIngredientSwapped } from '@/lib/types'
 
 interface Props {
   coreIngredients: CoreIngredients
@@ -53,7 +53,9 @@ const CATEGORY_ICONS: Record<IngredientCategory, React.ReactNode> = {
 export default function CoreIngredientsCard({ coreIngredients }: Props) {
   const [isExpanded, setIsExpanded] = useState(true)
 
-  const totalItems = Object.values(coreIngredients).flat().length
+  const allItems = Object.values(coreIngredients).flat() as CoreIngredientItem[]
+  const totalItems = allItems.length
+  const swappedCount = allItems.filter(isCoreIngredientSwapped).length
 
   const categories: IngredientCategory[] = ['proteins', 'vegetables', 'fruits', 'grains', 'fats', 'dairy']
 
@@ -67,6 +69,11 @@ export default function CoreIngredientsCard({ coreIngredients }: Props) {
           <h3 className="text-lg font-semibold text-gray-900">Core Ingredients</h3>
           <p className="text-sm text-gray-500">
             {totalItems} items selected for this week&apos;s meals
+            {swappedCount > 0 && (
+              <span className="ml-1 text-primary-600">
+                ({swappedCount} added via swap)
+              </span>
+            )}
           </p>
         </div>
         <svg
@@ -101,11 +108,20 @@ export default function CoreIngredientsCard({ coreIngredients }: Props) {
                     </span>
                   </div>
                   <ul className="space-y-1">
-                    {items.map((item, idx) => (
-                      <li key={idx} className="text-sm text-gray-700">
-                        {item}
-                      </li>
-                    ))}
+                    {items.map((item, idx) => {
+                      const name = getCoreIngredientName(item)
+                      const isSwapped = isCoreIngredientSwapped(item)
+                      return (
+                        <li key={idx} className="text-sm text-gray-700 flex items-center gap-1.5">
+                          <span>{name}</span>
+                          {isSwapped && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
+                              swap
+                            </span>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )

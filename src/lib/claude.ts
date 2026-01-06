@@ -1152,7 +1152,7 @@ ${mealsList}
   }
 
   // Fetch cached nutrition data for the core ingredients
-  const allIngredientNames = [
+  const allIngredientItems = [
     ...coreIngredients.proteins,
     ...coreIngredients.vegetables,
     ...coreIngredients.fruits,
@@ -1160,6 +1160,10 @@ ${mealsList}
     ...coreIngredients.fats,
     ...coreIngredients.dairy,
   ];
+  // Extract names from CoreIngredientItem (can be string or { name, swapped })
+  const allIngredientNames = allIngredientItems.map(item =>
+    typeof item === 'string' ? item : item.name
+  );
   const nutritionCache = await fetchCachedNutrition(allIngredientNames);
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 

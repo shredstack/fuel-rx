@@ -364,14 +364,27 @@ export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number
   dairy: { min: 0, max: 4 },
 };
 
+// Core ingredient can be a simple string or an object with swapped flag
+export type CoreIngredientItem = string | { name: string; swapped: true };
+
+// Helper to get the name from a CoreIngredientItem
+export function getCoreIngredientName(item: CoreIngredientItem): string {
+  return typeof item === 'string' ? item : item.name;
+}
+
+// Helper to check if a core ingredient was swapped in
+export function isCoreIngredientSwapped(item: CoreIngredientItem): boolean {
+  return typeof item !== 'string' && item.swapped === true;
+}
+
 // Core ingredients selected in Stage 1
 export interface CoreIngredients {
-  proteins: string[];
-  vegetables: string[];
-  fruits: string[];
-  grains: string[];
-  fats: string[];
-  dairy: string[];
+  proteins: CoreIngredientItem[];
+  vegetables: CoreIngredientItem[];
+  fruits: CoreIngredientItem[];
+  grains: CoreIngredientItem[];
+  fats: CoreIngredientItem[];
+  dairy: CoreIngredientItem[];
 }
 
 /**
@@ -894,6 +907,7 @@ export interface SwapResponse {
   newMeal: MealEntity;  // The new meal that was swapped in
   updatedDailyTotals: Record<DayOfWeek, Macros>;
   groceryList: Ingredient[];  // Full recomputed list
+  updatedCoreIngredients?: CoreIngredients;  // Updated core ingredients (if new ingredients were added)
   message?: string;
 }
 
