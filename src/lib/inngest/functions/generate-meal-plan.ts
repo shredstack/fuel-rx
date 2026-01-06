@@ -9,6 +9,7 @@ import {
 } from '@/lib/claude';
 import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme } from '@/lib/types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
+import { getTestConfig, FIXTURE_MEAL_PLAN, FIXTURE_GROCERY_LIST, FIXTURE_CORE_INGREDIENTS, FIXTURE_PREP_SESSIONS } from '@/lib/claude_test';
 
 // Detect cuisine patterns from disliked meals to avoid similar themes
 function detectDislikedCuisinePatterns(dislikedMeals: string[]): string[] {
@@ -332,6 +333,76 @@ export const generateMealPlanFunction = inngest.createFunction(
           selectedTheme,
         };
       });
+
+      // ===== TEST MODE: Check for fixture mode =====
+      const testConfig = getTestConfig();
+      if (testConfig.mode === 'fixture' && process.env.MEAL_PLAN_TEST_MODE) {
+        console.log('[TEST MODE] FIXTURE MODE: Using mock data (no LLM calls)');
+
+        // Use fixture data directly, skip all LLM generation steps
+        const days = FIXTURE_MEAL_PLAN;
+        const groceryList = FIXTURE_GROCERY_LIST;
+        const coreIngredients = FIXTURE_CORE_INGREDIENTS;
+        // Note: FIXTURE_PREP_SESSIONS is available but not saved in fixture mode for simplicity
+        void FIXTURE_PREP_SESSIONS; // Acknowledge import is used
+
+        // Skip to saving step with fixture data
+        const savedPlanId = await step.run('save-meal-plan-fixture', async () => {
+          await updateJobStatus(jobId, 'saving', '[TEST MODE] Saving fixture meal plan...');
+
+          const supabase = createServiceRoleClient();
+
+          // Calculate week start date
+          const today = new Date();
+          const dayOfWeek = today.getDay();
+          const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() + daysUntilMonday);
+          const weekStartDate = weekStart.toISOString().split('T')[0];
+
+          // Save meal plan
+          const { data: savedPlan, error: saveError } = await supabase
+            .from('meal_plans')
+            .insert({
+              user_id: userId,
+              week_start_date: weekStartDate,
+              plan_data: days,
+              grocery_list: groceryList,
+              core_ingredients: coreIngredients,
+              theme_id: null,
+              is_favorite: false,
+            })
+            .select()
+            .single();
+
+          if (saveError || !savedPlan) {
+            throw new Error('Failed to save meal plan');
+          }
+
+          // Save ingredients
+          const ingredientInserts = Object.entries(coreIngredients).flatMap(
+            ([category, ingredients]) =>
+              (ingredients as string[]).map(ingredientName => ({
+                meal_plan_id: savedPlan.id,
+                category: category as IngredientCategory,
+                ingredient_name: ingredientName,
+              }))
+          );
+
+          if (ingredientInserts.length > 0) {
+            await supabase.from('meal_plan_ingredients').insert(ingredientInserts);
+          }
+
+          return savedPlan.id;
+        });
+
+        await step.run('mark-completed-fixture', async () => {
+          await updateJobStatus(jobId, 'completed', '[TEST MODE] Fixture meal plan ready!', savedPlanId);
+        });
+
+        return { success: true, mealPlanId: savedPlanId };
+      }
+      // ===== END TEST MODE =====
 
       // Step 2: Generate core ingredients (status update is INSIDE the step)
       const coreIngredients = await step.run('generate-core-ingredients', async () => {

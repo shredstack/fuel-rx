@@ -26,6 +26,7 @@ import type {
 } from './types';
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS, normalizeCoreIngredients } from './types';
 import { createClient } from './supabase/server';
+import { getTestConfig } from './claude_test';
 import {
   coreIngredientsSchema,
   mealsSchema,
@@ -73,12 +74,62 @@ async function callLLMWithToolUse<T>(options: {
   const {
     prompt,
     tool,
-    model = 'claude-sonnet-4-20250514',
-    maxTokens = 16000,
+    model: requestedModel,
+    maxTokens: requestedMaxTokens,
     maxRetries = 2,
     userId,
     promptType,
   } = options;
+
+  // ===== TEST MODE INTEGRATION =====
+  const testConfig = getTestConfig();
+  let model = requestedModel || 'claude-sonnet-4-5-20250929';
+  let maxTokens = requestedMaxTokens || 16000;
+
+  // Apply test mode configuration if enabled
+  if (process.env.MEAL_PLAN_TEST_MODE && testConfig.mode !== 'production') {
+    // Fixture mode should never reach here - all LLM calls should be bypassed
+    if (testConfig.mode === 'fixture') {
+      throw new Error(`[TEST MODE] Fixture mode should not make LLM calls. Called with promptType: ${promptType}`);
+    }
+
+    model = testConfig.model;
+
+    // Map prompt type to appropriate token limit from test config
+    switch (promptType) {
+      case 'two_stage_core_ingredients':
+        maxTokens = testConfig.maxTokensCore;
+        break;
+      case 'two_stage_meals_from_ingredients':
+      case 'meal_type_batch_breakfast':
+      case 'meal_type_batch_lunch':
+      case 'meal_type_batch_dinner':
+      case 'meal_type_batch_snack':
+        maxTokens = testConfig.maxTokensMeals;
+        break;
+      case 'two_stage_grocery_list':
+      case 'grocery_list_consolidation':
+        maxTokens = testConfig.maxTokensGrocery;
+        break;
+      case 'prep_mode_analysis':
+        maxTokens = testConfig.maxTokensPrep;
+        break;
+      default:
+        // Use requested tokens for unknown prompt types
+        maxTokens = requestedMaxTokens || 16000;
+    }
+
+    // Ensure we never send 0 tokens
+    if (maxTokens === 0) {
+      maxTokens = requestedMaxTokens || 16000;
+    }
+
+    // Log test mode info (only once per generation)
+    if (promptType === 'two_stage_core_ingredients') {
+      console.log(`[TEST MODE] ${testConfig.mode} | Model: ${model} | Tokens: ${maxTokens}`);
+    }
+  }
+  // ===== END TEST MODE INTEGRATION =====
 
   let lastError: Error | null = null;
 
@@ -1212,9 +1263,24 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
 
 Use the generate_meals tool to provide your meal plan.`;
 
+  // ===== TEST MODE: Single-day generation =====
+  const testConfig = getTestConfig();
+  let finalPrompt = prompt;
+  if (!testConfig.generateFullWeek && process.env.MEAL_PLAN_TEST_MODE && testConfig.mode !== 'production') {
+    // Modify prompt to only generate Monday's meals
+    finalPrompt = prompt
+      .replace(/all 7 days/gi, 'Monday only')
+      .replace(/Generate all \d+ meals for all 7 days/gi, `Generate ${totalMealsPerDay} meals for Monday only`)
+      .replace(/Order by day \(monday first\), then by meal type/gi, 'All meals should be for Monday')
+      .replace(/\*\*MUST generate exactly \d+ meals per day \(\d+ total\)\*\*/gi, `**MUST generate exactly ${totalMealsPerDay} meals for Monday only**`);
+
+    console.log('[TEST MODE] Generating Monday only (will be repeated for 7 days)');
+  }
+  // ===== END TEST MODE =====
+
   // Use tool use for guaranteed valid JSON output
   const { result: parsed } = await callLLMWithToolUse<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }>({
-    prompt,
+    prompt: finalPrompt,
     tool: mealsSchema,
     maxTokens: 32000,
     userId,
@@ -2389,6 +2455,27 @@ export async function generateMealPlanWithProgress(
 }> {
   const progress = onProgress || (() => {});
 
+  // ===== TEST MODE: Check for fixture mode =====
+  const testConfig = getTestConfig();
+  if (testConfig.mode === 'fixture' && process.env.MEAL_PLAN_TEST_MODE) {
+    console.log('[TEST MODE] FIXTURE MODE: Returning mock meal plan (no API calls)');
+    const { FIXTURE_MEAL_PLAN, FIXTURE_GROCERY_LIST, FIXTURE_CORE_INGREDIENTS, FIXTURE_PREP_SESSIONS } = await import('./claude_test');
+    return {
+      days: FIXTURE_MEAL_PLAN,
+      grocery_list: FIXTURE_GROCERY_LIST,
+      core_ingredients: FIXTURE_CORE_INGREDIENTS,
+      prep_sessions: FIXTURE_PREP_SESSIONS,
+    };
+  }
+
+  // Log test mode if active
+  if (testConfig.mode !== 'production' && process.env.MEAL_PLAN_TEST_MODE) {
+    const { logTestMode, logSavings } = await import('./claude_test');
+    logTestMode(testConfig);
+    logSavings(testConfig);
+  }
+  // ===== END TEST MODE =====
+
   // Stage 1: Generate core ingredients (with theme)
   progress('ingredients', selectedTheme
     ? `Selecting ${selectedTheme.display_name} ingredients...`
@@ -2417,17 +2504,39 @@ export async function generateMealPlanWithProgress(
   );
   progress('meals_done', 'Meals created!');
 
-  // Organize meals into day plans
-  const days = organizeMealsIntoDays(mealsResult);
+  // ===== TEST MODE: Handle day repetition =====
+  let days: DayPlan[];
+  if (!testConfig.generateFullWeek && testConfig.mode !== 'production' && process.env.MEAL_PLAN_TEST_MODE) {
+    // Extract Monday meals and repeat across the week
+    const { extractMondayMeals, repeatDayAcrossWeek } = await import('./claude_test');
+    console.log('[TEST MODE] Repeating Monday meals across all 7 days...');
+    const mondayMeals = extractMondayMeals(mealsResult);
+    days = repeatDayAcrossWeek(mondayMeals);
+  } else {
+    // Normal full week organization
+    days = organizeMealsIntoDays(mealsResult);
+  }
+  // ===== END TEST MODE =====
 
   // Stage 3: Generate grocery list AND prep sessions IN PARALLEL
   // This is a key performance optimization - these two tasks are independent
   progress('finalizing', 'Building grocery list and prep schedule...');
 
-  const [grocery_list, prep_sessions] = await Promise.all([
-    generateGroceryListFromCoreIngredients(coreIngredients, days, userId, profile),
-    generatePrepSessions(days, coreIngredients, profile, userId),
-  ]);
+  // ===== TEST MODE: Skip prep sessions if configured =====
+  let grocery_list: Ingredient[];
+  let prep_sessions: PrepModeResponse;
+
+  if (testConfig.skipPrepSessions && testConfig.mode !== 'production' && process.env.MEAL_PLAN_TEST_MODE) {
+    console.log('[TEST MODE] Skipping prep sessions generation');
+    grocery_list = await generateGroceryListFromCoreIngredients(coreIngredients, days, userId, profile);
+    prep_sessions = { prepSessions: [], dailyAssembly: {} };
+  } else {
+    [grocery_list, prep_sessions] = await Promise.all([
+      generateGroceryListFromCoreIngredients(coreIngredients, days, userId, profile),
+      generatePrepSessions(days, coreIngredients, profile, userId),
+    ]);
+  }
+  // ===== END TEST MODE =====
 
   progress('finalizing_done', 'Almost done!');
 
