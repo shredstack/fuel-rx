@@ -9,6 +9,14 @@ Example: `HouseholdServingsEditor.tsx` is used by both onboarding flow and setti
 
 Before writing new UI code, check if similar functionality already exists that could be extracted into a reusable component
 
+### Meal Plan Generation
+
+Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.
+
+- Client triggers the job via /api/generate-meal-plan, which creates a meal_plan_jobs record and fires an Inngest event
+- The Inngest function runs through 7 steps entirely on the server
+- Client just polls /api/job-status/{jobId} every 3 seconds to show progress
+- Users should always be able to safely navigate away while the job builds their meal plan
 
 
 ## Database migrations

@@ -10,6 +10,7 @@ import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionCont
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
 import { getTestConfig, FIXTURE_MEAL_PLAN, FIXTURE_GROCERY_LIST, FIXTURE_CORE_INGREDIENTS, FIXTURE_PREP_SESSIONS } from '@/lib/claude_test';
 import { normalizeForMatching } from '@/lib/meal-service';
+import { sendMealPlanReadyEmail } from '@/lib/email/resend';
 
 // Detect cuisine patterns from disliked meals to avoid similar themes
 function detectDislikedCuisinePatterns(dislikedMeals: string[]): string[] {
@@ -782,6 +783,21 @@ export const generateMealPlanFunction = inngest.createFunction(
       // Step 7: Mark job as completed (separate step to ensure it runs even if previous step is memoized)
       await step.run('mark-completed', async () => {
         await updateJobStatus(jobId, 'completed', 'Meal plan ready!', savedPlanId);
+      });
+
+      // Step 8: Send email notification (non-blocking - failure doesn't affect success)
+      await step.run('send-email-notification', async () => {
+        try {
+          await sendMealPlanReadyEmail({
+            to: userData.profile.email,
+            userName: userData.profile.name || '',
+            mealPlanId: savedPlanId,
+            themeName: userData.selectedTheme?.theme.display_name,
+          });
+        } catch (err) {
+          // Log but don't fail the job - email is nice-to-have
+          console.error('[Email] Failed to send notification:', err);
+        }
       });
 
       return { success: true, mealPlanId: savedPlanId };
