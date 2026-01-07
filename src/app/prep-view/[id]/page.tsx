@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PrepViewClient from './PrepViewClient'
-import type { PrepSession, DailyAssembly, DayPlanNormalized, MealSlot, MealEntity, DayOfWeek, MealType } from '@/lib/types'
+import type { PrepSession, DailyAssembly, DayPlanNormalized, MealSlot, MealEntity, DayOfWeek, MealType, HouseholdServingsPrefs } from '@/lib/types'
+import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
@@ -156,12 +157,14 @@ export default async function PrepViewPage({
     .eq('meal_plan_id', id)
     .order('display_order', { ascending: true })
 
-  // Fetch user profile for prep preferences
+  // Fetch user profile for prep preferences and household servings
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('prep_style')
+    .select('prep_style, household_servings')
     .eq('id', user.id)
     .single()
+
+  const householdServings: HouseholdServingsPrefs = (profile?.household_servings as HouseholdServingsPrefs) || DEFAULT_HOUSEHOLD_SERVINGS_PREFS
 
   // Extract daily_assembly from prep sessions (it's stored in the first session with data)
   let dailyAssembly: DailyAssembly | undefined
@@ -182,8 +185,9 @@ export default async function PrepViewPage({
       }}
       days={days}
       prepSessions={(prepSessions || []) as PrepSession[]}
-      prepStyle={profile?.prep_style || 'mixed'}
+      prepStyle={profile?.prep_style || 'day_of'}
       dailyAssembly={dailyAssembly}
+      householdServings={householdServings}
     />
   )
 }

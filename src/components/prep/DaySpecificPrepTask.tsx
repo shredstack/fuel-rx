@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import type { ConsolidatedMeal } from './prepUtils'
-import { DAY_LABELS, formatCookingTemps, formatCookingTimes } from './prepUtils'
-import type { DayOfWeek } from '@/lib/types'
+import { DAY_LABELS, formatCookingTemps, formatCookingTimes, formatHouseholdContext, hasHouseholdForMeal, getServingMultiplier } from './prepUtils'
+import type { DayOfWeek, HouseholdServingsPrefs } from '@/lib/types'
+import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 interface Props {
   meal: ConsolidatedMeal
@@ -12,6 +13,7 @@ interface Props {
   completedSteps: Set<string>
   onToggleTaskComplete: (sessionId: string, taskId: string) => void
   onToggleStepComplete: (taskId: string, stepIndex: number) => void
+  householdServings?: HouseholdServingsPrefs
 }
 
 export default function DaySpecificPrepTask({
@@ -21,6 +23,7 @@ export default function DaySpecificPrepTask({
   completedSteps,
   onToggleTaskComplete,
   onToggleStepComplete,
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
 }: Props) {
   // Start collapsed for single-day items (variety meals) - click header to expand
   const [isExpanded, setIsExpanded] = useState(false)
@@ -33,6 +36,11 @@ export default function DaySpecificPrepTask({
   // Get cooking info
   const cookingTemps = formatCookingTemps(primaryTask.cooking_temps)
   const cookingTimes = formatCookingTimes(primaryTask.cooking_times)
+
+  // Get household context for this specific day
+  const hasHousehold = hasHouseholdForMeal(householdServings, day, meal.mealType)
+  const householdContextText = formatHouseholdContext(householdServings, day, meal.mealType)
+  const multiplier = getServingMultiplier(householdServings, day, meal.mealType)
 
   const hasDetails = (primaryTask.detailed_steps && primaryTask.detailed_steps.length > 0) ||
     cookingTemps.length > 0 ||
@@ -176,6 +184,23 @@ export default function DaySpecificPrepTask({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {/* Household scaling guide - show when cooking for household */}
+            {hasHousehold && (
+              <div className="bg-purple-50 border border-purple-200 rounded-md p-3 flex items-start gap-2">
+                <svg className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-purple-800">
+                    Multiply quantities by {multiplier.toFixed(1)}x
+                  </p>
+                  <p className="text-xs text-purple-600 mt-0.5">
+                    For {householdContextText}
+                  </p>
+                </div>
               </div>
             )}
 

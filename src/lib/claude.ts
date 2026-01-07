@@ -1000,41 +1000,41 @@ The user wants their weekly grocery list to include:
 - Dairy: ${varietyPrefs.dairy} different options (Greek yogurt, cottage cheese, milk, cheese)
 ${nutritionReference}
 ## INSTRUCTIONS
-Select ingredients AND estimate weekly quantities that:
-1. TOTAL to approximately ${weeklyCalories} calories for the week
-2. Provide approximately ${weeklyProtein}g protein for the week
-3. Are versatile and can be prepared multiple ways
-4. Are commonly available at grocery stores
-5. Work well for batch cooking
-6. Match the user's dietary preferences
+Select ingredients that:
+1. Can provide approximately ${weeklyCalories} calories and ${weeklyProtein}g protein for the week when combined
+2. Are versatile and can be prepared multiple ways
+3. Are commonly available at grocery stores
+4. Work well for batch cooking
+5. Match the user's dietary preferences
 
 ## CALORIE DISTRIBUTION GUIDANCE
-A typical distribution for ${weeklyCalories} weekly calories:
-- Proteins should provide ~35-40% of calories (~${Math.round(weeklyCalories * 0.35)} cal)
-- Grains/Starches should provide ~25-30% of calories (~${Math.round(weeklyCalories * 0.25)} cal)
-- Fats should provide ~20-25% of calories (~${Math.round(weeklyCalories * 0.20)} cal)
+When selecting ingredients, keep in mind a typical distribution:
+- Proteins should provide ~35-40% of calories
+- Grains/Starches should provide ~25-30% of calories
+- Fats should provide ~20-25% of calories
 - Fruits, vegetables, and dairy make up the rest
 
 ## INGREDIENT SELECTION GUIDELINES
-- **Proteins**: Focus on lean, versatile options. Includes eggs (70 cal each, 6g protein). 4oz chicken breast = ~140 cal, 26g protein. 4oz salmon = ~180 cal, 25g protein.
-- **Vegetables**: Mix of colors - broccoli, spinach, bell peppers, sweet potatoes. Low calorie but essential for nutrients.
-- **Fruits**: Fresh fruits for energy - banana = ~105 cal, berries = ~70-85 cal/cup.
-- **Grains/Starches**: Includes legumes. 1 cup cooked rice = ~215 cal, 1 cup quinoa = ~220 cal, black beans (110 cal/half cup, 7g protein).
-- **Healthy Fats**: Calorie-dense - 1 tbsp olive oil = 120 cal, 1 oz almonds = 165 cal, 1/2 avocado = 160 cal.
-- **Dairy**: Greek yogurt (130 cal/cup, 20g protein), cottage cheese (160 cal/cup, 28g protein), milk, cheese.
+- **Proteins**: Focus on lean, versatile options (chicken breast, salmon, eggs, etc.)
+- **Vegetables**: Mix of colors - cruciferous, leafy greens, nightshades, root vegetables
+- **Fruits**: Fresh fruits for energy and nutrients
+- **Grains/Starches**: Includes legumes (rice, quinoa, black beans, etc.)
+- **Healthy Fats**: Nutrient-dense options (avocado, olive oil, nuts)
+- **Dairy**: High-protein options (Greek yogurt, cottage cheese, etc.)
 
 ## ATHLETE HEALTH: FRUIT & VEGETABLE TARGET
 Athletes should consume approximately 800g (~6 cups) of fruits and vegetables per day for optimal health and recovery.
-- Aim to include 5-6 servings of fruits and vegetables across the day's ingredient selection
-- This typically breaks down to ~2-3 cups of vegetables and ~2-3 cups of fruit daily
-- Select a variety that enables this volume across all meals (breakfast fruit, lunch vegetables, dinner vegetables, snack fruit/veggies)
+- Select a variety that enables this volume across all meals
 - Prioritize nutrient-dense options: leafy greens, cruciferous vegetables, berries, citrus, and colorful produce
 
 ## CONSTRAINTS
 - Select EXACTLY the number of items requested per category
 - Prioritize ingredients that can be used in multiple meals
 - ONLY recommend healthy, whole foods that are non-processed or minimally processed
-- **Quantities must add up to approximately ${weeklyCalories} total weekly calories**
+
+## OUTPUT FORMAT
+Return ONLY the ingredient name for each item (e.g., "Chicken breast", "Broccoli", "Brown rice").
+Do NOT include quantities, weights, calorie counts, or macro information in the ingredient names.
 
 Use the select_core_ingredients tool to provide your selection.`;
 
@@ -1398,7 +1398,7 @@ interface NewPrepSessionsResponse {
 /**
  * Stage 3: Analyze meals and generate prep sessions
  * Creates prep sessions based on user's prep style preference
- * Supports: traditional_batch, night_before, day_of, mixed
+ * Supports: traditional_batch, day_of
  */
 export async function generatePrepSessions(
   days: DayPlan[],
@@ -1407,7 +1407,7 @@ export async function generatePrepSessions(
   userId: string,
   weekStartDate?: string
 ): Promise<PrepModeResponse> {
-  const prepStyle = profile.prep_style || 'mixed';
+  const prepStyle = profile.prep_style || 'day_of';
 
   // Build meal IDs for reference
   const mealIds: Record<string, string> = {};
@@ -1460,20 +1460,6 @@ Create 1-2 prep sessions:
 
 Group all batch cooking together. Only truly no-cook assembly meals (like grabbing a pre-made snack) should be excluded.
 `,
-    night_before: `
-## PREP STYLE: Night Before
-Create 6-7 prep sessions, one for each night (Sunday night through Saturday night).
-Each session prepares the NEXT day's meals.
-
-Example:
-- "Sunday Night (for Monday)" - prep Monday's meals
-- "Monday Night (for Tuesday)" - prep Tuesday's meals
-- etc.
-
-Session types should be "night_before".
-Group tasks that can be done together (e.g., marinating protein while chopping veggies).
-Include ALL meals that have any cooking or prep steps - even "simple" meals like overnight oats need prep instructions.
-`,
     day_of: `
 ## PREP STYLE: Day-Of Fresh Cooking
 The user wants to cook fresh for every meal. This means they need DETAILED prep instructions for EVERY meal that involves ANY cooking or preparation.
@@ -1495,13 +1481,21 @@ CRITICAL RULES FOR DAY-OF STYLE:
 
 5. Even "simple" meals like eggs, oatmeal, or salads with cooked protein NEED prep sessions with proper instructions.
 
-**CRITICAL: SINGLE-PORTION INSTRUCTIONS**
-Since the user cooks fresh each time, ALL quantities and instructions must be for ONE SINGLE SERVING (or one meal occasion):
-- Do NOT scale up quantities for the whole week
-- Do NOT include storage instructions (they cook fresh, not in advance)
-- If the same meal appears multiple days, still consolidate into ONE task, but write the instructions for a SINGLE portion that they repeat each day
-- Example: If "Overnight Oats" appears Mon-Fri, create ONE task with single-portion quantities (1/2 cup oats, not 2.5 cups)
-- The user will simply follow these same single-portion instructions each day they make the meal
+**CRITICAL: SINGLE SERVING INSTRUCTIONS (ATHLETE ONLY)**
+Since the user cooks fresh each time, ALL quantities must be for exactly ONE SERVING (the athlete's portion):
+- Write all quantities for 1 serving only - the UI will show household scaling instructions separately
+- Do NOT multiply quantities by household size or number of days
+- Do NOT include storage instructions (they cook fresh each time)
+- Do NOT reference specific days of the week in the method steps (e.g., don't say "for Monday's portion")
+
+**Why single serving?** The user's household size may vary by day (e.g., kids only on weekdays). The app UI will show them how to scale for each day's household. Your job is just to provide clear 1-serving instructions.
+
+**Task consolidation for day-of prep:**
+- CONSOLIDATE identical meals that repeat across days into ONE task
+- The task description can mention which days (e.g., "Scrambled Eggs (Mon-Fri)")
+- But the METHOD steps must be generic and day-agnostic - no "Monday", "Tuesday" etc. in the instructions
+- Example task description: "Scrambled Eggs with Veggies (Mon-Fri)"
+- Example method step: "Crack 2 eggs into a bowl" (NOT "Crack 2 eggs for Monday's breakfast")
 
 User's complexity preferences:
 - Breakfast: ${breakfastComplexity}
@@ -1509,24 +1503,6 @@ User's complexity preferences:
 - Dinner: ${dinnerComplexity}
 
 NOTE: Complexity preference does NOT mean skip the prep session. It just indicates how complex the user expects meals to be. ALL cooked meals need prep instructions regardless of complexity level.
-`,
-    mixed: `
-## PREP STYLE: Mixed/Flexible
-This is the most common choice. Create a balanced prep schedule:
-
-1. **Weekly Batch Prep** (optional, if helpful): Batch cook proteins that appear in multiple meals
-2. **Night Before** sessions for meals that benefit from advance prep
-3. **Day-Of** sessions for full_recipe dinners that users want fresh
-
-COMPLEXITY-BASED LOGIC:
-- quick_assembly meals: Only skip if truly no cooking involved
-- minimal_prep meals: Can be prepped night before OR batched if similar across days
-- full_recipe meals: Prep night before for components, or cook day-of for freshness
-
-For this user:
-- Breakfast: ${breakfastComplexity} → ${breakfastComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : breakfastComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Lunch: ${lunchComplexity} → ${lunchComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : lunchComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Dinner: ${dinnerComplexity} → ${dinnerComplexity === 'quick_assembly' ? 'Minimal prep' : dinnerComplexity === 'minimal_prep' ? 'Quick night-before prep' : 'Night-before prep or day-of cooking'}
 `,
   };
 
@@ -1553,18 +1529,13 @@ For this user:
       }
     }
 
+    // For ALL prep styles, have the LLM generate single-serving instructions
+    // The UI will handle showing scaling instructions per day since household can vary
     householdPrepSection = `
-## HOUSEHOLD SERVINGS - CRITICAL FOR PREP INSTRUCTIONS
-The athlete is cooking for their household. Your prep instructions MUST include quantities for the FULL batch, not just the athlete.
-
-**Serving multipliers by day/meal:**
-${servingLines.join('\n')}
-
-**IMPORTANT for prep instructions:**
-- Scale ALL ingredient quantities in detailed_steps for the full household
-- Example: If Monday dinner is 2.2x servings, and the base recipe calls for "4 oz salmon", write "9 oz salmon (2.2 servings)"
-- Include the multiplier or total servings in your instructions so the user knows the batch size
-- Meals with 1.0x multiplier are just for the athlete (no scaling needed)
+## HOUSEHOLD SERVINGS NOTE
+The athlete has household members configured, but household sizes vary by day/meal.
+The app UI will show scaling instructions. Your job is to write clear SINGLE-SERVING (1 portion) instructions only.
+Do NOT scale quantities for household - just write for 1 serving.
 `;
   }
 
@@ -1891,9 +1862,9 @@ Consolidate Snack 1 across days separately from Snack 2.
 5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
 6. Include cooking_temps and cooking_times whenever heat/cooking is involved
 7. Base your detailed_steps on the actual meal instructions provided above
-8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch and night_before styles)
-9. DAILY ASSEMBLY (REQUIRED for traditional_batch and night_before styles):
-   - For batch prep and night-before styles, include a "daily_assembly" object in your response
+8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch style)
+9. DAILY ASSEMBLY (REQUIRED for traditional_batch style only):
+   - For batch prep style, include a "daily_assembly" object in your response
    - This tells the user how to assemble/reheat prepped food each day
    - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
    - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)

@@ -271,8 +271,8 @@ export default function OnboardingPage() {
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
-                  <strong>Tip:</strong> A lot of people find &quot;Mixed/Flexible&quot; works well - batch cook proteins on the weekend,
-                  but make fresh dinners during the week.
+                  <strong>Tip:</strong> Day-of cooking keeps meals fresh and flexible. If you prefer batch prep,
+                  Traditional Batch Prep lets you spend 2 hours on Sunday and enjoy quick meals all week.
                 </p>
               </div>
             </div>

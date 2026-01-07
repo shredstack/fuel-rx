@@ -292,8 +292,8 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                 </div>
 
                 {/* Safe to leave message */}
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">
                     <span className="font-medium">This takes 5-10 minutes to generate a comprehensive whole food meal plan with a grocery list and prepping instructions/tips based on all your preferences.</span>{' '}
                     Feel free to leave this page and come back later — we&apos;ll email you when your meal plan is ready!
                   </p>

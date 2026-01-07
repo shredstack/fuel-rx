@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import type { ConsolidatedMeal } from './prepUtils'
-import { formatDayRange, formatCookingTemps, formatCookingTimes } from './prepUtils'
+import { formatDayRange, formatCookingTemps, formatCookingTimes, formatHouseholdContextForDays, generateHouseholdScalingGuide } from './prepUtils'
+import type { HouseholdServingsPrefs } from '@/lib/types'
+import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 interface Props {
   meal: ConsolidatedMeal
@@ -10,6 +12,8 @@ interface Props {
   completedSteps: Set<string>
   onToggleTaskComplete: (sessionId: string, taskId: string) => void
   onToggleStepComplete: (taskId: string, stepIndex: number) => void
+  householdServings?: HouseholdServingsPrefs
+  prepStyle?: string
 }
 
 export default function ConsolidatedPrepTask({
@@ -18,6 +22,8 @@ export default function ConsolidatedPrepTask({
   completedSteps,
   onToggleTaskComplete,
   onToggleStepComplete,
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+  prepStyle = 'mixed',
 }: Props) {
   // Consolidated meals (same meal across multiple days) start expanded since they're batch prep
   const [isExpanded, setIsExpanded] = useState(true)
@@ -39,6 +45,10 @@ export default function ConsolidatedPrepTask({
   // Get cooking info
   const cookingTemps = formatCookingTemps(primaryTask.cooking_temps)
   const cookingTimes = formatCookingTimes(primaryTask.cooking_times)
+
+  // Get household context for this meal
+  const householdContext = formatHouseholdContextForDays(householdServings, meal.days, meal.mealType)
+  const scalingGuide = generateHouseholdScalingGuide(householdServings, meal.days, meal.mealType)
 
   const hasDetails = (primaryTask.detailed_steps && primaryTask.detailed_steps.length > 0) ||
     cookingTemps.length > 0 ||
@@ -97,7 +107,10 @@ export default function ConsolidatedPrepTask({
               {formatDayRange(meal.days)}
             </span>
             <span className="text-xs text-gray-400">
-              {meal.totalServings} serving{meal.totalServings !== 1 ? 's' : ''}
+              {prepStyle === 'day_of'
+                ? `1 serving${meal.totalServings > 1 ? `, made ${meal.totalServings}x` : ''}`
+                : `${meal.totalServings} serving${meal.totalServings !== 1 ? 's' : ''}`
+              }
               {primaryTask.estimated_minutes && primaryTask.estimated_minutes > 0 && (
                 <span className="ml-1">~{primaryTask.estimated_minutes} min</span>
               )}
@@ -203,6 +216,34 @@ export default function ConsolidatedPrepTask({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {/* Household scaling guide - show when cooking for household */}
+            {householdContext.hasHousehold && (
+              <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <svg className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-purple-800">
+                      Household Scaling Guide
+                    </p>
+                    <p className="text-xs text-purple-600">
+                      Quantities below are for 1 serving. Multiply as needed:
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-6 space-y-1">
+                  {scalingGuide.map((entry, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-sm">
+                      <span className="font-medium text-purple-700 min-w-[60px]">{entry.days}:</span>
+                      <span className="text-purple-800 font-semibold">{entry.multiplier}</span>
+                      <span className="text-purple-600 text-xs">({entry.description})</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

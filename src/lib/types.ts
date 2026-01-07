@@ -16,26 +16,18 @@ export type MealConsistency = 'consistent' | 'varied';
 export type MealConsistencyPrefs = Record<MealType, MealConsistency>;
 
 // Prep style preferences
-export type PrepStyle = 'traditional_batch' | 'night_before' | 'day_of' | 'mixed';
+export type PrepStyle = 'traditional_batch' | 'day_of';
 
 export type MealComplexity = 'quick_assembly' | 'minimal_prep' | 'full_recipe';
 
 export const PREP_STYLE_LABELS: Record<PrepStyle, { title: string; description: string }> = {
   traditional_batch: {
     title: 'Traditional Batch Prep',
-    description: 'Prep all meals on Sunday (or one day per week)',
-  },
-  night_before: {
-    title: 'Night Before',
-    description: "Prep tomorrow's meals the night before",
+    description: 'Prep all meals on Sunday - spend 2 hours once, enjoy quick meals all week',
   },
   day_of: {
     title: 'Day-Of Fresh Cooking',
-    description: 'Cook each meal fresh when you eat it',
-  },
-  mixed: {
-    title: 'Mixed/Flexible',
-    description: 'Combination: batch some proteins, simple breakfasts/lunches, fresh dinners',
+    description: 'Cook each meal fresh when you eat it - maximum freshness and flexibility',
   },
 };
 
@@ -57,7 +49,7 @@ export const MEAL_COMPLEXITY_LABELS: Record<MealComplexity, { title: string; tim
   },
 };
 
-export const DEFAULT_PREP_STYLE: PrepStyle = 'mixed';
+export const DEFAULT_PREP_STYLE: PrepStyle = 'day_of';
 
 export interface MealComplexityPrefs {
   breakfast: MealComplexity;

@@ -20,7 +20,7 @@ export default async function PrepSettingsPage() {
   return (
     <PrepSettingsClient
       initialSettings={{
-        prep_style: profile?.prep_style ?? 'mixed',
+        prep_style: profile?.prep_style ?? 'day_of',
         breakfast_complexity: profile?.breakfast_complexity ?? 'minimal_prep',
         lunch_complexity: profile?.lunch_complexity ?? 'minimal_prep',
         dinner_complexity: profile?.dinner_complexity ?? 'full_recipe',

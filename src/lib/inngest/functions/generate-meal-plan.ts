@@ -654,6 +654,7 @@ export const generateMealPlanFunction = inngest.createFunction(
                   .eq('id', mealId);
               } else {
                 // Create new meal
+                // Round macro values to integers since the database expects integer types
                 const { data: newMeal, error: mealError } = await supabase
                   .from('meals')
                   .insert({
@@ -662,11 +663,11 @@ export const generateMealPlanFunction = inngest.createFunction(
                     meal_type: meal.type,
                     ingredients: meal.ingredients,
                     instructions: meal.instructions,
-                    calories: meal.macros.calories,
-                    protein: meal.macros.protein,
-                    carbs: meal.macros.carbs,
-                    fat: meal.macros.fat,
-                    prep_time_minutes: meal.prep_time_minutes,
+                    calories: Math.round(meal.macros.calories),
+                    protein: Math.round(meal.macros.protein),
+                    carbs: Math.round(meal.macros.carbs),
+                    fat: Math.round(meal.macros.fat),
+                    prep_time_minutes: Math.round(meal.prep_time_minutes || 0),
                     source_type: 'ai_generated',
                     source_user_id: userId,
                     source_meal_plan_id: savedPlan.id,
