@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import type { MealTypeGroup, ConsolidatedMeal } from './prepUtils'
-import { MEAL_TYPE_CONFIG, formatDayRange, DAY_LABELS, DAYS_ORDER } from './prepUtils'
-import type { DayOfWeek } from '@/lib/types'
+import { MEAL_TYPE_CONFIG, formatDayRange, DAY_LABELS, DAYS_ORDER, formatHouseholdContextForDays } from './prepUtils'
+import type { DayOfWeek, HouseholdServingsPrefs } from '@/lib/types'
+import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import ConsolidatedPrepTask from './ConsolidatedPrepTask'
 import DaySpecificPrepTask from './DaySpecificPrepTask'
 
@@ -14,6 +15,8 @@ interface Props {
   onToggleTaskComplete: (sessionId: string, taskId: string) => void
   onToggleStepComplete: (taskId: string, stepIndex: number) => void
   defaultExpanded?: boolean
+  householdServings?: HouseholdServingsPrefs
+  prepStyle?: string
 }
 
 export default function MealTypeSection({
@@ -23,6 +26,8 @@ export default function MealTypeSection({
   onToggleTaskComplete,
   onToggleStepComplete,
   defaultExpanded = false,
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+  prepStyle = 'mixed',
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
@@ -84,7 +89,10 @@ export default function MealTypeSection({
                 {mealTypeLabel}
               </h3>
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-                {group.totalServings} serving{group.totalServings !== 1 ? 's' : ''}
+                {prepStyle === 'day_of'
+                  ? `1 serving${group.totalServings > 1 ? `, made ${group.totalServings}x` : ''}`
+                  : `${group.totalServings} serving${group.totalServings !== 1 ? 's' : ''}`
+                }
               </span>
             </div>
             <p className="text-sm text-gray-600">
@@ -123,6 +131,8 @@ export default function MealTypeSection({
                   completedSteps={completedSteps}
                   onToggleTaskComplete={onToggleTaskComplete}
                   onToggleStepComplete={onToggleStepComplete}
+                  householdServings={householdServings}
+                  prepStyle={prepStyle}
                 />
               ) : (
                 /* Single day - show simple task */
@@ -133,6 +143,7 @@ export default function MealTypeSection({
                   completedSteps={completedSteps}
                   onToggleTaskComplete={onToggleTaskComplete}
                   onToggleStepComplete={onToggleStepComplete}
+                  householdServings={householdServings}
                 />
               )}
             </div>

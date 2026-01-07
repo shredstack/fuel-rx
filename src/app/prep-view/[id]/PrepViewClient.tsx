@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { PrepSession, PrepStyle, DayOfWeek, MealType, DailyAssembly, DayPlan, DayPlanNormalized } from '@/lib/types'
-import { PREP_STYLE_LABELS } from '@/lib/types'
+import type { PrepSession, PrepStyle, DayOfWeek, MealType, DailyAssembly, DayPlan, DayPlanNormalized, HouseholdServingsPrefs } from '@/lib/types'
+import { PREP_STYLE_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import {
   groupPrepDataByMealType,
   getSessionTasks,
@@ -24,6 +24,7 @@ interface PrepViewClientProps {
   prepSessions: PrepSession[]
   prepStyle: string
   dailyAssembly?: DailyAssembly
+  householdServings?: HouseholdServingsPrefs
 }
 
 // Helper function to convert DayPlanNormalized to legacy DayPlan format
@@ -53,6 +54,7 @@ export default function PrepViewClient({
   prepSessions: initialPrepSessions,
   prepStyle,
   dailyAssembly: initialDailyAssembly,
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
 }: PrepViewClientProps) {
   const supabase = createClient()
 
@@ -206,6 +208,8 @@ export default function PrepViewClient({
                   onToggleTaskComplete={toggleTaskComplete}
                   onToggleStepComplete={toggleStepComplete}
                   defaultExpanded={false}
+                  householdServings={householdServings}
+                  prepStyle={prepStyle}
                 />
               ))}
             </div>

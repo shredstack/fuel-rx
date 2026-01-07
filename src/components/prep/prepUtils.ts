@@ -8,7 +8,10 @@ import type {
   MealType,
   Meal,
   DayPlan,
+  HouseholdServingsPrefs,
+  HouseholdServingCount,
 } from '@/lib/types'
+import { CHILD_PORTION_MULTIPLIER } from '@/lib/types'
 
 // Helper to split method strings by arrow delimiter into individual steps
 export function parseMethodSteps(method: string | undefined): string[] {
@@ -578,6 +581,195 @@ export function groupPrepDataFromMealPlan(
       }
     }
   }
+
+  return result
+}
+
+// ============================================
+// Household Serving Helpers
+// ============================================
+
+/**
+ * Get the serving multiplier for a specific day and meal type
+ */
+export function getServingMultiplier(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: MealType
+): number {
+  // Map 'snack' to 'snacks' for household lookup
+  const householdMealType = mealType === 'snack' ? 'snacks' : mealType as 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+  const dayServings = servings[day]?.[householdMealType]
+  if (!dayServings) return 1
+
+  // Athlete counts as 1, additional adults as 1 each, children as 0.6 each
+  return 1 + dayServings.adults + (dayServings.children * CHILD_PORTION_MULTIPLIER)
+}
+
+/**
+ * Get household serving count for a specific day and meal type
+ */
+export function getHouseholdServingCount(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: MealType
+): HouseholdServingCount {
+  const householdMealType = mealType === 'snack' ? 'snacks' : mealType as 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+  return servings[day]?.[householdMealType] || { adults: 0, children: 0 }
+}
+
+/**
+ * Check if a day/meal has any household members (beyond just the athlete)
+ */
+export function hasHouseholdForMeal(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: MealType
+): boolean {
+  const count = getHouseholdServingCount(servings, day, mealType)
+  return count.adults > 0 || count.children > 0
+}
+
+/**
+ * Format household serving info as a human-readable string
+ * e.g., "You + 1 child", "You + 1 adult + 2 children", "Just you"
+ */
+export function formatHouseholdContext(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: MealType
+): string {
+  const count = getHouseholdServingCount(servings, day, mealType)
+
+  if (count.adults === 0 && count.children === 0) {
+    return 'Just you'
+  }
+
+  const parts: string[] = ['You']
+  if (count.adults > 0) {
+    parts.push(`${count.adults} adult${count.adults > 1 ? 's' : ''}`)
+  }
+  if (count.children > 0) {
+    parts.push(`${count.children} child${count.children > 1 ? 'ren' : ''}`)
+  }
+
+  return parts.join(' + ')
+}
+
+/**
+ * Format household context for a meal that spans multiple days
+ * Returns the household info if it's consistent across all days, or a summary if it varies
+ */
+export function formatHouseholdContextForDays(
+  servings: HouseholdServingsPrefs,
+  days: DayOfWeek[],
+  mealType: MealType
+): { context: string; varies: boolean; hasHousehold: boolean } {
+  if (days.length === 0) {
+    return { context: 'Just you', varies: false, hasHousehold: false }
+  }
+
+  // Check if household settings are the same across all days
+  const firstContext = formatHouseholdContext(servings, days[0], mealType)
+  const firstCount = getHouseholdServingCount(servings, days[0], mealType)
+  const hasHousehold = firstCount.adults > 0 || firstCount.children > 0
+
+  let allSame = true
+  for (let i = 1; i < days.length; i++) {
+    const dayContext = formatHouseholdContext(servings, days[i], mealType)
+    if (dayContext !== firstContext) {
+      allSame = false
+      break
+    }
+  }
+
+  if (allSame) {
+    return { context: firstContext, varies: false, hasHousehold }
+  }
+
+  // Household varies by day - return a summary
+  return {
+    context: 'Varies by day',
+    varies: true,
+    hasHousehold: days.some(d => hasHouseholdForMeal(servings, d, mealType))
+  }
+}
+
+/**
+ * Generate a per-day scaling guide for day-of prep
+ * Groups days with the same multiplier together
+ * Returns array of { days: string, multiplier: string, description: string }
+ */
+export function generateHouseholdScalingGuide(
+  servings: HouseholdServingsPrefs,
+  days: DayOfWeek[],
+  mealType: MealType
+): Array<{ days: string; multiplier: string; description: string }> {
+  if (days.length === 0) return []
+
+  // Group days by their multiplier
+  const multiplierGroups = new Map<string, { days: DayOfWeek[]; multiplier: number; description: string }>()
+
+  for (const day of days) {
+    const multiplier = getServingMultiplier(servings, day, mealType)
+    const count = getHouseholdServingCount(servings, day, mealType)
+
+    // Create description
+    let description = 'Just you'
+    if (count.adults > 0 || count.children > 0) {
+      const parts: string[] = ['you']
+      if (count.adults > 0) {
+        parts.push(`${count.adults} adult${count.adults > 1 ? 's' : ''}`)
+      }
+      if (count.children > 0) {
+        parts.push(`${count.children} child${count.children > 1 ? 'ren' : ''}`)
+      }
+      description = parts.join(' + ')
+    }
+
+    const key = `${multiplier.toFixed(1)}_${description}`
+
+    if (!multiplierGroups.has(key)) {
+      multiplierGroups.set(key, { days: [], multiplier, description })
+    }
+    multiplierGroups.get(key)!.days.push(day)
+  }
+
+  // Convert to array and format days
+  const result: Array<{ days: string; multiplier: string; description: string }> = []
+
+  for (const group of multiplierGroups.values()) {
+    // Format days nicely (e.g., "Mon-Fri" or "Mon, Wed, Fri")
+    const sortedDays = group.days.sort((a, b) => DAYS_ORDER.indexOf(a) - DAYS_ORDER.indexOf(b))
+    const dayLabels = sortedDays.map(d => DAY_LABELS[d].slice(0, 3))
+
+    // Check if days are consecutive
+    let daysStr: string
+    if (sortedDays.length >= 3) {
+      const indices = sortedDays.map(d => DAYS_ORDER.indexOf(d))
+      const isConsecutive = indices.every((idx, i) => i === 0 || idx === indices[i - 1] + 1)
+      if (isConsecutive) {
+        daysStr = `${dayLabels[0]}-${dayLabels[dayLabels.length - 1]}`
+      } else {
+        daysStr = dayLabels.join(', ')
+      }
+    } else {
+      daysStr = dayLabels.join(', ')
+    }
+
+    result.push({
+      days: daysStr,
+      multiplier: group.multiplier === 1 ? '1x' : `${group.multiplier.toFixed(1)}x`,
+      description: group.description
+    })
+  }
+
+  // Sort by first day appearance
+  result.sort((a, b) => {
+    const aFirstDay = days.find(d => a.days.includes(DAY_LABELS[d].slice(0, 3)))
+    const bFirstDay = days.find(d => b.days.includes(DAY_LABELS[d].slice(0, 3)))
+    return DAYS_ORDER.indexOf(aFirstDay!) - DAYS_ORDER.indexOf(bFirstDay!)
+  })
 
   return result
 }

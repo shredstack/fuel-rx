@@ -1495,13 +1495,21 @@ CRITICAL RULES FOR DAY-OF STYLE:
 
 5. Even "simple" meals like eggs, oatmeal, or salads with cooked protein NEED prep sessions with proper instructions.
 
-**CRITICAL: SINGLE-PORTION INSTRUCTIONS**
-Since the user cooks fresh each time, ALL quantities and instructions must be for ONE SINGLE SERVING (or one meal occasion):
-- Do NOT scale up quantities for the whole week
-- Do NOT include storage instructions (they cook fresh, not in advance)
-- If the same meal appears multiple days, still consolidate into ONE task, but write the instructions for a SINGLE portion that they repeat each day
-- Example: If "Overnight Oats" appears Mon-Fri, create ONE task with single-portion quantities (1/2 cup oats, not 2.5 cups)
-- The user will simply follow these same single-portion instructions each day they make the meal
+**CRITICAL: SINGLE SERVING INSTRUCTIONS (ATHLETE ONLY)**
+Since the user cooks fresh each time, ALL quantities must be for exactly ONE SERVING (the athlete's portion):
+- Write all quantities for 1 serving only - the UI will show household scaling instructions separately
+- Do NOT multiply quantities by household size or number of days
+- Do NOT include storage instructions (they cook fresh each time)
+- Do NOT reference specific days of the week in the method steps (e.g., don't say "for Monday's portion")
+
+**Why single serving?** The user's household size may vary by day (e.g., kids only on weekdays). The app UI will show them how to scale for each day's household. Your job is just to provide clear 1-serving instructions.
+
+**Task consolidation for day-of prep:**
+- CONSOLIDATE identical meals that repeat across days into ONE task
+- The task description can mention which days (e.g., "Scrambled Eggs (Mon-Fri)")
+- But the METHOD steps must be generic and day-agnostic - no "Monday", "Tuesday" etc. in the instructions
+- Example task description: "Scrambled Eggs with Veggies (Mon-Fri)"
+- Example method step: "Crack 2 eggs into a bowl" (NOT "Crack 2 eggs for Monday's breakfast")
 
 User's complexity preferences:
 - Breakfast: ${breakfastComplexity}
@@ -1553,18 +1561,13 @@ For this user:
       }
     }
 
+    // For ALL prep styles, have the LLM generate single-serving instructions
+    // The UI will handle showing scaling instructions per day since household can vary
     householdPrepSection = `
-## HOUSEHOLD SERVINGS - CRITICAL FOR PREP INSTRUCTIONS
-The athlete is cooking for their household. Your prep instructions MUST include quantities for the FULL batch, not just the athlete.
-
-**Serving multipliers by day/meal:**
-${servingLines.join('\n')}
-
-**IMPORTANT for prep instructions:**
-- Scale ALL ingredient quantities in detailed_steps for the full household
-- Example: If Monday dinner is 2.2x servings, and the base recipe calls for "4 oz salmon", write "9 oz salmon (2.2 servings)"
-- Include the multiplier or total servings in your instructions so the user knows the batch size
-- Meals with 1.0x multiplier are just for the athlete (no scaling needed)
+## HOUSEHOLD SERVINGS NOTE
+The athlete has household members configured, but household sizes vary by day/meal.
+The app UI will show scaling instructions. Your job is to write clear SINGLE-SERVING (1 portion) instructions only.
+Do NOT scale quantities for household - just write for 1 serving.
 `;
   }
 
