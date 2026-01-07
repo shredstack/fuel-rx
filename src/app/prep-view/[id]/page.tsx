@@ -185,7 +185,7 @@ export default async function PrepViewPage({
       }}
       days={days}
       prepSessions={(prepSessions || []) as PrepSession[]}
-      prepStyle={profile?.prep_style || 'mixed'}
+      prepStyle={profile?.prep_style || 'day_of'}
       dailyAssembly={dailyAssembly}
       householdServings={householdServings}
     />

@@ -1398,7 +1398,7 @@ interface NewPrepSessionsResponse {
 /**
  * Stage 3: Analyze meals and generate prep sessions
  * Creates prep sessions based on user's prep style preference
- * Supports: traditional_batch, night_before, day_of, mixed
+ * Supports: traditional_batch, day_of
  */
 export async function generatePrepSessions(
   days: DayPlan[],
@@ -1407,7 +1407,7 @@ export async function generatePrepSessions(
   userId: string,
   weekStartDate?: string
 ): Promise<PrepModeResponse> {
-  const prepStyle = profile.prep_style || 'mixed';
+  const prepStyle = profile.prep_style || 'day_of';
 
   // Build meal IDs for reference
   const mealIds: Record<string, string> = {};
@@ -1460,20 +1460,6 @@ Create 1-2 prep sessions:
 
 Group all batch cooking together. Only truly no-cook assembly meals (like grabbing a pre-made snack) should be excluded.
 `,
-    night_before: `
-## PREP STYLE: Night Before
-Create 6-7 prep sessions, one for each night (Sunday night through Saturday night).
-Each session prepares the NEXT day's meals.
-
-Example:
-- "Sunday Night (for Monday)" - prep Monday's meals
-- "Monday Night (for Tuesday)" - prep Tuesday's meals
-- etc.
-
-Session types should be "night_before".
-Group tasks that can be done together (e.g., marinating protein while chopping veggies).
-Include ALL meals that have any cooking or prep steps - even "simple" meals like overnight oats need prep instructions.
-`,
     day_of: `
 ## PREP STYLE: Day-Of Fresh Cooking
 The user wants to cook fresh for every meal. This means they need DETAILED prep instructions for EVERY meal that involves ANY cooking or preparation.
@@ -1517,24 +1503,6 @@ User's complexity preferences:
 - Dinner: ${dinnerComplexity}
 
 NOTE: Complexity preference does NOT mean skip the prep session. It just indicates how complex the user expects meals to be. ALL cooked meals need prep instructions regardless of complexity level.
-`,
-    mixed: `
-## PREP STYLE: Mixed/Flexible
-This is the most common choice. Create a balanced prep schedule:
-
-1. **Weekly Batch Prep** (optional, if helpful): Batch cook proteins that appear in multiple meals
-2. **Night Before** sessions for meals that benefit from advance prep
-3. **Day-Of** sessions for full_recipe dinners that users want fresh
-
-COMPLEXITY-BASED LOGIC:
-- quick_assembly meals: Only skip if truly no cooking involved
-- minimal_prep meals: Can be prepped night before OR batched if similar across days
-- full_recipe meals: Prep night before for components, or cook day-of for freshness
-
-For this user:
-- Breakfast: ${breakfastComplexity} → ${breakfastComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : breakfastComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Lunch: ${lunchComplexity} → ${lunchComplexity === 'quick_assembly' ? 'Minimal prep, but include if any cooking' : lunchComplexity === 'minimal_prep' ? 'Quick night-before prep or batch' : 'May need dedicated prep'}
-- Dinner: ${dinnerComplexity} → ${dinnerComplexity === 'quick_assembly' ? 'Minimal prep' : dinnerComplexity === 'minimal_prep' ? 'Quick night-before prep' : 'Night-before prep or day-of cooking'}
 `,
   };
 
@@ -1894,9 +1862,9 @@ Consolidate Snack 1 across days separately from Snack 2.
 5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
 6. Include cooking_temps and cooking_times whenever heat/cooking is involved
 7. Base your detailed_steps on the actual meal instructions provided above
-8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch and night_before styles)
-9. DAILY ASSEMBLY (REQUIRED for traditional_batch and night_before styles):
-   - For batch prep and night-before styles, include a "daily_assembly" object in your response
+8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch style)
+9. DAILY ASSEMBLY (REQUIRED for traditional_batch style only):
+   - For batch prep style, include a "daily_assembly" object in your response
    - This tells the user how to assemble/reheat prepped food each day
    - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
    - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)
