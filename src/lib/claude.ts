@@ -1000,41 +1000,41 @@ The user wants their weekly grocery list to include:
 - Dairy: ${varietyPrefs.dairy} different options (Greek yogurt, cottage cheese, milk, cheese)
 ${nutritionReference}
 ## INSTRUCTIONS
-Select ingredients AND estimate weekly quantities that:
-1. TOTAL to approximately ${weeklyCalories} calories for the week
-2. Provide approximately ${weeklyProtein}g protein for the week
-3. Are versatile and can be prepared multiple ways
-4. Are commonly available at grocery stores
-5. Work well for batch cooking
-6. Match the user's dietary preferences
+Select ingredients that:
+1. Can provide approximately ${weeklyCalories} calories and ${weeklyProtein}g protein for the week when combined
+2. Are versatile and can be prepared multiple ways
+3. Are commonly available at grocery stores
+4. Work well for batch cooking
+5. Match the user's dietary preferences
 
 ## CALORIE DISTRIBUTION GUIDANCE
-A typical distribution for ${weeklyCalories} weekly calories:
-- Proteins should provide ~35-40% of calories (~${Math.round(weeklyCalories * 0.35)} cal)
-- Grains/Starches should provide ~25-30% of calories (~${Math.round(weeklyCalories * 0.25)} cal)
-- Fats should provide ~20-25% of calories (~${Math.round(weeklyCalories * 0.20)} cal)
+When selecting ingredients, keep in mind a typical distribution:
+- Proteins should provide ~35-40% of calories
+- Grains/Starches should provide ~25-30% of calories
+- Fats should provide ~20-25% of calories
 - Fruits, vegetables, and dairy make up the rest
 
 ## INGREDIENT SELECTION GUIDELINES
-- **Proteins**: Focus on lean, versatile options. Includes eggs (70 cal each, 6g protein). 4oz chicken breast = ~140 cal, 26g protein. 4oz salmon = ~180 cal, 25g protein.
-- **Vegetables**: Mix of colors - broccoli, spinach, bell peppers, sweet potatoes. Low calorie but essential for nutrients.
-- **Fruits**: Fresh fruits for energy - banana = ~105 cal, berries = ~70-85 cal/cup.
-- **Grains/Starches**: Includes legumes. 1 cup cooked rice = ~215 cal, 1 cup quinoa = ~220 cal, black beans (110 cal/half cup, 7g protein).
-- **Healthy Fats**: Calorie-dense - 1 tbsp olive oil = 120 cal, 1 oz almonds = 165 cal, 1/2 avocado = 160 cal.
-- **Dairy**: Greek yogurt (130 cal/cup, 20g protein), cottage cheese (160 cal/cup, 28g protein), milk, cheese.
+- **Proteins**: Focus on lean, versatile options (chicken breast, salmon, eggs, etc.)
+- **Vegetables**: Mix of colors - cruciferous, leafy greens, nightshades, root vegetables
+- **Fruits**: Fresh fruits for energy and nutrients
+- **Grains/Starches**: Includes legumes (rice, quinoa, black beans, etc.)
+- **Healthy Fats**: Nutrient-dense options (avocado, olive oil, nuts)
+- **Dairy**: High-protein options (Greek yogurt, cottage cheese, etc.)
 
 ## ATHLETE HEALTH: FRUIT & VEGETABLE TARGET
 Athletes should consume approximately 800g (~6 cups) of fruits and vegetables per day for optimal health and recovery.
-- Aim to include 5-6 servings of fruits and vegetables across the day's ingredient selection
-- This typically breaks down to ~2-3 cups of vegetables and ~2-3 cups of fruit daily
-- Select a variety that enables this volume across all meals (breakfast fruit, lunch vegetables, dinner vegetables, snack fruit/veggies)
+- Select a variety that enables this volume across all meals
 - Prioritize nutrient-dense options: leafy greens, cruciferous vegetables, berries, citrus, and colorful produce
 
 ## CONSTRAINTS
 - Select EXACTLY the number of items requested per category
 - Prioritize ingredients that can be used in multiple meals
 - ONLY recommend healthy, whole foods that are non-processed or minimally processed
-- **Quantities must add up to approximately ${weeklyCalories} total weekly calories**
+
+## OUTPUT FORMAT
+Return ONLY the ingredient name for each item (e.g., "Chicken breast", "Broccoli", "Brown rice").
+Do NOT include quantities, weights, calorie counts, or macro information in the ingredient names.
 
 Use the select_core_ingredients tool to provide your selection.`;
 
