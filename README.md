@@ -30,6 +30,10 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
   - [Database Setup](#database-setup)
   - [Inngest Production Setup](#inngest-production-setup)
   - [Ingest Developer Setup](#ingest-developer-setup)
+  - [Email Notification System](#email-notification-system)
+    - [Setup](#setup)
+    - [How It Works](#how-it-works)
+    - [Testing Locally](#testing-locally)
 - [Project Structure](#project-structure)
 - [Deployment](#deployment)
   - [Deploy to Vercel](#deploy-to-vercel)
@@ -264,6 +268,51 @@ You should just be able to start Next.js then in another terminal, start Inngest
 1. `npm run dev`
 
 2. `npx inngest-cli@latest dev -u http://localhost:3000/api/inngest --no-discovery`
+
+## Email Notification System
+
+FuelRx sends email notifications when meal plan generation completes, so users can close the browser and come back later. We use [Resend](https://resend.com) for email delivery.
+
+### Setup
+
+1. **Create Resend Account**: Sign up at https://resend.com (free tier: 3,000 emails/month)
+
+2. **Get API Key**:
+   - Go to Resend Dashboard > API Keys
+   - Create a new API key
+   - Copy the key (starts with `re_`)
+
+3. **Verify Sending Domain** (for production):
+   - Go to Resend Dashboard > Domains
+   - Add your domain and follow DNS verification steps
+   - For development, you can use Resend's test domain (`onboarding@resend.dev`)
+
+4. **Add Environment Variables**:
+   ```bash
+   # .env or .env.local
+   RESEND_API_KEY=re_xxxxx
+   RESEND_FROM_EMAIL=notifications@yourdomain.com
+   NEXT_PUBLIC_APP_URL=https://your-app-url.com
+   ```
+
+5. **Add to Vercel** (for production):
+   - Go to Vercel Project Settings > Environment Variables
+   - Add the same variables above
+
+### How It Works
+
+- When a meal plan finishes generating, the Inngest function sends an email via `src/lib/email/resend.ts`
+- If `RESEND_API_KEY` is not configured, emails are silently skipped (no errors)
+- Email includes a direct link to view the completed meal plan
+
+### Testing Locally
+
+Without Resend configured, you'll see this in the console:
+```
+[Email] Skipping email - RESEND_API_KEY not configured
+```
+
+To test actual email delivery locally, add your Resend API key to `.env.local`.
 
 # Project Structure
 
