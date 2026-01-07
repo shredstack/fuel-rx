@@ -1484,6 +1484,14 @@ CRITICAL RULES FOR DAY-OF STYLE:
 
 5. Even "simple" meals like eggs, oatmeal, or salads with cooked protein NEED prep sessions with proper instructions.
 
+**CRITICAL: SINGLE-PORTION INSTRUCTIONS**
+Since the user cooks fresh each time, ALL quantities and instructions must be for ONE SINGLE SERVING (or one meal occasion):
+- Do NOT scale up quantities for the whole week
+- Do NOT include storage instructions (they cook fresh, not in advance)
+- If the same meal appears multiple days, still consolidate into ONE task, but write the instructions for a SINGLE portion that they repeat each day
+- Example: If "Overnight Oats" appears Mon-Fri, create ONE task with single-portion quantities (1/2 cup oats, not 2.5 cups)
+- The user will simply follow these same single-portion instructions each day they make the meal
+
 User's complexity preferences:
 - Breakfast: ${breakfastComplexity}
 - Lunch: ${lunchComplexity}
