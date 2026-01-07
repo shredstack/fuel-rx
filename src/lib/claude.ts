@@ -1023,6 +1023,13 @@ A typical distribution for ${weeklyCalories} weekly calories:
 - **Healthy Fats**: Calorie-dense - 1 tbsp olive oil = 120 cal, 1 oz almonds = 165 cal, 1/2 avocado = 160 cal.
 - **Dairy**: Greek yogurt (130 cal/cup, 20g protein), cottage cheese (160 cal/cup, 28g protein), milk, cheese.
 
+## ATHLETE HEALTH: FRUIT & VEGETABLE TARGET
+Athletes should consume approximately 800g (~6 cups) of fruits and vegetables per day for optimal health and recovery.
+- Aim to include 5-6 servings of fruits and vegetables across the day's ingredient selection
+- This typically breaks down to ~2-3 cups of vegetables and ~2-3 cups of fruit daily
+- Select a variety that enables this volume across all meals (breakfast fruit, lunch vegetables, dinner vegetables, snack fruit/veggies)
+- Prioritize nutrient-dense options: leafy greens, cruciferous vegetables, berries, citrus, and colorful produce
+
 ## CONSTRAINTS
 - Select EXACTLY the number of items requested per category
 - Prioritize ingredients that can be used in multiple meals
@@ -1246,6 +1253,10 @@ ${snackInstructions}
 3. Design meals that work well for batch cooking
 4. Use realistic portion sizes that add up to daily calorie targets
 5. Consider meal prep efficiency
+6. **INCLUDE 5-6 SERVINGS OF FRUITS & VEGETABLES DAILY** (~800g or 6 cups total per day for athlete health)
+   - Aim for vegetables at lunch AND dinner (at least 1-2 cups each)
+   - Include fruit at breakfast and/or snacks (1-2 cups total)
+   - This is essential for athlete recovery and overall health - do not sacrifice produce for hitting macros
 
 ## CRITICAL RULES
 - Use ONLY the provided ingredients (you may use basic seasonings like salt, pepper, garlic, onion, herbs, and spices)

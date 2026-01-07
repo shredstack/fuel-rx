@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: "Coach Hill's FuelRx - AI Meal Planning for CrossFit Draper Athletes",
   description: 'AI-powered meal planning optimized for your macros, training schedule, and dietary preferences.',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({

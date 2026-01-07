@@ -7,15 +7,11 @@ import { createClient } from '@/lib/supabase/client'
 import type {
   Ingredient,
   MealPreferenceType,
-  Macros,
-  CoreIngredients,
   IngredientPreferenceType,
   IngredientPreferenceWithDetails,
-  MealPlanTheme,
   MealPlanNormalized,
   DayPlanNormalized,
   MealSlot,
-  MealEntity,
   DayOfWeek,
   IngredientWithNutrition,
   SwapResponse,
@@ -212,67 +208,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       setIsEditingTitle(false)
     }
     setSavingTitle(false)
-  }
-
-  const updateMealMacros = async (mealSlot: MealSlot, newMacros: Macros) => {
-    const mealId = mealSlot.meal.id
-
-    // Update the meal in the database
-    const { error: mealError } = await supabase
-      .from('meals')
-      .update({
-        calories: newMacros.calories,
-        protein: newMacros.protein,
-        carbs: newMacros.carbs,
-        fat: newMacros.fat,
-        is_nutrition_edited_by_user: true,
-      })
-      .eq('id', mealId)
-
-    if (mealError) {
-      console.error('Error updating meal macros:', mealError)
-      return false
-    }
-
-    // Update local state
-    const updatedDays = mealPlan.days.map(day => {
-      const updatedMeals = day.meals.map(slot => {
-        if (slot.meal.id === mealId) {
-          return {
-            ...slot,
-            meal: {
-              ...slot.meal,
-              calories: newMacros.calories,
-              protein: newMacros.protein,
-              carbs: newMacros.carbs,
-              fat: newMacros.fat,
-              is_nutrition_edited_by_user: true,
-            },
-          }
-        }
-        return slot
-      })
-
-      // Recalculate daily totals
-      const daily_totals = updatedMeals.reduce(
-        (totals, slot) => ({
-          calories: totals.calories + slot.meal.calories,
-          protein: totals.protein + slot.meal.protein,
-          carbs: totals.carbs + slot.meal.carbs,
-          fat: totals.fat + slot.meal.fat,
-        }),
-        { calories: 0, protein: 0, carbs: 0, fat: 0 }
-      )
-
-      return {
-        ...day,
-        meals: updatedMeals,
-        daily_totals,
-      }
-    })
-
-    setMealPlan({ ...mealPlan, days: updatedDays })
-    return true
   }
 
   const updateIngredientInMeal = async (
@@ -659,7 +594,6 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 preference={mealPreferences[mealSlot.meal.name]}
                 onLike={() => toggleMealPreference(mealSlot.meal.name, 'liked')}
                 onDislike={() => toggleMealPreference(mealSlot.meal.name, 'disliked')}
-                onMacrosChange={(newMacros) => updateMealMacros(mealSlot, newMacros)}
                 onIngredientChange={(ingredientIndex, newIngredient) =>
                   updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
                 }
@@ -700,7 +634,6 @@ function MealCard({
   preference,
   onLike,
   onDislike,
-  onMacrosChange,
   onIngredientChange,
   mealPlanId,
   ingredientPreferences,
@@ -714,7 +647,6 @@ function MealCard({
   preference?: MealPreferenceType
   onLike: () => void
   onDislike: () => void
-  onMacrosChange: (macros: Macros) => Promise<boolean>
   onIngredientChange: (ingredientIndex: number, newIngredient: IngredientWithNutrition) => Promise<boolean>
   mealPlanId: string
   ingredientPreferences: IngredientPreferencesMap
@@ -723,14 +655,6 @@ function MealCard({
   onSwap: () => void
 }) {
   const meal = mealSlot.meal
-  const [isEditingMacros, setIsEditingMacros] = useState(false)
-  const [macrosValue, setMacrosValue] = useState({
-    calories: meal.calories.toString(),
-    protein: meal.protein.toString(),
-    carbs: meal.carbs.toString(),
-    fat: meal.fat.toString(),
-  })
-  const [savingMacros, setSavingMacros] = useState(false)
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
   const [savingIngredient, setSavingIngredient] = useState(false)
 
@@ -739,84 +663,6 @@ function MealCard({
     lunch: 'bg-teal-100 text-teal-800',
     dinner: 'bg-blue-100 text-blue-800',
     snack: 'bg-purple-100 text-purple-800',
-  }
-
-  const resetMacrosValue = () => {
-    setMacrosValue({
-      calories: meal.calories.toString(),
-      protein: meal.protein.toString(),
-      carbs: meal.carbs.toString(),
-      fat: meal.fat.toString(),
-    })
-  }
-
-  const handleSaveMacros = async () => {
-    const newMacros = {
-      calories: parseInt(macrosValue.calories, 10),
-      protein: parseInt(macrosValue.protein, 10),
-      carbs: parseInt(macrosValue.carbs, 10),
-      fat: parseInt(macrosValue.fat, 10),
-    }
-
-    // Validate all values
-    if (Object.values(newMacros).some(v => isNaN(v) || v < 0)) {
-      resetMacrosValue()
-      setIsEditingMacros(false)
-      return
-    }
-
-    setSavingMacros(true)
-    const success = await onMacrosChange(newMacros)
-    if (success) {
-      setIsEditingMacros(false)
-    } else {
-      resetMacrosValue()
-    }
-    setSavingMacros(false)
-  }
-
-  const MacroInput = ({
-    label,
-    value,
-    onChange,
-    color
-  }: {
-    label: string
-    value: string
-    onChange: (v: string) => void
-    color: string
-  }) => {
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const rawValue = e.target.value
-      // Allow empty or digits only
-      if (rawValue === '' || /^\d*$/.test(rawValue)) {
-        onChange(rawValue)
-      }
-    }
-
-    return (
-      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={value}
-          onChange={handleInputChange}
-          className={`w-16 px-2 py-1 border border-gray-300 rounded text-sm ${color}`}
-          onClick={(e) => e.stopPropagation()}
-          onFocus={(e) => e.target.select()}
-          onKeyDown={(e) => {
-            e.stopPropagation()
-            if (e.key === 'Enter') handleSaveMacros()
-            if (e.key === 'Escape') {
-              resetMacrosValue()
-              setIsEditingMacros(false)
-            }
-          }}
-        />
-        <span className={`text-sm ${color}`}>{label}</span>
-      </div>
-    )
   }
 
   return (
@@ -840,81 +686,20 @@ function MealCard({
             )}
           </div>
           <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
-          {isEditingMacros ? (
-            <div className="flex flex-wrap items-center gap-3 mt-2" onClick={(e) => e.stopPropagation()}>
-              <MacroInput
-                label="kcal"
-                value={macrosValue.calories}
-                onChange={(v) => setMacrosValue({ ...macrosValue, calories: v })}
-                color="text-gray-600"
-              />
-              <MacroInput
-                label="g protein"
-                value={macrosValue.protein}
-                onChange={(v) => setMacrosValue({ ...macrosValue, protein: v })}
-                color="text-blue-600"
-              />
-              <MacroInput
-                label="g carbs"
-                value={macrosValue.carbs}
-                onChange={(v) => setMacrosValue({ ...macrosValue, carbs: v })}
-                color="text-orange-600"
-              />
-              <MacroInput
-                label="g fat"
-                value={macrosValue.fat}
-                onChange={(v) => setMacrosValue({ ...macrosValue, fat: v })}
-                color="text-purple-600"
-              />
-              <div className="flex gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSaveMacros()
-                  }}
-                  disabled={savingMacros}
-                  className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {savingMacros ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    resetMacrosValue()
-                    setIsEditingMacros(false)
-                  }}
-                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="flex flex-wrap gap-4 mt-2 text-sm cursor-pointer group"
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsEditingMacros(true)
-              }}
-              title="Click to edit macros"
-            >
-              <span className="text-gray-600">
-                <span className="font-medium">{Math.round(meal.calories)}</span> kcal
-              </span>
-              <span className="text-blue-600">
-                <span className="font-medium">{Math.round(meal.protein)}g</span> protein
-              </span>
-              <span className="text-orange-600">
-                <span className="font-medium">{Math.round(meal.carbs)}g</span> carbs
-              </span>
-              <span className="text-purple-600">
-                <span className="font-medium">{Math.round(meal.fat)}g</span> fat
-              </span>
-              <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </div>
-          )}
+          <div className="flex flex-wrap gap-4 mt-2 text-sm">
+            <span className="text-gray-600">
+              <span className="font-medium">{Math.round(meal.calories)}</span> kcal
+            </span>
+            <span className="text-blue-600">
+              <span className="font-medium">{Math.round(meal.protein)}g</span> protein
+            </span>
+            <span className="text-orange-600">
+              <span className="font-medium">{Math.round(meal.carbs)}g</span> carbs
+            </span>
+            <span className="text-purple-600">
+              <span className="font-medium">{Math.round(meal.fat)}g</span> fat
+            </span>
+          </div>
         </button>
 
         {/* Swap, Like/Dislike and Expand buttons */}
