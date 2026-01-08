@@ -1,7 +1,32 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
-import { createClient } from '../supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { getTestConfig } from '../claude_test';
+
+// ============================================
+// Supabase Service Role Client for Inngest
+// ============================================
+
+/**
+ * Create a service role Supabase client that doesn't require cookies.
+ * This is necessary because Inngest functions don't have access to
+ * Next.js request context with cookies.
+ */
+function createServiceRoleClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase URL or service role key');
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
 
 // ============================================
 // Anthropic Client
@@ -27,7 +52,9 @@ interface LLMLogEntry {
 
 export async function logLLMCall(entry: LLMLogEntry): Promise<void> {
   try {
-    const supabase = await createClient();
+    // Use service role client since this may be called from Inngest
+    // which doesn't have access to Next.js cookies context
+    const supabase = createServiceRoleClient();
     await supabase.from('llm_logs').insert(entry);
   } catch (error) {
     // Don't fail the main operation if logging fails
