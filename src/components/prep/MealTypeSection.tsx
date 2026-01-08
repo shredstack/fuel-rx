@@ -57,6 +57,30 @@ export default function MealTypeSection({
     return `${group.consolidatedMeals.length} different meals`
   }
 
+  // Get prep category label for batch prep users
+  const getPrepCategoryLabel = (): string | null => {
+    if (prepStyle !== 'traditional_batch') return null
+
+    // Get prep_category from the first meal's first task
+    const firstMeal = group.consolidatedMeals[0]
+    const prepCategory = firstMeal?.tasks[0]?.prep_category
+
+    switch (prepCategory) {
+      case 'sunday_batch':
+        return 'Batch prep'
+      case 'day_of_quick':
+        return 'Quick day-of'
+      case 'day_of_cooking':
+        return 'Day-of cooking'
+      default:
+        // For traditional_batch users, if no prep_category is set, these are day-of meals
+        // (batch prep meals are shown in BatchPrepSection, not here)
+        return 'Day-of'
+    }
+  }
+
+  const prepCategoryLabel = getPrepCategoryLabel()
+
   return (
     <div className="card">
       {/* Header - Always visible */}
@@ -89,9 +113,11 @@ export default function MealTypeSection({
                 {mealTypeLabel}
               </h3>
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-                {prepStyle === 'day_of'
-                  ? `1 serving${group.totalServings > 1 ? `, made ${group.totalServings}x` : ''}`
-                  : `${group.totalServings} serving${group.totalServings !== 1 ? 's' : ''}`
+                {prepCategoryLabel
+                  ? prepCategoryLabel
+                  : prepStyle === 'day_of'
+                    ? `1 serving${group.totalServings > 1 ? `, made ${group.totalServings}x` : ''}`
+                    : `${group.totalServings} serving${group.totalServings !== 1 ? 's' : ''}`
                 }
               </span>
             </div>

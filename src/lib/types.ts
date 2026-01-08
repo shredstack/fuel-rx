@@ -504,6 +504,9 @@ export interface CookingTimes {
   total_time?: string;    // e.g., "25-30 min"
 }
 
+// Prep category for batch vs day-of cooking decisions
+export type PrepCategory = 'sunday_batch' | 'day_of_quick' | 'day_of_cooking';
+
 // Prep task for the new collapsible prep view
 export interface PrepTask {
   id: string;
@@ -519,6 +522,8 @@ export interface PrepTask {
   // NEW: Equipment and ingredients needed before starting
   equipment_needed?: string[];      // e.g., ["Large skillet", "Medium pot", "Baking sheet"]
   ingredients_to_prep?: string[];   // e.g., ["1.5 lbs ground turkey", "8 oz mushrooms, sliced"]
+  // Prep category for batch prep users (helps distinguish batch vs day-of tasks)
+  prep_category?: PrepCategory;     // sunday_batch = prep ahead, day_of_quick = <10min fresh, day_of_cooking = longer fresh cooking
 }
 
 // Session type for prep scheduling

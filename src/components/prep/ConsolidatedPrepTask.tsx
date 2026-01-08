@@ -50,6 +50,27 @@ export default function ConsolidatedPrepTask({
   const householdContext = formatHouseholdContextForDays(householdServings, meal.days, meal.mealType)
   const scalingGuide = generateHouseholdScalingGuide(householdServings, meal.days, meal.mealType)
 
+  // Get prep category label for batch prep users
+  const getPrepCategoryLabel = (): string | null => {
+    if (prepStyle !== 'traditional_batch') return null
+
+    const prepCategory = primaryTask.prep_category
+
+    switch (prepCategory) {
+      case 'sunday_batch':
+        return 'Batch prep'
+      case 'day_of_quick':
+        return 'Quick day-of'
+      case 'day_of_cooking':
+        return 'Day-of cooking'
+      default:
+        // For traditional_batch users, if no prep_category is set, these are day-of meals
+        return 'Day-of'
+    }
+  }
+
+  const prepCategoryLabel = getPrepCategoryLabel()
+
   const hasDetails = (primaryTask.detailed_steps && primaryTask.detailed_steps.length > 0) ||
     cookingTemps.length > 0 ||
     cookingTimes.length > 0 ||
@@ -107,9 +128,11 @@ export default function ConsolidatedPrepTask({
               {formatDayRange(meal.days)}
             </span>
             <span className="text-xs text-gray-400">
-              {prepStyle === 'day_of'
-                ? `1 serving${meal.totalServings > 1 ? `, made ${meal.totalServings}x` : ''}`
-                : `${meal.totalServings} serving${meal.totalServings !== 1 ? 's' : ''}`
+              {prepCategoryLabel
+                ? prepCategoryLabel
+                : prepStyle === 'day_of'
+                  ? `1 serving${meal.totalServings > 1 ? `, made ${meal.totalServings}x` : ''}`
+                  : `${meal.totalServings} serving${meal.totalServings !== 1 ? 's' : ''}`
               }
               {primaryTask.estimated_minutes && primaryTask.estimated_minutes > 0 && (
                 <span className="ml-1">~{primaryTask.estimated_minutes} min</span>
@@ -231,7 +254,10 @@ export default function ConsolidatedPrepTask({
                       Household Scaling Guide
                     </p>
                     <p className="text-xs text-purple-600">
-                      Quantities below are for 1 serving. Multiply as needed:
+                      {prepStyle === 'traditional_batch'
+                        ? `Quantities below are for 1 serving. For your Sunday batch, multiply by ${meal.totalServings}x for the week:`
+                        : 'Quantities below are for 1 serving. Multiply as needed:'
+                      }
                     </p>
                   </div>
                 </div>

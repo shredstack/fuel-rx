@@ -20,9 +20,14 @@ export default function BatchPrepSection({
   completedSteps,
   onToggleTaskComplete,
   onToggleStepComplete,
-  defaultExpanded = false,
+  defaultExpanded = true, // Batch prep sections should be expanded by default
 }: BatchPrepSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+
+  // Use "Sunday Batch Prep" as display name for weekly_batch sessions
+  const displayName = session.session_type === 'weekly_batch'
+    ? 'Sunday Batch Prep'
+    : session.session_name
 
   const tasks = getSessionTasks(session)
   const totalTasks = tasks.length
@@ -55,12 +60,17 @@ export default function BatchPrepSection({
             )}
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              {session.session_name}
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {displayName}
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                Batch prep
+              </span>
               {isAllComplete && (
-                <span className="ml-2 text-green-600 text-sm font-normal">Complete</span>
+                <span className="text-green-600 text-sm font-normal">Complete</span>
               )}
-            </h3>
+            </div>
             <div className="flex items-center gap-3 text-sm text-gray-500">
               <span>{totalTasks} task{totalTasks !== 1 ? 's' : ''}</span>
               {session.estimated_minutes && session.estimated_minutes > 0 && (

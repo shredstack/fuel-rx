@@ -1379,6 +1379,7 @@ interface LLMPrepTask {
   completed: boolean;
   equipment_needed?: string[];
   ingredients_to_prep?: string[];
+  prep_category?: 'sunday_batch' | 'day_of_quick' | 'day_of_cooking';
 }
 
 interface NewPrepSessionsResponse {
@@ -1454,11 +1455,52 @@ export async function generatePrepSessions(
   const prepStyleInstructions = {
     traditional_batch: `
 ## PREP STYLE: Traditional Batch Prep
-Create 1-2 prep sessions:
-1. **Main Batch Prep** (Sunday or Saturday): 1.5-2.5 hours of major cooking
-2. **Optional Mid-Week Refresh** (Wednesday): 30-45 min if needed
 
-Group all batch cooking together. Only truly no-cook assembly meals (like grabbing a pre-made snack) should be excluded.
+**USER GOAL:** The user is busy all week and wants to prep as much food as possible on Sunday without sacrificing food quality. They'll spend 1.5-2.5 hours on Sunday, then just assemble/reheat during the week.
+
+### CRITICAL: FOOD QUALITY DECISIONS
+You must decide for EACH meal whether it can be batch-prepped Sunday or must be made day-of:
+
+**BATCH PREP SUNDAY (put in "weekly_batch" session, prep_category: "sunday_batch"):**
+- Grains (rice, quinoa, oats) - store well 5-7 days
+- Proteins that reheat well: chicken, ground turkey, beef, tofu
+- Roasted vegetables (root veggies, broccoli, peppers)
+- Sauces, dressings, marinades
+- Overnight oats, chia pudding
+- Soups, stews, curries
+- Hard-boiled eggs
+
+**MUST BE DAY-OF (put in "day_of_morning" or "day_of_dinner" session):**
+- Fish/seafood being eaten 3+ days after prep (quality degrades significantly)
+- Fresh salads with delicate greens (they wilt)
+- Eggs cooked to order (scrambled, fried, poached) - too quick to batch anyway
+- Avocado dishes (brown quickly)
+- Yogurt and fruit bowls
+- Anything that takes <10 min to make fresh
+- Meals where freshness is absolutely key to enjoyment
+
+Use prep_category "day_of_quick" for meals under 10 minutes, "day_of_cooking" for longer day-of meals.
+
+### SESSION STRUCTURE
+Create prep sessions like this:
+1. **Main Batch Prep Session** (session_type: "weekly_batch", session_name: "Sunday Batch Prep"):
+   - Contains ALL sunday_batch tasks
+   - Full detailed cooking instructions
+   - Storage instructions for each item (REQUIRED)
+   - All tasks have prep_category: "sunday_batch"
+
+2. **Day-of Sessions** (session_type: "day_of_morning" or "day_of_dinner"):
+   - For meals that can't be batched
+   - Full cooking instructions
+   - Tasks have prep_category: "day_of_quick" or "day_of_cooking"
+
+### DAILY ASSEMBLY GUIDE
+For batch-prepped meals, include clear assembly/reheating instructions in daily_assembly:
+- "Remove chicken and rice from fridge. Microwave rice 90 seconds, chicken 60 seconds. Top with pre-made sauce."
+- "Grab overnight oats from fridge, top with fresh berries, enjoy cold."
+
+### QUANTITY INSTRUCTIONS
+Write ALL quantities for 1 serving only. The UI will show the user how to multiply for their household and total weekly servings.
 `,
     day_of: `
 ## PREP STYLE: Day-Of Fresh Cooking
@@ -1605,6 +1647,10 @@ Each prep_task represents ONE MEAL and MUST include:
 10. "estimated_minutes": Total time in minutes
 11. "meal_ids": Array with the single meal_id this task is for
 12. "completed": false
+13. "prep_category": Category for batch prep users (REQUIRED for traditional_batch prep style):
+   - "sunday_batch": Can be prepped ahead on Sunday, stores well
+   - "day_of_quick": Must be made day-of, but takes <10 minutes
+   - "day_of_cooking": Must be made day-of, requires more cooking time
 
 ## CRITICAL: EQUIPMENT_NEEDED EXAMPLES
 
@@ -2129,6 +2175,8 @@ Use the generate_prep_sessions tool to provide your prep schedule.`;
         storage: task.storage || undefined,
         equipment_needed: task.equipment_needed || undefined,
         ingredients_to_prep: task.ingredients_to_prep || undefined,
+        // Prep category for batch prep (sunday_batch, day_of_quick, day_of_cooking)
+        prep_category: task.prep_category || undefined,
       })),
       displayOrder: session.display_order,
     })),
