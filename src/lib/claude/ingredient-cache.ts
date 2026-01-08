@@ -1,5 +1,30 @@
-import { createClient } from '../supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { IngredientNutritionWithDetails } from '../types';
+
+// ============================================
+// Supabase Service Role Client
+// ============================================
+
+/**
+ * Create a service role Supabase client that doesn't require cookies.
+ * This is necessary because this module may be called from Inngest
+ * which doesn't have access to Next.js cookies context.
+ */
+function createServiceRoleClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase URL or service role key');
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
 
 // ============================================
 // Ingredient Nutrition Cache Functions
@@ -11,7 +36,7 @@ import type { IngredientNutritionWithDetails } from '../types';
  * Uses the ingredient_nutrition_with_details view for convenience
  */
 export async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<string, IngredientNutritionWithDetails>> {
-  const supabase = await createClient();
+  const supabase = createServiceRoleClient();
   const normalizedNames = ingredientNames.map(name => name.toLowerCase().trim());
 
   const { data, error } = await supabase
@@ -37,7 +62,7 @@ export async function fetchCachedNutrition(ingredientNames: string[]): Promise<M
  * Returns the ingredient ID
  */
 async function getOrCreateIngredient(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceRoleClient>,
   name: string,
   category: string = 'other'
 ): Promise<string | null> {
@@ -99,7 +124,7 @@ export async function cacheIngredientNutrition(
     category?: string;
   }>
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createServiceRoleClient();
 
   for (const ing of ingredients) {
     // Get or create the ingredient
