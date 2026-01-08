@@ -198,6 +198,11 @@ const prepTaskSchema = {
       description: 'Meal IDs this task prepares (e.g., ["meal_monday_breakfast_0"])',
     },
     completed: { type: 'boolean', description: 'Whether task is completed (always false initially)' },
+    prep_category: {
+      type: 'string',
+      enum: ['sunday_batch', 'day_of_quick', 'day_of_cooking'],
+      description: 'Category for batch prep: sunday_batch (prep Sunday), day_of_quick (<10 min fresh), day_of_cooking (longer fresh cooking)',
+    },
   },
   required: ['id', 'description', 'detailed_steps', 'estimated_minutes', 'meal_ids', 'completed'],
 };
@@ -208,7 +213,7 @@ const prepSessionSchema = {
     session_name: { type: 'string', description: 'Session name (e.g., "Monday Morning Prep")' },
     session_type: {
       type: 'string',
-      enum: ['traditional_batch', 'night_before', 'day_of_morning', 'day_of_dinner'],
+      enum: ['weekly_batch', 'night_before', 'day_of_morning', 'day_of_dinner'],
       description: 'Type of prep session',
     },
     session_day: {

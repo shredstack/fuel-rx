@@ -382,6 +382,7 @@ export const generateMealPlanFunction = inngest.createFunction(
               core_ingredients: coreIngredients,
               theme_id: null,
               is_favorite: false,
+              prep_style: userData.profile.prep_style || 'day_of',
             })
             .select()
             .single();
@@ -604,6 +605,7 @@ export const generateMealPlanFunction = inngest.createFunction(
             core_ingredients: coreIngredients,
             theme_id: userData.selectedTheme?.theme.id || null,
             is_favorite: false,
+            prep_style: userData.profile.prep_style || 'day_of',
           })
           .select()
           .single();
@@ -749,7 +751,21 @@ export const generateMealPlanFunction = inngest.createFunction(
           sessionDay?: string | null;
           sessionTimeOfDay?: string | null;
           prepForDate?: string | null;
-          prepTasks?: Array<{ id: string; description: string; estimated_minutes: number; meal_ids: string[]; completed: boolean }>;
+          prepTasks?: Array<{
+            id: string;
+            description: string;
+            estimated_minutes: number;
+            meal_ids: string[];
+            completed: boolean;
+            detailed_steps?: string[];
+            cooking_temps?: { oven?: string; stovetop?: string; internal_temp?: string; grill?: string };
+            cooking_times?: { prep_time?: string; cook_time?: string; rest_time?: string; total_time?: string };
+            tips?: string[];
+            storage?: string;
+            equipment_needed?: string[];
+            ingredients_to_prep?: string[];
+            prep_category?: 'sunday_batch' | 'day_of_quick' | 'day_of_cooking';
+          }>;
           displayOrder?: number;
         }) => ({
           meal_plan_id: savedPlan.id,

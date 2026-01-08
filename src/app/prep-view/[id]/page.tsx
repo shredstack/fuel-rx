@@ -27,7 +27,7 @@ export default async function PrepViewPage({
   // Fetch meal plan (basic metadata only - plan_data was removed)
   const { data: mealPlan, error: planError } = await supabase
     .from('meal_plans')
-    .select('id, user_id, week_start_date, title, theme_id, core_ingredients, is_favorite, created_at')
+    .select('id, user_id, week_start_date, title, theme_id, core_ingredients, is_favorite, created_at, prep_style')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
@@ -157,10 +157,10 @@ export default async function PrepViewPage({
     .eq('meal_plan_id', id)
     .order('display_order', { ascending: true })
 
-  // Fetch user profile for prep preferences and household servings
+  // Fetch user profile for household servings (prep_style now comes from meal plan)
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('prep_style, household_servings')
+    .select('household_servings')
     .eq('id', user.id)
     .single()
 
@@ -185,7 +185,7 @@ export default async function PrepViewPage({
       }}
       days={days}
       prepSessions={(prepSessions || []) as PrepSession[]}
-      prepStyle={profile?.prep_style || 'day_of'}
+      prepStyle={mealPlan.prep_style || 'day_of'}
       dailyAssembly={dailyAssembly}
       householdServings={householdServings}
     />
