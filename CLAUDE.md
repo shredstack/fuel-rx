@@ -9,6 +9,13 @@ Example: `HouseholdServingsEditor.tsx` is used by both onboarding flow and setti
 
 Before writing new UI code, check if similar functionality already exists that could be extracted into a reusable component
 
+### Important coding guidelines
+
+1. Separation of concerns - Each module handles one thing (for example, in meal generation, each module should handle one stage of meal generation)
+2. Testability - Modules should be written so that we can test individual stages/components in isolation
+3. Maintainability - We want code that's easier to iterate on without risking other stages or components
+4. Readability - Clear code organization for future development
+
 ### Meal Plan Generation
 
 Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.

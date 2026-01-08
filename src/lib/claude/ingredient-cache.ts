@@ -1,0 +1,152 @@
+import { createClient } from '../supabase/server';
+import type { IngredientNutritionWithDetails } from '../types';
+
+// ============================================
+// Ingredient Nutrition Cache Functions
+// ============================================
+
+/**
+ * Fetch cached nutrition data for ingredients
+ * Returns a map of normalized ingredient names to nutrition data
+ * Uses the ingredient_nutrition_with_details view for convenience
+ */
+export async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<string, IngredientNutritionWithDetails>> {
+  const supabase = await createClient();
+  const normalizedNames = ingredientNames.map(name => name.toLowerCase().trim());
+
+  const { data, error } = await supabase
+    .from('ingredient_nutrition_with_details')
+    .select('*')
+    .in('name_normalized', normalizedNames);
+
+  if (error) {
+    console.error('Error fetching cached nutrition:', error);
+    return new Map();
+  }
+
+  const nutritionMap = new Map<string, IngredientNutritionWithDetails>();
+  for (const item of data || []) {
+    nutritionMap.set(item.name_normalized, item as IngredientNutritionWithDetails);
+  }
+
+  return nutritionMap;
+}
+
+/**
+ * Get or create an ingredient in the ingredients dimension table
+ * Returns the ingredient ID
+ */
+async function getOrCreateIngredient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+  category: string = 'other'
+): Promise<string | null> {
+  const normalizedName = name.toLowerCase().trim();
+
+  // Try to find existing ingredient
+  const { data: existing } = await supabase
+    .from('ingredients')
+    .select('id')
+    .eq('name_normalized', normalizedName)
+    .single();
+
+  if (existing) {
+    return existing.id;
+  }
+
+  // Create new ingredient
+  const { data: created, error } = await supabase
+    .from('ingredients')
+    .insert({
+      name,
+      name_normalized: normalizedName,
+      category,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Handle race condition - another request might have created it
+    if (error.code === '23505') { // unique_violation
+      const { data: retry } = await supabase
+        .from('ingredients')
+        .select('id')
+        .eq('name_normalized', normalizedName)
+        .single();
+      return retry?.id || null;
+    }
+    console.error('Error creating ingredient:', error);
+    return null;
+  }
+
+  return created?.id || null;
+}
+
+/**
+ * Cache new nutrition data for ingredients
+ * First ensures the ingredient exists in the ingredients table,
+ * then adds the nutrition data for the specific serving size
+ */
+export async function cacheIngredientNutrition(
+  ingredients: Array<{
+    name: string;
+    serving_size: number;
+    serving_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    category?: string;
+  }>
+): Promise<void> {
+  const supabase = await createClient();
+
+  for (const ing of ingredients) {
+    // Get or create the ingredient
+    const ingredientId = await getOrCreateIngredient(supabase, ing.name, ing.category || 'other');
+
+    if (!ingredientId) {
+      console.error(`Failed to get/create ingredient: ${ing.name}`);
+      continue;
+    }
+
+    // Insert nutrition data for this serving size
+    const { error } = await supabase
+      .from('ingredient_nutrition')
+      .upsert({
+        ingredient_id: ingredientId,
+        serving_size: Math.round(ing.serving_size),
+        serving_unit: ing.serving_unit,
+        calories: Math.round(ing.calories),
+        protein: Math.round(ing.protein),
+        carbs: Math.round(ing.carbs),
+        fat: Math.round(ing.fat),
+        source: 'llm_estimated' as const,
+        confidence_score: 0.7,
+      }, {
+        onConflict: 'ingredient_id,serving_size,serving_unit',
+        ignoreDuplicates: true,
+      });
+
+    if (error) {
+      console.error(`Error caching nutrition for ${ing.name}:`, error);
+    }
+  }
+}
+
+/**
+ * Build a nutrition reference string from cached data for LLM prompts
+ */
+export function buildNutritionReferenceSection(nutritionCache: Map<string, IngredientNutritionWithDetails>): string {
+  if (nutritionCache.size === 0) return '';
+
+  const lines = Array.from(nutritionCache.values()).map(n =>
+    `- ${n.ingredient_name}: ${n.calories} cal, ${n.protein}g protein, ${n.carbs}g carbs, ${n.fat}g fat per ${n.serving_size} ${n.serving_unit}`
+  );
+
+  return `
+## NUTRITION REFERENCE (use these exact values)
+The following ingredients have validated nutrition data. Use these exact values when calculating macros:
+${lines.join('\n')}
+`;
+}
