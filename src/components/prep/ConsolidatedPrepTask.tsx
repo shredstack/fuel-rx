@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { ConsolidatedMeal } from './prepUtils'
 import { formatDayRange, formatCookingTemps, formatCookingTimes, formatHouseholdContextForDays, generateHouseholdScalingGuide } from './prepUtils'
-import type { HouseholdServingsPrefs } from '@/lib/types'
+import type { HouseholdServingsPrefs, DailyAssembly } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   onToggleStepComplete: (taskId: string, stepIndex: number) => void
   householdServings?: HouseholdServingsPrefs
   prepStyle?: string
+  dailyAssembly?: DailyAssembly
 }
 
 export default function ConsolidatedPrepTask({
@@ -24,6 +25,7 @@ export default function ConsolidatedPrepTask({
   onToggleStepComplete,
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   prepStyle = 'mixed',
+  dailyAssembly,
 }: Props) {
   // Consolidated meals (same meal across multiple days) start expanded since they're batch prep
   const [isExpanded, setIsExpanded] = useState(true)
@@ -200,6 +202,75 @@ export default function ConsolidatedPrepTask({
               </span>
             </div>
           )}
+
+          {/* Batch Prep Assembly Guide - show if this meal has batch-prepped components */}
+          {(() => {
+            // Get assembly instructions from the first day (since it's the same meal all week)
+            const firstDay = meal.days[0]
+            const assemblyEntry = dailyAssembly?.[firstDay]?.[meal.mealType]
+
+            if (!assemblyEntry) return null
+
+            // Parse instructions into steps (split by period, but keep abbreviations intact)
+            const parseAssemblySteps = (instructions: string): string[] => {
+              // Split by period followed by space and capital letter, or by period at end
+              const steps = instructions
+                .split(/\.(?:\s+(?=[A-Z])|\s*$)/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0)
+              return steps
+            }
+
+            const assemblySteps = parseAssemblySteps(assemblyEntry.instructions)
+            const assemblyStepsCompleted = assemblySteps.filter((_, i) =>
+              completedSteps.has(`${primaryTask.id}_assembly_${i}`)
+            ).length
+
+            return (
+              <div className="bg-teal-50 border border-teal-200 rounded-md p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-semibold text-teal-800 uppercase tracking-wide flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Batch Prep Assembly
+                    <span className="text-teal-600 font-normal ml-1">({assemblyEntry.time})</span>
+                  </h5>
+                  <span className="text-xs text-teal-600">
+                    {assemblyStepsCompleted}/{assemblySteps.length} done
+                  </span>
+                </div>
+                <ol className="space-y-2">
+                  {assemblySteps.map((step, i) => {
+                    const stepKey = `${primaryTask.id}_assembly_${i}`
+                    const stepCompleted = completedSteps.has(stepKey)
+
+                    return (
+                      <li key={i} className="flex items-start gap-2">
+                        <button
+                          onClick={() => onToggleStepComplete(primaryTask.id, -1 - i)} // Use negative indices for assembly steps
+                          className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all mt-0.5 ${
+                            stepCompleted
+                              ? 'bg-teal-500 border-teal-500'
+                              : 'border-teal-400 hover:border-teal-500 bg-white'
+                          }`}
+                        >
+                          {stepCompleted && (
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                        <span className={`flex-1 text-sm ${stepCompleted ? 'line-through text-teal-600' : 'text-teal-800'}`}>
+                          {step}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </div>
+            )
+          })()}
 
           <div className="pl-3 border-l-2 border-teal-200 space-y-4">
             {/* Equipment needed */}

@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { MealTypeGroup, ConsolidatedMeal } from './prepUtils'
-import { MEAL_TYPE_CONFIG, formatDayRange, DAY_LABELS, DAYS_ORDER, formatHouseholdContextForDays } from './prepUtils'
-import type { DayOfWeek, HouseholdServingsPrefs } from '@/lib/types'
+import type { MealTypeGroup } from './prepUtils'
+import { MEAL_TYPE_CONFIG, formatDayRange } from './prepUtils'
+import type { HouseholdServingsPrefs, DailyAssembly } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import ConsolidatedPrepTask from './ConsolidatedPrepTask'
 import DaySpecificPrepTask from './DaySpecificPrepTask'
@@ -17,6 +17,7 @@ interface Props {
   defaultExpanded?: boolean
   householdServings?: HouseholdServingsPrefs
   prepStyle?: string
+  dailyAssembly?: DailyAssembly
 }
 
 export default function MealTypeSection({
@@ -28,6 +29,7 @@ export default function MealTypeSection({
   defaultExpanded = false,
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   prepStyle = 'mixed',
+  dailyAssembly,
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
@@ -159,6 +161,7 @@ export default function MealTypeSection({
                   onToggleStepComplete={onToggleStepComplete}
                   householdServings={householdServings}
                   prepStyle={prepStyle}
+                  dailyAssembly={dailyAssembly}
                 />
               ) : (
                 /* Single day - show simple task */
@@ -170,6 +173,7 @@ export default function MealTypeSection({
                   onToggleTaskComplete={onToggleTaskComplete}
                   onToggleStepComplete={onToggleStepComplete}
                   householdServings={householdServings}
+                  dailyAssembly={dailyAssembly}
                 />
               )}
             </div>

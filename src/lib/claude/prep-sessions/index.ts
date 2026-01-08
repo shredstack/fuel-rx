@@ -15,6 +15,7 @@ import type {
 import { buildPrepSessionsPrompt } from './prompt-builder';
 import { callLLMWithToolUse } from '../client';
 import { prepSessionsSchema } from '../../llm-schemas';
+import { validatePrepSessions, formatValidationWarnings } from './validation';
 
 // Extended prep task as returned by LLM (matches new PrepTask interface)
 interface LLMPrepTask {
@@ -136,6 +137,21 @@ export async function generatePrepSessions(
     const error = new Error('Failed to generate prep sessions - no sessions returned') as Error & { rawResponse?: string };
     error.rawResponse = JSON.stringify(parsed, null, 2);
     throw error;
+  }
+
+  // Validate the response for batch prep issues (logging only for now)
+  const sessionsForValidation = parsed.prep_sessions.map(s => ({
+    session_name: s.session_name,
+    session_type: s.session_type,
+    prep_tasks: s.prep_tasks,
+  }));
+  const validationWarnings = validatePrepSessions(sessionsForValidation, parsed.daily_assembly || {});
+
+  if (validationWarnings.length > 0) {
+    console.warn('[Prep Sessions Validation] Found issues:');
+    console.warn(formatValidationWarnings(validationWarnings));
+    // For now, just log warnings. In future, could retry with feedback.
+    // Critical errors could trigger a retry with the warning as context.
   }
 
   // Convert new format to PrepModeResponse format for backward compatibility
