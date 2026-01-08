@@ -66,7 +66,10 @@ export default function PrepViewClient({
   const dailyAssembly = initialDailyAssembly
 
   // Separate batch sessions from day-of sessions
-  const batchSessions = prepSessions.filter(s => s.session_type === 'weekly_batch')
+  // Note: For day_of prep style users, we should never show batch sessions even if LLM incorrectly generated them
+  const batchSessions = prepStyle === 'day_of'
+    ? []
+    : prepSessions.filter(s => s.session_type === 'weekly_batch')
   const dayOfSessions = prepSessions.filter(s => s.session_type !== 'weekly_batch')
 
   // Use new meal-type grouping for day-of tasks
