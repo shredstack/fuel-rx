@@ -927,3 +927,111 @@ export interface SwapCandidatesResponse {
   total: number;
   hasMore: boolean;
 }
+
+// ============================================
+// Quick Cook Types
+// ============================================
+
+export type PartyType = 'casual_gathering' | 'dinner_party' | 'game_day' | 'holiday' | 'potluck_contribution';
+
+export const PARTY_TYPE_LABELS: Record<PartyType, { title: string; description: string }> = {
+  casual_gathering: {
+    title: 'Casual Gathering',
+    description: 'Relaxed get-together with friends or family',
+  },
+  dinner_party: {
+    title: 'Dinner Party',
+    description: 'Elevated dining experience with multiple courses',
+  },
+  game_day: {
+    title: 'Game Day',
+    description: 'Sports viewing party with finger foods and shareables',
+  },
+  holiday: {
+    title: 'Holiday Celebration',
+    description: 'Special occasion with traditional or festive dishes',
+  },
+  potluck_contribution: {
+    title: 'Potluck Contribution',
+    description: 'Single impressive dish to bring to a shared meal',
+  },
+};
+
+export interface SingleMealRequest {
+  mealType: MealType;
+  themeId?: string;
+  customInstructions?: string;
+}
+
+export interface GeneratedMeal {
+  name: string;
+  emoji: string;
+  type: MealType;
+  description: string;
+  ingredients: IngredientWithNutrition[];
+  instructions: string[];
+  macros: Macros;
+  prep_time_minutes: number;
+  cook_time_minutes: number;
+  servings: number;
+  tips?: string[];
+}
+
+export interface SingleMealResponse {
+  meal: GeneratedMeal;
+}
+
+export interface PartyMealRequest {
+  guestCount: number;
+  partyType: PartyType;
+  themeId?: string;
+  customInstructions?: string;
+  dietaryConsiderations?: string[];
+}
+
+export interface PartyDish {
+  name: string;
+  role: 'main' | 'side' | 'appetizer' | 'dessert' | 'beverage';
+  description: string;
+}
+
+export interface PartyPrepTask {
+  title: string;
+  steps: string[];
+  duration?: string;
+  notes?: string;
+}
+
+export interface PartyPrepPhase {
+  title: string;
+  tasks: PartyPrepTask[];
+}
+
+export interface PartyTimeline {
+  days_before?: PartyPrepPhase;
+  day_of_morning?: PartyPrepPhase;
+  hours_before?: PartyPrepPhase;
+  right_before?: PartyPrepPhase;
+}
+
+export interface PartyShoppingItem {
+  item: string;
+  quantity: string;
+  notes?: string;
+}
+
+export interface PartyPrepGuide {
+  name: string;
+  description: string;
+  serves: number;
+  dishes: PartyDish[];
+  timeline: PartyTimeline;
+  shopping_list: PartyShoppingItem[];
+  pro_tips: string[];
+  estimated_total_prep_time: string;
+  estimated_active_time: string;
+}
+
+export interface PartyMealResponse {
+  guide: PartyPrepGuide;
+}
