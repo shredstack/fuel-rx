@@ -16,6 +16,11 @@ export function buildDayOfPromptSection(
 ## PREP STYLE: Day-Of Fresh Cooking
 The user wants to cook fresh for every meal. This means they need DETAILED prep instructions for EVERY meal that involves ANY cooking or preparation.
 
+**CRITICAL: DO NOT USE "weekly_batch" SESSION TYPE**
+Since this user cooks fresh every day, you must NEVER create a session with session_type "weekly_batch".
+Only use these session types: "day_of_morning" and "day_of_dinner".
+Do NOT include any batch prep assembly instructions or daily_assembly object - these are only for batch prep users.
+
 CRITICAL RULES FOR DAY-OF STYLE:
 1. Create a prep session for EVERY meal that requires:
    - Any heat (stove, oven, microwave, grill)
