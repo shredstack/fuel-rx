@@ -20,6 +20,7 @@ export interface PartyMealGenerationParams {
   theme?: MealPlanTheme | null;
   customInstructions?: string;
   dietaryConsiderations?: string[];
+  fetchedRecipeContent?: string;
 }
 
 const partyPrepTool: Tool = {
@@ -157,7 +158,7 @@ const PARTY_TYPE_DESCRIPTIONS: Record<PartyType, string> = {
 };
 
 function buildPartyMealPrompt(params: PartyMealGenerationParams): string {
-  const { profile, guestCount, partyType, theme, customInstructions, dietaryConsiderations } = params;
+  const { profile, guestCount, partyType, theme, customInstructions, dietaryConsiderations, fetchedRecipeContent } = params;
 
   const partyDescription = PARTY_TYPE_DESCRIPTIONS[partyType];
 
@@ -188,6 +189,19 @@ Flavor profile: ${guidance?.flavor_profile || 'Not specified'}
 Suggested proteins: ${guidance?.proteins?.join(', ') || 'Any'}
 Suggested vegetables: ${guidance?.vegetables?.join(', ') || 'Any'}
 Cooking style: ${theme.cooking_style_guidance || 'Any style'}
+`;
+  }
+
+  if (fetchedRecipeContent) {
+    prompt += `
+## Reference Recipe (User Provided)
+The user wants to incorporate this recipe into their party plan. Read it carefully and use ALL the ingredients and cooking methods from this recipe, scaled appropriately for ${guestCount} guests.
+
+<recipe>
+${fetchedRecipeContent}
+</recipe>
+
+**CRITICAL**: You MUST use ALL ingredients from the reference recipe above. Scale the quantities for ${guestCount} guests. Do not omit or substitute ingredients unless there's a dietary restriction conflict.
 `;
   }
 

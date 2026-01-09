@@ -70,6 +70,7 @@ export default function QuickCookClient({ profile }: Props) {
   // Party mode state
   const [guestCount, setGuestCount] = useState(8)
   const [partyType, setPartyType] = useState<PartyType>('casual_gathering')
+  const [recipeUrl, setRecipeUrl] = useState('')
 
   // Generation state
   const [generating, setGenerating] = useState(false)
@@ -131,6 +132,7 @@ export default function QuickCookClient({ profile }: Props) {
           mealType: mode === 'normal' ? mealType : undefined,
           guestCount: mode === 'party' ? guestCount : undefined,
           partyType: mode === 'party' ? partyType : undefined,
+          recipeUrl: mode === 'party' && recipeUrl.trim() ? recipeUrl.trim() : undefined,
           themeId,
           customInstructions: customInstructions.trim() || undefined,
           selectedIngredients: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
@@ -481,6 +483,23 @@ export default function QuickCookClient({ profile }: Props) {
                       onChange={setThemeSelection}
                       disabled={generating}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Recipe URL (optional)
+                    </label>
+                    <input
+                      type="url"
+                      value={recipeUrl}
+                      onChange={(e) => setRecipeUrl(e.target.value)}
+                      disabled={generating}
+                      placeholder="https://example.com/recipe..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      Have a recipe you want to scale? Paste the URL and we&apos;ll incorporate it into your party plan.
+                    </p>
                   </div>
                 </>
               )}
