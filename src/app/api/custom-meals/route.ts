@@ -23,6 +23,20 @@ interface CustomMealIngredient {
   fat: number;
 }
 
+type CustomMealPrepTime = '5_or_less' | '15' | '30' | 'more_than_30';
+
+function prepTimeToMinutes(prepTime: CustomMealPrepTime | number | null | undefined): number {
+  if (prepTime === null || prepTime === undefined) return 15;
+  if (typeof prepTime === 'number') return prepTime;
+  switch (prepTime) {
+    case '5_or_less': return 5;
+    case '15': return 15;
+    case '30': return 30;
+    case 'more_than_30': return 45;
+    default: return 15;
+  }
+}
+
 interface CreateCustomMealRequest {
   meal_name: string;
   meal_type?: MealType;
@@ -30,7 +44,7 @@ interface CreateCustomMealRequest {
   instructions?: string[];
   image_url?: string | null;
   share_with_community?: boolean;
-  prep_time?: number | null;
+  prep_time?: CustomMealPrepTime | number | null;
   meal_prep_instructions?: string | null;
 }
 
@@ -109,7 +123,7 @@ export async function POST(request: Request) {
         protein: totalProtein,
         carbs: totalCarbs,
         fat: totalFat,
-        prep_time_minutes: body.prep_time || 15,
+        prep_time_minutes: prepTimeToMinutes(body.prep_time),
         prep_instructions: body.meal_prep_instructions || null,
         source_type: 'user_created',
         source_user_id: user.id,
@@ -294,7 +308,7 @@ export async function PUT(request: Request) {
         protein: totalProtein,
         carbs: totalCarbs,
         fat: totalFat,
-        prep_time_minutes: body.prep_time || 15,
+        prep_time_minutes: prepTimeToMinutes(body.prep_time),
         prep_instructions: body.meal_prep_instructions || null,
         is_public: body.share_with_community || false,
         image_url: body.image_url || null,
