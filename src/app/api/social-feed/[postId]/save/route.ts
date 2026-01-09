@@ -56,26 +56,91 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save meal' }, { status: 500 })
     }
 
-    // Copy to user's validated_meals_by_user
-    const { data: savedMeal, error: mealError } = await supabase
-      .from('validated_meals_by_user')
-      .upsert({
-        user_id: user.id,
-        meal_name: post.meal_name,
-        calories: post.calories,
-        protein: post.protein,
-        carbs: post.carbs,
-        fat: post.fat,
-        ingredients: post.ingredients,
+    // Determine the source type for the saved meal based on the original post
+    // Party meals keep their type so they show in the Party Plans tab
+    // Other meals get saved as 'user_created' so they appear in My Recipes
+    const sourceType = post.source_type === 'party_meal' ? 'party_meal' : 'user_created'
+
+    // Check if user already has a meal with this name
+    const nameNormalized = post.meal_name.toLowerCase().trim()
+    const { data: existingMeal } = await supabase
+      .from('meals')
+      .select('id')
+      .eq('source_user_id', user.id)
+      .eq('name_normalized', nameNormalized)
+      .single()
+
+    let savedMeal = null
+    let mealError = null
+
+    // Ensure ingredients and instructions are always arrays (never null)
+    const ingredients = Array.isArray(post.ingredients) ? post.ingredients : []
+    const instructions = Array.isArray(post.instructions) ? post.instructions : []
+
+    if (existingMeal) {
+      // Update existing meal with data from community post
+      const updateData: Record<string, unknown> = {
+        calories: post.calories ?? 0,
+        protein: post.protein ?? 0,
+        carbs: post.carbs ?? 0,
+        fat: post.fat ?? 0,
+        ingredients,
+        instructions,
+        image_url: post.image_url,
+        is_public: false,
+        prep_time_minutes: typeof post.prep_time === 'number' ? post.prep_time : 15,
+        source_community_post_id: postId,
+        party_data: post.party_data,
+      }
+
+      // Only set meal_type for non-party meals
+      if (sourceType !== 'party_meal') {
+        updateData.meal_type = post.meal_type || 'dinner'
+      }
+
+      const { data, error } = await supabase
+        .from('meals')
+        .update(updateData)
+        .eq('id', existingMeal.id)
+        .select()
+        .single()
+      savedMeal = data
+      mealError = error
+    } else {
+      // Insert new meal
+      // Party meals don't require meal_type, but regular meals do
+      const insertData: Record<string, unknown> = {
+        source_user_id: user.id,
+        name: post.meal_name,
+        name_normalized: nameNormalized,
+        calories: post.calories ?? 0,
+        protein: post.protein ?? 0,
+        carbs: post.carbs ?? 0,
+        fat: post.fat ?? 0,
+        ingredients,
+        instructions,
         is_user_created: true,
         image_url: post.image_url,
-        share_with_community: false, // Don't auto-share saved meals
-        prep_time: post.prep_time,
-      }, {
-        onConflict: 'user_id,meal_name',
-      })
-      .select()
-      .single()
+        is_public: false,
+        prep_time_minutes: typeof post.prep_time === 'number' ? post.prep_time : 15,
+        source_type: sourceType,
+        source_community_post_id: postId,
+        party_data: post.party_data,
+      }
+
+      // Only set meal_type for non-party meals
+      if (sourceType !== 'party_meal') {
+        insertData.meal_type = post.meal_type || 'dinner'
+      }
+
+      const { data, error } = await supabase
+        .from('meals')
+        .insert(insertData)
+        .select()
+        .single()
+      savedMeal = data
+      mealError = error
+    }
 
     if (mealError) {
       console.error('Error copying meal:', mealError)

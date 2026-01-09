@@ -149,8 +149,17 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      // Check if user has community enabled for auto-sharing
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      const shouldShare = userProfile?.social_feed_enabled ?? false
+
       // Insert into meals table with all single meal fields
-      const { error: insertError } = await supabase.from('meals').insert({
+      const { data: savedMeal, error: insertError } = await supabase.from('meals').insert({
         name: generatedMeal.name,
         name_normalized: generatedMeal.name.toLowerCase().trim(),
         meal_type: generatedMeal.type,
@@ -167,9 +176,10 @@ export default function QuickCookClient({ profile }: Props) {
         servings: generatedMeal.servings,
         tips: generatedMeal.tips || [],
         is_user_created: true,
+        is_public: shouldShare,
         source_type: 'quick_cook',
         source_user_id: user.id,
-      })
+      }).select().single()
 
       if (insertError) {
         // Check if it's a unique constraint violation
@@ -177,6 +187,25 @@ export default function QuickCookClient({ profile }: Props) {
           throw new Error('You already have a meal with this name saved')
         }
         throw insertError
+      }
+
+      // Auto-share to community feed if user has community enabled
+      if (shouldShare && savedMeal) {
+        await supabase.from('social_feed_posts').insert({
+          user_id: user.id,
+          source_type: 'quick_cook',
+          source_meals_table_id: savedMeal.id,
+          meal_name: savedMeal.name,
+          calories: savedMeal.calories,
+          protein: savedMeal.protein,
+          carbs: savedMeal.carbs,
+          fat: savedMeal.fat,
+          image_url: savedMeal.image_url,
+          prep_time: savedMeal.prep_time_minutes,
+          ingredients: savedMeal.ingredients,
+          instructions: savedMeal.instructions,
+          meal_type: savedMeal.meal_type,
+        })
       }
 
       // Navigate to My Meals - Quick Cook tab
@@ -196,8 +225,27 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      // Check if user has community enabled for auto-sharing
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      const shouldShare = userProfile?.social_feed_enabled ?? false
+
+      const partyData = {
+        dishes: generatedPartyGuide.dishes,
+        timeline: generatedPartyGuide.timeline,
+        shopping_list: generatedPartyGuide.shopping_list,
+        pro_tips: generatedPartyGuide.pro_tips,
+        serves: generatedPartyGuide.serves,
+        estimated_total_prep_time: generatedPartyGuide.estimated_total_prep_time,
+        estimated_active_time: generatedPartyGuide.estimated_active_time,
+      }
+
       // Insert into meals table as party_meal with full party_data
-      const { error: insertError } = await supabase.from('meals').insert({
+      const { data: savedMeal, error: insertError } = await supabase.from('meals').insert({
         name: generatedPartyGuide.name,
         name_normalized: generatedPartyGuide.name.toLowerCase().trim(),
         description: generatedPartyGuide.description,
@@ -207,19 +255,12 @@ export default function QuickCookClient({ profile }: Props) {
         carbs: 0,
         fat: 0,
         // Store the full party guide data
-        party_data: {
-          dishes: generatedPartyGuide.dishes,
-          timeline: generatedPartyGuide.timeline,
-          shopping_list: generatedPartyGuide.shopping_list,
-          pro_tips: generatedPartyGuide.pro_tips,
-          serves: generatedPartyGuide.serves,
-          estimated_total_prep_time: generatedPartyGuide.estimated_total_prep_time,
-          estimated_active_time: generatedPartyGuide.estimated_active_time,
-        },
+        party_data: partyData,
         is_user_created: true,
+        is_public: shouldShare,
         source_type: 'party_meal',
         source_user_id: user.id,
-      })
+      }).select().single()
 
       if (insertError) {
         // Check if it's a unique constraint violation
@@ -227,6 +268,21 @@ export default function QuickCookClient({ profile }: Props) {
           throw new Error('You already have a party plan with this name saved')
         }
         throw insertError
+      }
+
+      // Auto-share to community feed if user has community enabled
+      if (shouldShare && savedMeal) {
+        await supabase.from('social_feed_posts').insert({
+          user_id: user.id,
+          source_type: 'party_meal',
+          source_meals_table_id: savedMeal.id,
+          meal_name: savedMeal.name,
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          party_data: partyData,
+        })
       }
 
       // Navigate to My Meals - Party Plans tab

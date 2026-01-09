@@ -92,6 +92,16 @@ export async function POST(request: Request) {
       }
     }
 
+    // Check if user has community enabled - if so, auto-share by default
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('social_feed_enabled')
+      .eq('id', user.id)
+      .single();
+
+    // Auto-share if user has community enabled, unless explicitly set to false
+    const shouldShare = body.share_with_community ?? profile?.social_feed_enabled ?? false;
+
     // Calculate total macros from ingredients
     const totalCalories = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.calories, 0));
     const totalProtein = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.protein, 0) * 10) / 10;
@@ -129,7 +139,7 @@ export async function POST(request: Request) {
         source_user_id: user.id,
         is_user_created: true,
         is_nutrition_edited_by_user: true,
-        is_public: body.share_with_community || false,
+        is_public: shouldShare,
         image_url: body.image_url || null,
       })
       .select()
@@ -141,32 +151,24 @@ export async function POST(request: Request) {
     }
 
     // If sharing and user has social feed enabled, post to social feed
-    if (body.share_with_community) {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('social_feed_enabled')
-        .eq('id', user.id)
-        .single();
-
-      if (profile?.social_feed_enabled) {
-        await supabase.from('social_feed_posts').upsert({
-          user_id: user.id,
-          source_type: 'custom_meal',
-          source_meal_id: savedMeal.id,
-          meal_name: savedMeal.name,
-          calories: savedMeal.calories,
-          protein: savedMeal.protein,
-          carbs: savedMeal.carbs,
-          fat: savedMeal.fat,
-          image_url: savedMeal.image_url,
-          prep_time: savedMeal.prep_time_minutes,
-          ingredients: savedMeal.ingredients,
-          meal_prep_instructions: savedMeal.prep_instructions,
-        }, {
-          onConflict: 'user_id,source_type,source_meal_id',
-          ignoreDuplicates: false,
-        });
-      }
+    if (shouldShare && profile?.social_feed_enabled) {
+      await supabase.from('social_feed_posts').upsert({
+        user_id: user.id,
+        source_type: 'custom_meal',
+        source_meal_id: savedMeal.id,
+        meal_name: savedMeal.name,
+        calories: savedMeal.calories,
+        protein: savedMeal.protein,
+        carbs: savedMeal.carbs,
+        fat: savedMeal.fat,
+        image_url: savedMeal.image_url,
+        prep_time: savedMeal.prep_time_minutes,
+        ingredients: savedMeal.ingredients,
+        meal_prep_instructions: savedMeal.prep_instructions,
+      }, {
+        onConflict: 'user_id,source_type,source_meal_id',
+        ignoreDuplicates: false,
+      });
     }
 
     // Return in a format compatible with the old API for the client
@@ -277,6 +279,16 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Check if user has community enabled - if so, auto-share by default
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('social_feed_enabled')
+      .eq('id', user.id)
+      .single();
+
+    // Auto-share if user has community enabled, unless explicitly set to false
+    const shouldShare = body.share_with_community ?? profile?.social_feed_enabled ?? false;
+
     // Calculate total macros from ingredients
     const totalCalories = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.calories, 0));
     const totalProtein = Math.round(body.ingredients.reduce((sum, ing) => sum + ing.protein, 0) * 10) / 10;
@@ -310,7 +322,7 @@ export async function PUT(request: Request) {
         fat: totalFat,
         prep_time_minutes: prepTimeToMinutes(body.prep_time),
         prep_instructions: body.meal_prep_instructions || null,
-        is_public: body.share_with_community || false,
+        is_public: shouldShare,
         image_url: body.image_url || null,
         is_nutrition_edited_by_user: true,
       })
@@ -326,13 +338,7 @@ export async function PUT(request: Request) {
     }
 
     // Handle social feed post based on sharing setting
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('social_feed_enabled')
-      .eq('id', user.id)
-      .single();
-
-    if (body.share_with_community && profile?.social_feed_enabled) {
+    if (shouldShare && profile?.social_feed_enabled) {
       // Create or update feed post
       await supabase.from('social_feed_posts').upsert({
         user_id: user.id,
