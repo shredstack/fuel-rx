@@ -31,6 +31,7 @@ export default async function CustomMealsPage() {
       image_url: meal.image_url,
       created_at: meal.created_at,
       updated_at: meal.updated_at,
+      source_community_post_id: meal.source_community_post_id || null,
     }
 
     if (meal.source_type === 'quick_cook') {

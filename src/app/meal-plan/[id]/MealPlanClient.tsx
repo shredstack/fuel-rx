@@ -12,9 +12,11 @@ import type {
   MealPlanNormalized,
   DayPlanNormalized,
   MealSlot,
+  MealEntity,
   DayOfWeek,
   IngredientWithNutrition,
   SwapResponse,
+  CustomMealPrepTime,
 } from '@/lib/types'
 import { normalizeCoreIngredients } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
@@ -49,6 +51,14 @@ const DAY_LABELS: Record<string, string> = {
 }
 
 const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack']
+
+// Convert prep_time_minutes to CustomMealPrepTime format for social feed
+function minutesToPrepTime(minutes: number): CustomMealPrepTime {
+  if (minutes <= 5) return '5_or_less'
+  if (minutes <= 15) return '15'
+  if (minutes <= 30) return '30'
+  return 'more_than_30'
+}
 
 export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   const router = useRouter()
@@ -298,10 +308,11 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     return true
   }
 
-  const toggleMealPreference = async (mealName: string, preference: MealPreferenceType) => {
+  const toggleMealPreference = async (meal: MealEntity, preference: MealPreferenceType) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    const mealName = meal.name
     const currentPref = mealPreferences[mealName]
 
     if (currentPref === preference) {
@@ -316,6 +327,16 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         const newPrefs = { ...mealPreferences }
         delete newPrefs[mealName]
         setMealPreferences(newPrefs)
+
+        // If removing a 'liked' preference, also remove from community feed
+        if (preference === 'liked') {
+          await supabase
+            .from('social_feed_posts')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('source_type', 'liked_meal')
+            .eq('source_meals_table_id', meal.id)
+        }
       }
     } else {
       // Upsert preference
@@ -331,6 +352,44 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
       if (!error) {
         setMealPreferences({ ...mealPreferences, [mealName]: preference })
+
+        // If liking a meal and user has community enabled, share to feed
+        if (preference === 'liked') {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('social_feed_enabled')
+            .eq('id', user.id)
+            .single()
+
+          if (profile?.social_feed_enabled) {
+            const { error: shareError } = await supabase.from('social_feed_posts').insert({
+              user_id: user.id,
+              source_type: 'liked_meal',
+              source_meals_table_id: meal.id,
+              meal_name: meal.name,
+              calories: Math.round(meal.calories),
+              protein: Math.round(meal.protein),
+              carbs: Math.round(meal.carbs),
+              fat: Math.round(meal.fat),
+              prep_time: minutesToPrepTime(meal.prep_time_minutes),
+              ingredients: meal.ingredients.map(ing => ({
+                name: ing.name,
+                amount: ing.amount,
+                unit: ing.unit,
+                calories: Math.round(ing.calories),
+                protein: Math.round(ing.protein),
+                carbs: Math.round(ing.carbs),
+                fat: Math.round(ing.fat),
+              })),
+              instructions: meal.instructions,
+              meal_type: meal.meal_type,
+            })
+            // Ignore duplicate errors (23505) - meal already shared
+            if (shareError && shareError.code !== '23505') {
+              console.error('Error sharing liked meal to community feed:', shareError)
+            }
+          }
+        }
       }
     }
   }
@@ -592,8 +651,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                   )
                 }
                 preference={mealPreferences[mealSlot.meal.name]}
-                onLike={() => toggleMealPreference(mealSlot.meal.name, 'liked')}
-                onDislike={() => toggleMealPreference(mealSlot.meal.name, 'disliked')}
+                onLike={() => toggleMealPreference(mealSlot.meal, 'liked')}
+                onDislike={() => toggleMealPreference(mealSlot.meal, 'disliked')}
                 onIngredientChange={(ingredientIndex, newIngredient) =>
                   updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
                 }

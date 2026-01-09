@@ -273,6 +273,8 @@ export interface SavedMealBase {
   image_url: string | null;
   created_at: string;
   updated_at: string;
+  /** If this meal was saved from the community feed, this is the original post ID */
+  source_community_post_id: string | null;
 }
 
 /**
@@ -348,7 +350,7 @@ export function isSavedPartyMeal(meal: SavedMeal): meal is SavedPartyMeal {
 
 // Social Feed Types
 
-export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal';
+export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal' | 'quick_cook' | 'party_meal' | 'liked_meal';
 
 export interface SocialFeedPost {
   id: string;
@@ -356,6 +358,7 @@ export interface SocialFeedPost {
   source_type: SocialFeedSourceType;
   source_meal_id: string | null;
   source_meal_plan_id: string | null;
+  source_meals_table_id: string | null; // For quick_cook and party_meal types
   meal_name: string;
   calories: number;
   protein: number;
@@ -367,6 +370,7 @@ export interface SocialFeedPost {
   instructions: string[] | null;
   meal_prep_instructions: string | null;
   meal_type: MealType | null;
+  party_data: PartyPrepGuide | null; // For party_meal posts
   created_at: string;
   // Joined fields from queries
   author?: {
@@ -749,6 +753,9 @@ export interface IngredientNutritionUserOverride {
 
 // Ingredient preference (like/dislike)
 export type IngredientPreferenceType = 'liked' | 'disliked';
+
+// Ingredient usage mode for single meal generation
+export type IngredientUsageMode = 'include_with_additions' | 'only_selected';
 
 export interface IngredientPreference {
   id: string;

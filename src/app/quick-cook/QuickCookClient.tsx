@@ -10,6 +10,7 @@ import type {
   PartyType,
   GeneratedMeal,
   PartyPrepGuide,
+  CustomMealPrepTime,
 } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import MealTypeSelector from '@/components/MealTypeSelector'
@@ -17,6 +18,7 @@ import PartyTypeSelector from '@/components/PartyTypeSelector'
 import GuestCountInput from '@/components/GuestCountInput'
 import SingleMealResult from '@/components/SingleMealResult'
 import PartyPrepGuideDisplay from '@/components/PartyPrepGuideDisplay'
+import IngredientSelector, { type IngredientSelection } from '@/components/IngredientSelector'
 
 interface Props {
   profile: UserProfile
@@ -39,6 +41,14 @@ const LOADING_MESSAGES_PARTY = [
   'Adding pro tips from the kitchen...',
 ]
 
+// Convert prep_time_minutes to CustomMealPrepTime format for social feed
+function minutesToPrepTime(minutes: number): CustomMealPrepTime {
+  if (minutes <= 5) return '5_or_less'
+  if (minutes <= 15) return '15'
+  if (minutes <= 30) return '30'
+  return 'more_than_30'
+}
+
 export default function QuickCookClient({ profile }: Props) {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -51,11 +61,16 @@ export default function QuickCookClient({ profile }: Props) {
   // Normal mode state
   const [mealType, setMealType] = useState<MealType>('dinner')
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'none' })
+  const [ingredientSelection, setIngredientSelection] = useState<IngredientSelection>({
+    selectedIngredients: [],
+    usageMode: 'only_selected',
+  })
   const [customInstructions, setCustomInstructions] = useState('')
 
   // Party mode state
   const [guestCount, setGuestCount] = useState(8)
   const [partyType, setPartyType] = useState<PartyType>('casual_gathering')
+  const [recipeUrl, setRecipeUrl] = useState('')
 
   // Generation state
   const [generating, setGenerating] = useState(false)
@@ -117,8 +132,15 @@ export default function QuickCookClient({ profile }: Props) {
           mealType: mode === 'normal' ? mealType : undefined,
           guestCount: mode === 'party' ? guestCount : undefined,
           partyType: mode === 'party' ? partyType : undefined,
+          recipeUrl: mode === 'party' && recipeUrl.trim() ? recipeUrl.trim() : undefined,
           themeId,
           customInstructions: customInstructions.trim() || undefined,
+          selectedIngredients: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
+            ? ingredientSelection.selectedIngredients
+            : undefined,
+          ingredientUsageMode: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
+            ? ingredientSelection.usageMode
+            : undefined,
         }),
       })
 
@@ -149,8 +171,17 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      // Check if user has community enabled for auto-sharing
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      const shouldShare = userProfile?.social_feed_enabled ?? false
+
       // Insert into meals table with all single meal fields
-      const { error: insertError } = await supabase.from('meals').insert({
+      const { data: savedMeal, error: insertError } = await supabase.from('meals').insert({
         name: generatedMeal.name,
         name_normalized: generatedMeal.name.toLowerCase().trim(),
         meal_type: generatedMeal.type,
@@ -167,9 +198,10 @@ export default function QuickCookClient({ profile }: Props) {
         servings: generatedMeal.servings,
         tips: generatedMeal.tips || [],
         is_user_created: true,
+        is_public: shouldShare,
         source_type: 'quick_cook',
         source_user_id: user.id,
-      })
+      }).select().single()
 
       if (insertError) {
         // Check if it's a unique constraint violation
@@ -177,6 +209,28 @@ export default function QuickCookClient({ profile }: Props) {
           throw new Error('You already have a meal with this name saved')
         }
         throw insertError
+      }
+
+      // Auto-share to community feed if user has community enabled
+      if (shouldShare && savedMeal) {
+        const { error: shareError } = await supabase.from('social_feed_posts').insert({
+          user_id: user.id,
+          source_type: 'quick_cook',
+          source_meals_table_id: savedMeal.id,
+          meal_name: savedMeal.name,
+          calories: Math.round(savedMeal.calories),
+          protein: Math.round(savedMeal.protein),
+          carbs: Math.round(savedMeal.carbs),
+          fat: Math.round(savedMeal.fat),
+          image_url: savedMeal.image_url,
+          prep_time: minutesToPrepTime(savedMeal.prep_time_minutes),
+          ingredients: savedMeal.ingredients,
+          instructions: savedMeal.instructions,
+          meal_type: savedMeal.meal_type,
+        })
+        if (shareError) {
+          console.error('Error sharing to community feed:', shareError)
+        }
       }
 
       // Navigate to My Meals - Quick Cook tab
@@ -196,8 +250,27 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
+      // Check if user has community enabled for auto-sharing
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      const shouldShare = userProfile?.social_feed_enabled ?? false
+
+      const partyData = {
+        dishes: generatedPartyGuide.dishes,
+        timeline: generatedPartyGuide.timeline,
+        shopping_list: generatedPartyGuide.shopping_list,
+        pro_tips: generatedPartyGuide.pro_tips,
+        serves: generatedPartyGuide.serves,
+        estimated_total_prep_time: generatedPartyGuide.estimated_total_prep_time,
+        estimated_active_time: generatedPartyGuide.estimated_active_time,
+      }
+
       // Insert into meals table as party_meal with full party_data
-      const { error: insertError } = await supabase.from('meals').insert({
+      const { data: savedMeal, error: insertError } = await supabase.from('meals').insert({
         name: generatedPartyGuide.name,
         name_normalized: generatedPartyGuide.name.toLowerCase().trim(),
         description: generatedPartyGuide.description,
@@ -207,19 +280,12 @@ export default function QuickCookClient({ profile }: Props) {
         carbs: 0,
         fat: 0,
         // Store the full party guide data
-        party_data: {
-          dishes: generatedPartyGuide.dishes,
-          timeline: generatedPartyGuide.timeline,
-          shopping_list: generatedPartyGuide.shopping_list,
-          pro_tips: generatedPartyGuide.pro_tips,
-          serves: generatedPartyGuide.serves,
-          estimated_total_prep_time: generatedPartyGuide.estimated_total_prep_time,
-          estimated_active_time: generatedPartyGuide.estimated_active_time,
-        },
+        party_data: partyData,
         is_user_created: true,
+        is_public: shouldShare,
         source_type: 'party_meal',
         source_user_id: user.id,
-      })
+      }).select().single()
 
       if (insertError) {
         // Check if it's a unique constraint violation
@@ -227,6 +293,21 @@ export default function QuickCookClient({ profile }: Props) {
           throw new Error('You already have a party plan with this name saved')
         }
         throw insertError
+      }
+
+      // Auto-share to community feed if user has community enabled
+      if (shouldShare && savedMeal) {
+        await supabase.from('social_feed_posts').insert({
+          user_id: user.id,
+          source_type: 'party_meal',
+          source_meals_table_id: savedMeal.id,
+          meal_name: savedMeal.name,
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          party_data: partyData,
+        })
       }
 
       // Navigate to My Meals - Party Plans tab
@@ -352,6 +433,17 @@ export default function QuickCookClient({ profile }: Props) {
                       disabled={generating}
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ingredients (optional)
+                    </label>
+                    <IngredientSelector
+                      value={ingredientSelection}
+                      onChange={setIngredientSelection}
+                      disabled={generating}
+                    />
+                  </div>
                 </>
               )}
 
@@ -391,6 +483,23 @@ export default function QuickCookClient({ profile }: Props) {
                       onChange={setThemeSelection}
                       disabled={generating}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Recipe URL (optional)
+                    </label>
+                    <input
+                      type="url"
+                      value={recipeUrl}
+                      onChange={(e) => setRecipeUrl(e.target.value)}
+                      disabled={generating}
+                      placeholder="https://example.com/recipe..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      Have a recipe you want to scale? Paste the URL and we&apos;ll incorporate it into your party plan.
+                    </p>
                   </div>
                 </>
               )}
