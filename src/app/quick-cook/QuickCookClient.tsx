@@ -10,6 +10,7 @@ import type {
   PartyType,
   GeneratedMeal,
   PartyPrepGuide,
+  CustomMealPrepTime,
 } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import MealTypeSelector from '@/components/MealTypeSelector'
@@ -38,6 +39,14 @@ const LOADING_MESSAGES_PARTY = [
   'Creating your shopping list...',
   'Adding pro tips from the kitchen...',
 ]
+
+// Convert prep_time_minutes to CustomMealPrepTime format for social feed
+function minutesToPrepTime(minutes: number): CustomMealPrepTime {
+  if (minutes <= 5) return '5_or_less'
+  if (minutes <= 15) return '15'
+  if (minutes <= 30) return '30'
+  return 'more_than_30'
+}
 
 export default function QuickCookClient({ profile }: Props) {
   const searchParams = useSearchParams()
@@ -191,21 +200,24 @@ export default function QuickCookClient({ profile }: Props) {
 
       // Auto-share to community feed if user has community enabled
       if (shouldShare && savedMeal) {
-        await supabase.from('social_feed_posts').insert({
+        const { error: shareError } = await supabase.from('social_feed_posts').insert({
           user_id: user.id,
           source_type: 'quick_cook',
           source_meals_table_id: savedMeal.id,
           meal_name: savedMeal.name,
-          calories: savedMeal.calories,
-          protein: savedMeal.protein,
-          carbs: savedMeal.carbs,
-          fat: savedMeal.fat,
+          calories: Math.round(savedMeal.calories),
+          protein: Math.round(savedMeal.protein),
+          carbs: Math.round(savedMeal.carbs),
+          fat: Math.round(savedMeal.fat),
           image_url: savedMeal.image_url,
-          prep_time: savedMeal.prep_time_minutes,
+          prep_time: minutesToPrepTime(savedMeal.prep_time_minutes),
           ingredients: savedMeal.ingredients,
           instructions: savedMeal.instructions,
           meal_type: savedMeal.meal_type,
         })
+        if (shareError) {
+          console.error('Error sharing to community feed:', shareError)
+        }
       }
 
       // Navigate to My Meals - Quick Cook tab

@@ -37,6 +37,13 @@ function prepTimeToMinutes(prepTime: CustomMealPrepTime | number | null | undefi
   }
 }
 
+function minutesToPrepTime(minutes: number): CustomMealPrepTime {
+  if (minutes <= 5) return '5_or_less';
+  if (minutes <= 15) return '15';
+  if (minutes <= 30) return '30';
+  return 'more_than_30';
+}
+
 interface CreateCustomMealRequest {
   meal_name: string;
   meal_type?: MealType;
@@ -152,23 +159,26 @@ export async function POST(request: Request) {
 
     // If sharing and user has social feed enabled, post to social feed
     if (shouldShare && profile?.social_feed_enabled) {
-      await supabase.from('social_feed_posts').upsert({
+      const { error: shareError } = await supabase.from('social_feed_posts').upsert({
         user_id: user.id,
         source_type: 'custom_meal',
         source_meal_id: savedMeal.id,
         meal_name: savedMeal.name,
-        calories: savedMeal.calories,
-        protein: savedMeal.protein,
-        carbs: savedMeal.carbs,
-        fat: savedMeal.fat,
+        calories: Math.round(savedMeal.calories),
+        protein: Math.round(savedMeal.protein),
+        carbs: Math.round(savedMeal.carbs),
+        fat: Math.round(savedMeal.fat),
         image_url: savedMeal.image_url,
-        prep_time: savedMeal.prep_time_minutes,
+        prep_time: minutesToPrepTime(savedMeal.prep_time_minutes),
         ingredients: savedMeal.ingredients,
         meal_prep_instructions: savedMeal.prep_instructions,
       }, {
         onConflict: 'user_id,source_type,source_meal_id',
         ignoreDuplicates: false,
       });
+      if (shareError) {
+        console.error('Error sharing to community feed:', shareError);
+      }
     }
 
     // Return in a format compatible with the old API for the client
