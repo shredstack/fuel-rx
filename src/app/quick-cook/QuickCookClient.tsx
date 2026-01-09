@@ -149,11 +149,13 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Insert into meals table
+      // Insert into meals table with all single meal fields
       const { error: insertError } = await supabase.from('meals').insert({
         name: generatedMeal.name,
         name_normalized: generatedMeal.name.toLowerCase().trim(),
         meal_type: generatedMeal.type,
+        emoji: generatedMeal.emoji,
+        description: generatedMeal.description,
         ingredients: generatedMeal.ingredients,
         instructions: generatedMeal.instructions,
         calories: Math.round(generatedMeal.macros.calories),
@@ -161,6 +163,9 @@ export default function QuickCookClient({ profile }: Props) {
         carbs: generatedMeal.macros.carbs,
         fat: generatedMeal.macros.fat,
         prep_time_minutes: generatedMeal.prep_time_minutes,
+        cook_time_minutes: generatedMeal.cook_time_minutes,
+        servings: generatedMeal.servings,
+        tips: generatedMeal.tips || [],
         is_user_created: true,
         source_type: 'quick_cook',
         source_user_id: user.id,
@@ -174,10 +179,60 @@ export default function QuickCookClient({ profile }: Props) {
         throw insertError
       }
 
-      // Navigate to My Meals
-      router.push('/custom-meals')
+      // Navigate to My Meals - Quick Cook tab
+      router.push('/custom-meals?tab=quick-cook')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSavePartyGuide = async () => {
+    if (!generatedPartyGuide) return
+
+    setSaving(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Insert into meals table as party_meal with full party_data
+      const { error: insertError } = await supabase.from('meals').insert({
+        name: generatedPartyGuide.name,
+        name_normalized: generatedPartyGuide.name.toLowerCase().trim(),
+        description: generatedPartyGuide.description,
+        // Party meals don't have standard macros - set to 0
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        // Store the full party guide data
+        party_data: {
+          dishes: generatedPartyGuide.dishes,
+          timeline: generatedPartyGuide.timeline,
+          shopping_list: generatedPartyGuide.shopping_list,
+          pro_tips: generatedPartyGuide.pro_tips,
+          serves: generatedPartyGuide.serves,
+          estimated_total_prep_time: generatedPartyGuide.estimated_total_prep_time,
+          estimated_active_time: generatedPartyGuide.estimated_active_time,
+        },
+        is_user_created: true,
+        source_type: 'party_meal',
+        source_user_id: user.id,
+      })
+
+      if (insertError) {
+        // Check if it's a unique constraint violation
+        if (insertError.code === '23505') {
+          throw new Error('You already have a party plan with this name saved')
+        }
+        throw insertError
+      }
+
+      // Navigate to My Meals - Party Plans tab
+      router.push('/custom-meals?tab=party-plans')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save party plan')
     } finally {
       setSaving(false)
     }
@@ -258,6 +313,8 @@ export default function QuickCookClient({ profile }: Props) {
           <PartyPrepGuideDisplay
             guide={generatedPartyGuide}
             onRegenerate={handleRegenerate}
+            onSave={handleSavePartyGuide}
+            saving={saving}
           />
         )}
 
