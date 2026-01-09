@@ -10,6 +10,7 @@ import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
+import QuickCookCard from '@/components/QuickCookCard'
 
 interface Props {
   profile: UserProfile | null
@@ -198,7 +199,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Generate new plan card */}
           <div className="card">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
@@ -350,8 +351,11 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
             )}
           </div>
 
+          {/* Quick Cook card */}
+          <QuickCookCard />
+
           {/* Profile summary card */}
-          <div className="card md:col-span-2">
+          <div className="card md:col-span-2 lg:col-span-3">
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-xl font-semibold text-gray-900">
                 Your Profile

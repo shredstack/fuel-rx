@@ -11,26 +11,44 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
 # 📑 Table of Contents
 
 <!-- TOC_START -->
-- [Frontend](#frontend)
-- [Backend](#backend)
-- [AI/ML](#aiml)
-- [Hosting & Deployment](#hosting-deployment)
-- [Prerequisites](#prerequisites)
-- [Environment Variables](#environment-variables)
-- [Installation](#installation)
-- [Database Setup](#database-setup)
-- [Inngest Production Setup](#inngest-production-setup)
-- [Ingest Developer Setup](#ingest-developer-setup)
-- [Email Notification System](#email-notification-system)
-  - [Setup](#setup)
-  - [How It Works](#how-it-works)
-  - [Testing Locally](#testing-locally)
-- [Deploy to Vercel](#deploy-to-vercel)
-- [🔧 Meal Plan Quality Improvements](#meal-plan-quality-improvements)
-- [⚡ Convenience Features](#convenience-features)
-- [📸 Photo Capture ("Snap a Meal")](#photo-capture-snap-a-meal)
-- [👥 Community Features](#community-features)
-- [Priority Order (Suggested)](#priority-order-suggested)
+- [FuelRx](#fuelrx)
+- [📑 Table of Contents](#-table-of-contents)
+- [Core Philosophy](#core-philosophy)
+- [The Core Loop](#the-core-loop)
+- [The Pitch](#the-pitch)
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+  - [Frontend](#frontend)
+  - [Backend](#backend)
+  - [AI/ML](#aiml)
+  - [Hosting \& Deployment](#hosting--deployment)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Environment Variables](#environment-variables)
+  - [Installation](#installation)
+  - [Database Setup](#database-setup)
+  - [Inngest Production Setup](#inngest-production-setup)
+  - [Ingest Developer Setup](#ingest-developer-setup)
+  - [Email Notification System](#email-notification-system)
+    - [Setup](#setup)
+    - [How It Works](#how-it-works)
+    - [Testing Locally](#testing-locally)
+- [Developer Tips](#developer-tips)
+- [Project Structure](#project-structure)
+- [Deployment](#deployment)
+  - [Deploy to Vercel](#deploy-to-vercel)
+- [Feature Roadmap](#feature-roadmap)
+  - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
+  - [⚡ Convenience Features](#-convenience-features)
+  - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
+  - [👥 Community Features](#-community-features)
+  - [Priority Order (Suggested)](#priority-order-suggested)
+- [What We're NOT Building](#what-were-not-building)
+- [Success Metrics](#success-metrics)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 <!-- TOC_END -->
 
 ---
@@ -296,6 +314,13 @@ Without Resend configured, you'll see this in the console:
 ```
 
 To test actual email delivery locally, add your Resend API key to `.env.local`.
+
+# Developer Tips
+
+Sometimes Next.js dev server experiences cache issues. If you all of a sudden start encountering many errors, follow these steps:
+1. Stop the dev server
+2. Run rm -rf .next
+3. Run npm run dev again
 
 # Project Structure
 

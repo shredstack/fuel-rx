@@ -255,6 +255,97 @@ export interface ValidatedMeal {
   updated_at: string;
 }
 
+// ============================================
+// Saved Meal Types (for My Meals page)
+// ============================================
+
+export type SavedMealSourceType = 'user_created' | 'quick_cook' | 'party_meal';
+
+/**
+ * Base interface for all saved meals
+ */
+export interface SavedMealBase {
+  id: string;
+  name: string;
+  source_type: SavedMealSourceType;
+  source_user_id: string;
+  is_public: boolean;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * User-created meal (manual entry)
+ */
+export interface SavedUserMeal extends SavedMealBase {
+  source_type: 'user_created';
+  meal_type: MealType | null;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  ingredients: ValidatedMealIngredient[] | null;
+  instructions: string[] | null;
+  prep_time_minutes: number;
+  prep_instructions: string | null;
+}
+
+/**
+ * Quick Cook single meal (AI-generated)
+ */
+export interface SavedQuickCookMeal extends SavedMealBase {
+  source_type: 'quick_cook';
+  meal_type: MealType;
+  emoji: string | null;
+  description: string | null;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  ingredients: IngredientWithNutrition[];
+  instructions: string[];
+  prep_time_minutes: number;
+  cook_time_minutes: number | null;
+  servings: number | null;
+  tips: string[] | null;
+}
+
+/**
+ * Party meal (AI-generated party prep guide)
+ */
+export interface SavedPartyMeal extends SavedMealBase {
+  source_type: 'party_meal';
+  description: string | null;
+  party_data: PartyPrepGuide;
+}
+
+/**
+ * Union type for all saved meal types
+ */
+export type SavedMeal = SavedUserMeal | SavedQuickCookMeal | SavedPartyMeal;
+
+/**
+ * Type guard to check if a saved meal is a user-created meal
+ */
+export function isSavedUserMeal(meal: SavedMeal): meal is SavedUserMeal {
+  return meal.source_type === 'user_created';
+}
+
+/**
+ * Type guard to check if a saved meal is a quick cook meal
+ */
+export function isSavedQuickCookMeal(meal: SavedMeal): meal is SavedQuickCookMeal {
+  return meal.source_type === 'quick_cook';
+}
+
+/**
+ * Type guard to check if a saved meal is a party meal
+ */
+export function isSavedPartyMeal(meal: SavedMeal): meal is SavedPartyMeal {
+  return meal.source_type === 'party_meal';
+}
+
 // Social Feed Types
 
 export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal';
@@ -926,4 +1017,112 @@ export interface SwapCandidatesResponse {
   candidates: SwapCandidate[];
   total: number;
   hasMore: boolean;
+}
+
+// ============================================
+// Quick Cook Types
+// ============================================
+
+export type PartyType = 'casual_gathering' | 'dinner_party' | 'game_day' | 'holiday' | 'potluck_contribution';
+
+export const PARTY_TYPE_LABELS: Record<PartyType, { title: string; description: string }> = {
+  casual_gathering: {
+    title: 'Casual Gathering',
+    description: 'Relaxed get-together with friends or family',
+  },
+  dinner_party: {
+    title: 'Dinner Party',
+    description: 'Elevated dining experience with multiple courses',
+  },
+  game_day: {
+    title: 'Game Day',
+    description: 'Sports viewing party with finger foods and shareables',
+  },
+  holiday: {
+    title: 'Holiday Celebration',
+    description: 'Special occasion with traditional or festive dishes',
+  },
+  potluck_contribution: {
+    title: 'Potluck Contribution',
+    description: 'Single impressive dish to bring to a shared meal',
+  },
+};
+
+export interface SingleMealRequest {
+  mealType: MealType;
+  themeId?: string;
+  customInstructions?: string;
+}
+
+export interface GeneratedMeal {
+  name: string;
+  emoji: string;
+  type: MealType;
+  description: string;
+  ingredients: IngredientWithNutrition[];
+  instructions: string[];
+  macros: Macros;
+  prep_time_minutes: number;
+  cook_time_minutes: number;
+  servings: number;
+  tips?: string[];
+}
+
+export interface SingleMealResponse {
+  meal: GeneratedMeal;
+}
+
+export interface PartyMealRequest {
+  guestCount: number;
+  partyType: PartyType;
+  themeId?: string;
+  customInstructions?: string;
+  dietaryConsiderations?: string[];
+}
+
+export interface PartyDish {
+  name: string;
+  role: 'main' | 'side' | 'appetizer' | 'dessert' | 'beverage';
+  description: string;
+}
+
+export interface PartyPrepTask {
+  title: string;
+  steps: string[];
+  duration?: string;
+  notes?: string;
+}
+
+export interface PartyPrepPhase {
+  title: string;
+  tasks: PartyPrepTask[];
+}
+
+export interface PartyTimeline {
+  days_before?: PartyPrepPhase;
+  day_of_morning?: PartyPrepPhase;
+  hours_before?: PartyPrepPhase;
+  right_before?: PartyPrepPhase;
+}
+
+export interface PartyShoppingItem {
+  item: string;
+  quantity: string;
+  notes?: string;
+}
+
+export interface PartyPrepGuide {
+  name: string;
+  description: string;
+  serves: number;
+  dishes: PartyDish[];
+  timeline: PartyTimeline;
+  shopping_list: PartyShoppingItem[];
+  pro_tips: string[];
+  estimated_total_prep_time: string;
+  estimated_active_time: string;
+}
+
+export interface PartyMealResponse {
+  guide: PartyPrepGuide;
 }
