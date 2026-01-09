@@ -18,6 +18,7 @@ import PartyTypeSelector from '@/components/PartyTypeSelector'
 import GuestCountInput from '@/components/GuestCountInput'
 import SingleMealResult from '@/components/SingleMealResult'
 import PartyPrepGuideDisplay from '@/components/PartyPrepGuideDisplay'
+import IngredientSelector, { type IngredientSelection } from '@/components/IngredientSelector'
 
 interface Props {
   profile: UserProfile
@@ -60,6 +61,10 @@ export default function QuickCookClient({ profile }: Props) {
   // Normal mode state
   const [mealType, setMealType] = useState<MealType>('dinner')
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'none' })
+  const [ingredientSelection, setIngredientSelection] = useState<IngredientSelection>({
+    selectedIngredients: [],
+    usageMode: 'only_selected',
+  })
   const [customInstructions, setCustomInstructions] = useState('')
 
   // Party mode state
@@ -128,6 +133,12 @@ export default function QuickCookClient({ profile }: Props) {
           partyType: mode === 'party' ? partyType : undefined,
           themeId,
           customInstructions: customInstructions.trim() || undefined,
+          selectedIngredients: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
+            ? ingredientSelection.selectedIngredients
+            : undefined,
+          ingredientUsageMode: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
+            ? ingredientSelection.usageMode
+            : undefined,
         }),
       })
 
@@ -417,6 +428,17 @@ export default function QuickCookClient({ profile }: Props) {
                     <ThemeSelector
                       value={themeSelection}
                       onChange={setThemeSelection}
+                      disabled={generating}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ingredients (optional)
+                    </label>
+                    <IngredientSelector
+                      value={ingredientSelection}
+                      onChange={setIngredientSelection}
                       disabled={generating}
                     />
                   </div>

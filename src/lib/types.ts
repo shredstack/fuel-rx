@@ -754,6 +754,9 @@ export interface IngredientNutritionUserOverride {
 // Ingredient preference (like/dislike)
 export type IngredientPreferenceType = 'liked' | 'disliked';
 
+// Ingredient usage mode for single meal generation
+export type IngredientUsageMode = 'include_with_additions' | 'only_selected';
+
 export interface IngredientPreference {
   id: string;
   user_id: string;

@@ -9,6 +9,7 @@ import type {
   GeneratedMeal,
   IngredientWithNutrition,
   Macros,
+  IngredientUsageMode,
 } from '../types';
 
 // ============================================
@@ -24,6 +25,8 @@ export interface SingleMealGenerationParams {
     liked: string[];
     disliked: string[];
   };
+  selectedIngredients?: string[];
+  ingredientUsageMode?: IngredientUsageMode;
 }
 
 interface LLMIngredient {
@@ -145,7 +148,7 @@ function calculateHouseholdServings(profile: UserProfile): number {
 }
 
 function buildSingleMealPrompt(params: SingleMealGenerationParams, nutritionReference: string): string {
-  const { profile, mealType, theme, customInstructions, ingredientPreferences } = params;
+  const { profile, mealType, theme, customInstructions, ingredientPreferences, selectedIngredients, ingredientUsageMode } = params;
   const servings = calculateHouseholdServings(profile);
 
   let prompt = `You are a meal planning assistant for FuelRx, an app for CrossFit athletes.
@@ -160,6 +163,19 @@ Generate a single ${mealType} meal for a CrossFit athlete.
 - Liked ingredients: ${ingredientPreferences?.liked?.length ? ingredientPreferences.liked.join(', ') : 'None specified'}
 - Disliked ingredients (AVOID THESE): ${ingredientPreferences?.disliked?.length ? ingredientPreferences.disliked.join(', ') : 'None specified'}
 `;
+
+  // Add selected ingredients section if provided
+  if (selectedIngredients && selectedIngredients.length > 0) {
+    const isOnlySelected = ingredientUsageMode === 'only_selected';
+    prompt += `
+## Selected Ingredients
+The user has specifically selected these ingredients to use: ${selectedIngredients.join(', ')}
+
+${isOnlySelected
+  ? '**IMPORTANT**: You must ONLY use the ingredients listed above. Do not add any other ingredients except for basic seasonings (salt, pepper, herbs, spices, oil for cooking). This is a "use what I have" request.'
+  : '**IMPORTANT**: You must include ALL of the selected ingredients listed above. You may also add other complementary ingredients as needed to create a complete, balanced meal.'}
+`;
+  }
 
   if (theme) {
     const guidance = theme.ingredient_guidance as ThemeIngredientGuidance;
@@ -215,9 +231,10 @@ export async function generateSingleMeal(
   params: SingleMealGenerationParams
 ): Promise<GeneratedMeal> {
   // Fetch cached nutrition data for common ingredients
-  // We'll use ingredient preferences to seed the cache lookup
+  // We'll use ingredient preferences and selected ingredients to seed the cache lookup
   const ingredientNames = [
     ...(params.ingredientPreferences?.liked || []),
+    ...(params.selectedIngredients || []),
   ];
   const nutritionCache = ingredientNames.length > 0
     ? await fetchCachedNutrition(ingredientNames)

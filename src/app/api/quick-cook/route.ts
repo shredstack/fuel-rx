@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateSingleMeal } from '@/lib/claude/single-meal';
 import { generatePartyPrepGuide } from '@/lib/claude/party-meal';
-import type { MealType, PartyType, MealPlanTheme } from '@/lib/types';
+import type { MealType, PartyType, MealPlanTheme, IngredientUsageMode } from '@/lib/types';
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +21,8 @@ export async function POST(request: Request) {
       partyType,
       themeId,
       customInstructions,
+      selectedIngredients,
+      ingredientUsageMode,
     } = body as {
       mode: 'normal' | 'party';
       mealType?: MealType;
@@ -28,6 +30,8 @@ export async function POST(request: Request) {
       partyType?: PartyType;
       themeId?: string;
       customInstructions?: string;
+      selectedIngredients?: string[];
+      ingredientUsageMode?: IngredientUsageMode;
     };
 
     // Validate mode
@@ -90,6 +94,8 @@ export async function POST(request: Request) {
         theme,
         customInstructions,
         ingredientPreferences,
+        selectedIngredients,
+        ingredientUsageMode,
       });
 
       return NextResponse.json({ meal: result });
