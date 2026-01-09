@@ -69,10 +69,10 @@ export async function POST(
           source_type: 'favorited_meal' as const,
           source_meal_plan_id: mealPlanId,
           meal_name: meal.name,
-          calories: meal.macros.calories,
-          protein: meal.macros.protein,
-          carbs: meal.macros.carbs,
-          fat: meal.macros.fat,
+          calories: Math.round(meal.macros.calories),
+          protein: Math.round(meal.macros.protein),
+          carbs: Math.round(meal.macros.carbs),
+          fat: Math.round(meal.macros.fat),
           prep_time: meal.prep_time_minutes <= 5 ? '5_or_less' :
                      meal.prep_time_minutes <= 15 ? '15' :
                      meal.prep_time_minutes <= 30 ? '30' : 'more_than_30',
@@ -91,10 +91,13 @@ export async function POST(
 
         // Insert feed posts (ignore conflicts for existing posts)
         for (const post of feedPosts) {
-          await supabase.from('social_feed_posts').upsert(post, {
+          const { error: shareError } = await supabase.from('social_feed_posts').upsert(post, {
             onConflict: 'user_id,source_type,source_meal_plan_id,meal_name',
             ignoreDuplicates: true,
           })
+          if (shareError) {
+            console.error('Error sharing meal to community feed:', shareError)
+          }
         }
       }
     } else if (!is_favorite) {

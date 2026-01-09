@@ -350,7 +350,7 @@ export function isSavedPartyMeal(meal: SavedMeal): meal is SavedPartyMeal {
 
 // Social Feed Types
 
-export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal' | 'quick_cook' | 'party_meal';
+export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal' | 'quick_cook' | 'party_meal' | 'liked_meal';
 
 export interface SocialFeedPost {
   id: string;

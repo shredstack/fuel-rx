@@ -146,6 +146,8 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
         return { label: 'Custom', className: 'bg-green-100 text-green-800' }
       case 'favorited_meal':
         return { label: 'Favorite', className: 'bg-blue-100 text-blue-800' }
+      case 'liked_meal':
+        return { label: 'Liked', className: 'bg-emerald-100 text-emerald-800' }
       case 'quick_cook':
         return { label: 'Quick Cook', className: 'bg-orange-100 text-orange-800' }
       case 'party_meal':
