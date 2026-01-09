@@ -161,8 +161,8 @@ export default function QuickCookClient({ profile }: Props) {
         carbs: generatedMeal.macros.carbs,
         fat: generatedMeal.macros.fat,
         prep_time_minutes: generatedMeal.prep_time_minutes,
-        is_user_created: false,
-        source_type: 'ai_generated',
+        is_user_created: true,
+        source_type: 'quick_cook',
         source_user_id: user.id,
       })
 

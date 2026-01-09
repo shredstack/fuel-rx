@@ -173,7 +173,7 @@ Generate a comprehensive party prep guide for a ${partyType.replace(/_/g, ' ')}.
 ## Host Profile
 - Not very experienced home cook
 - Values efficiency
-- Prefers healthy, protein-rich options when possible
+- Prefers healthy options
 - Wants impressive results without excessive complexity
 - Athletic household that appreciates quality whole foods
 `;

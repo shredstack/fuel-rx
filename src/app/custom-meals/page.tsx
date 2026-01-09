@@ -11,13 +11,31 @@ export default async function CustomMealsPage() {
     redirect('/login')
   }
 
-  // Fetch user's custom meals
-  const { data: customMeals } = await supabase
-    .from('validated_meals_by_user')
+  // Fetch user's custom meals from meals table
+  // Include user_created, quick_cook, and party_meal source types
+  const { data: mealsData } = await supabase
+    .from('meals')
     .select('*')
-    .eq('user_id', user.id)
-    .eq('is_user_created', true)
+    .eq('source_user_id', user.id)
+    .in('source_type', ['user_created', 'quick_cook', 'party_meal'])
     .order('created_at', { ascending: false })
 
-  return <CustomMealsClient initialMeals={customMeals || []} />
+  // Transform to the format expected by CustomMealsClient
+  const customMeals = (mealsData || []).map(meal => ({
+    id: meal.id,
+    meal_name: meal.name,
+    calories: meal.calories,
+    protein: meal.protein,
+    carbs: meal.carbs,
+    fat: meal.fat,
+    ingredients: meal.ingredients,
+    is_user_created: meal.is_user_created,
+    image_url: meal.image_url,
+    share_with_community: meal.is_public,
+    prep_time: meal.prep_time_minutes,
+    meal_prep_instructions: meal.prep_instructions,
+    created_at: meal.created_at,
+  }))
+
+  return <CustomMealsClient initialMeals={customMeals} />
 }

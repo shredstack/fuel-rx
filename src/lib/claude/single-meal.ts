@@ -1,5 +1,6 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
 import { callLLMWithToolUse } from './client';
+import { fetchCachedNutrition, buildNutritionReferenceSection, cacheIngredientNutrition } from './ingredient-cache';
 import type {
   UserProfile,
   MealType,
@@ -143,7 +144,7 @@ function calculateHouseholdServings(profile: UserProfile): number {
   return Math.round(1 + avgAdults + avgChildren * 0.6);
 }
 
-function buildSingleMealPrompt(params: SingleMealGenerationParams): string {
+function buildSingleMealPrompt(params: SingleMealGenerationParams, nutritionReference: string): string {
   const { profile, mealType, theme, customInstructions, ingredientPreferences } = params;
   const servings = calculateHouseholdServings(profile);
 
@@ -152,8 +153,6 @@ function buildSingleMealPrompt(params: SingleMealGenerationParams): string {
 Generate a single ${mealType} meal for a CrossFit athlete.
 
 ## User Profile
-- Daily calorie target: ${profile.target_calories} kcal
-- Macro targets: ${profile.target_protein}g protein, ${profile.target_carbs}g carbs, ${profile.target_fat}g fat
 - Household size: ${servings} serving(s)
 - Dietary restrictions: ${profile.dietary_prefs?.length > 0 ? profile.dietary_prefs.join(', ') : 'None'}
 
@@ -182,18 +181,30 @@ ${customInstructions}
 `;
   }
 
+  // Add nutrition reference if available
+  if (nutritionReference) {
+    prompt += nutritionReference;
+  }
+
   prompt += `
 ## Requirements
 1. Create ONE delicious ${mealType} that's practical for a home cook
 2. Scale ingredients for ${servings} serving(s)
-3. Each ingredient MUST include its individual nutrition values (per the scaled amount for all servings)
-4. Total meal macros = sum of all ingredient macros
-5. Keep instructions clear and actionable (numbered steps)
-6. Include prep time (hands-on) and cook time (waiting/cooking)
-7. Give the meal a fun, appetizing name with an appropriate emoji
-8. Include 2-3 helpful pro tips
-9. Focus on whole, nutrient-dense foods appropriate for athletes
-10. NEVER use ingredients from the disliked list
+3. **CRITICAL - PER-SERVING NUTRITION**: Each ingredient's nutrition values (calories, protein, carbs, fat) MUST be for ONE SERVING only, not for all servings combined
+4. **CRITICAL - MEAL MACROS**: The meal's total macros MUST also be for ONE SERVING only (sum of all per-serving ingredient macros)
+5. The "servings" field should indicate the total number of servings the recipe makes (${servings})
+6. Keep instructions clear and actionable (numbered steps)
+7. Include prep time (hands-on) and cook time (waiting/cooking)
+8. Give the meal a fun, appetizing name with an appropriate emoji
+9. Include 2-3 helpful pro tips
+10. Focus on whole, nutrient-dense foods appropriate for athletes
+11. NEVER use ingredients from the disliked list
+
+## CRITICAL NUTRITION ACCURACY
+- **FIRST**: Check the NUTRITION REFERENCE section above for cached ingredient data - use those exact values when available
+- **SECOND**: For ingredients NOT in the reference, use USDA FoodData Central guidelines to estimate realistic nutrition values
+- **VALIDATION**: Verify that calories approximately = (protein × 4) + (carbs × 4) + (fat × 9) for each ingredient
+- **REALISTIC PORTIONS**: A chicken thigh is ~110g raw and has ~200 calories, not 900. A cup of rice is ~200 calories. Keep portions realistic.
 
 Use the generate_single_meal tool to provide your meal.`;
 
@@ -203,11 +214,23 @@ Use the generate_single_meal tool to provide your meal.`;
 export async function generateSingleMeal(
   params: SingleMealGenerationParams
 ): Promise<GeneratedMeal> {
-  const prompt = buildSingleMealPrompt(params);
+  // Fetch cached nutrition data for common ingredients
+  // We'll use ingredient preferences to seed the cache lookup
+  const ingredientNames = [
+    ...(params.ingredientPreferences?.liked || []),
+  ];
+  const nutritionCache = ingredientNames.length > 0
+    ? await fetchCachedNutrition(ingredientNames)
+    : new Map();
+  const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
+  const prompt = buildSingleMealPrompt(params, nutritionReference);
+
+  // Use the same model as weekly meal plan generation (production config)
   const { result } = await callLLMWithToolUse<LLMMealResponse>({
     prompt,
     tool: singleMealTool,
+    model: 'claude-sonnet-4-20250514',
     maxTokens: 4000,
     userId: params.profile.id,
     promptType: 'quick_cook_single_meal',
@@ -224,6 +247,49 @@ export async function generateSingleMeal(
     carbs: ing.carbs,
     fat: ing.fat,
   }));
+
+  // Cache all unique ingredients to ingredient_nutrition table
+  // This builds our ingredient database over time for consistency
+  const ingredientMap = new Map<string, {
+    name: string;
+    serving_size: number;
+    serving_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>();
+
+  for (const ingredient of result.meal.ingredients) {
+    const normalizedName = ingredient.name.toLowerCase().trim();
+    const servingSize = parseFloat(ingredient.amount) || 1;
+    const servingUnit = ingredient.unit || 'serving';
+    const key = `${normalizedName}|${servingSize}|${servingUnit}`;
+
+    if (!ingredientMap.has(key) &&
+        ingredient.calories !== undefined &&
+        ingredient.protein !== undefined &&
+        ingredient.carbs !== undefined &&
+        ingredient.fat !== undefined) {
+      ingredientMap.set(key, {
+        name: ingredient.name,
+        serving_size: servingSize,
+        serving_unit: servingUnit,
+        calories: ingredient.calories,
+        protein: ingredient.protein,
+        carbs: ingredient.carbs,
+        fat: ingredient.fat,
+      });
+    }
+  }
+
+  // Cache all unique ingredients (async, don't block return)
+  if (ingredientMap.size > 0) {
+    const ingredientsToCache = Array.from(ingredientMap.values());
+    cacheIngredientNutrition(ingredientsToCache).catch(err => {
+      console.error('Failed to cache ingredient nutrition:', err);
+    });
+  }
 
   const macros: Macros = {
     calories: result.meal.macros.calories,
