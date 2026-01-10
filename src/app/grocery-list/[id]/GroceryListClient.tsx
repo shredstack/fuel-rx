@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { Ingredient, CoreIngredients } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
+import { useOnboardingState } from '@/hooks/useOnboardingState'
 
 interface Props {
   mealPlanId: string
@@ -26,6 +27,16 @@ const CATEGORY_ORDER = ['produce', 'protein', 'dairy', 'grains', 'pantry', 'froz
 
 export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients }: Props) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
+
+  // Onboarding state
+  const { state: onboardingState, markMilestone, shouldShowTip, dismissTip } = useOnboardingState()
+
+  // Mark grocery_list_viewed milestone on mount
+  useEffect(() => {
+    if (onboardingState && !onboardingState.grocery_list_viewed) {
+      markMilestone('grocery_list_viewed')
+    }
+  }, [onboardingState, markMilestone])
 
   // Group items by category
   const groupedItems = groceryList.reduce((acc, item) => {
@@ -100,6 +111,29 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
         {coreIngredients && (
           <div className="mb-6">
             <CoreIngredientsCard coreIngredients={coreIngredients} />
+          </div>
+        )}
+
+        {/* Onboarding tip for checklist feature */}
+        {shouldShowTip('grocery_list_checklist') && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">💡</span>
+                <p className="text-blue-800">
+                  <strong>Pro tip:</strong> Check off items as you shop! Your progress is saved locally.
+                </p>
+              </div>
+              <button
+                onClick={() => dismissTip('grocery_list_checklist')}
+                className="text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                aria-label="Dismiss tip"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
 

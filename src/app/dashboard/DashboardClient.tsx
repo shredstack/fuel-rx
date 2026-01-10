@@ -1,16 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS, CHILD_PORTION_MULTIPLIER } from '@/lib/types'
-import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity, HouseholdServingsPrefs, DayOfWeek } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS, CHILD_PORTION_MULTIPLIER, MILESTONE_MESSAGES } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity, HouseholdServingsPrefs, DayOfWeek, OnboardingMilestone } from '@/lib/types'
 import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import QuickCookCard from '@/components/QuickCookCard'
+import { useOnboardingState } from '@/hooks/useOnboardingState'
+import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
+import MotivationalToast from '@/components/onboarding/MotivationalToast'
 
 interface Props {
   profile: UserProfile | null
@@ -67,6 +70,50 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
 
   // Theme selection state
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
+
+  // Onboarding state
+  const { state: onboardingState, isFeatureDiscovered, discoverFeature } = useOnboardingState()
+  const [showMilestoneToast, setShowMilestoneToast] = useState<OnboardingMilestone | null>(null)
+  const [shownMilestones, setShownMilestones] = useState<Set<OnboardingMilestone>>(new Set())
+
+  // Show toast for milestone achievements
+  useEffect(() => {
+    if (!onboardingState) return
+
+    const now = Date.now()
+    const recentThreshold = 10000 // 10 seconds
+
+    // first_plan_completed shows regardless of timing (user may have been away during generation)
+    if (
+      onboardingState.first_plan_completed &&
+      !shownMilestones.has('first_plan_completed')
+    ) {
+      setShowMilestoneToast('first_plan_completed')
+      setShownMilestones(prev => new Set([...prev, 'first_plan_completed']))
+      return
+    }
+
+    // Other milestones only show if they happened recently
+    const recentMilestoneChecks: OnboardingMilestone[] = [
+      'first_meal_liked',
+      'first_meal_swapped',
+      'grocery_list_viewed',
+      'prep_view_visited',
+    ]
+
+    for (const milestone of recentMilestoneChecks) {
+      if (shownMilestones.has(milestone)) continue
+
+      const timestampKey = `${milestone}_at` as keyof typeof onboardingState
+      const timestamp = onboardingState[timestampKey] as string | null
+
+      if (timestamp && now - new Date(timestamp).getTime() < recentThreshold) {
+        setShowMilestoneToast(milestone)
+        setShownMilestones(prev => new Set([...prev, milestone]))
+        break
+      }
+    }
+  }, [onboardingState, shownMilestones])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -354,6 +401,13 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           {/* Quick Cook card */}
           <QuickCookCard />
 
+          {/* Community teaser - shown after first plan completed and community not yet discovered */}
+          {onboardingState?.first_plan_completed && !isFeatureDiscovered('community_feed') && (
+            <div className="md:col-span-2 lg:col-span-3">
+              <CommunityTeaser onDismiss={() => discoverFeature('community_feed')} />
+            </div>
+          )}
+
           {/* Profile summary card */}
           <div className="card md:col-span-2 lg:col-span-3">
             <div className="flex justify-between items-start mb-4">
@@ -614,6 +668,16 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
               </div>
             </div>
           </div>
+        )}
+
+        {/* Milestone Toast */}
+        {showMilestoneToast && (
+          <MotivationalToast
+            title={MILESTONE_MESSAGES[showMilestoneToast].title}
+            message={MILESTONE_MESSAGES[showMilestoneToast].message}
+            emoji={MILESTONE_MESSAGES[showMilestoneToast].emoji}
+            onDismiss={() => setShowMilestoneToast(null)}
+          />
         )}
       </main>
     </div>

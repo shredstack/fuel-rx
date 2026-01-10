@@ -105,7 +105,31 @@ export default function OnboardingPage() {
       return
     }
 
-    router.push('/dashboard')
+    // Mark profile_completed milestone
+    await fetch('/api/onboarding/state', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_completed: true }),
+    })
+
+    // Start first meal plan generation
+    const generateResponse = await fetch('/api/generate-meal-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ themeSelection: 'surprise' }),
+    })
+
+    if (generateResponse.ok) {
+      // Mark first_plan_started milestone
+      await fetch('/api/onboarding/state', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ first_plan_started: true }),
+      })
+    }
+
+    // Redirect to welcome celebration (which immediately redirects to dashboard)
+    router.push('/welcome-celebration')
   }
 
   return (
