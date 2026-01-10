@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { SavedPartyMeal, PartyDish, PartyPrepPhase } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
+import ConfirmDeleteModal from './ConfirmDeleteModal'
 
 interface Props {
   meal: SavedPartyMeal
@@ -125,6 +126,7 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
   const [editDescription, setEditDescription] = useState(meal.description || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const supabase = createClient()
   const guide = meal.party_data
@@ -150,9 +152,11 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
   }
 
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this party plan?')) {
-      onDelete(meal.id)
-    }
+    setShowDeleteModal(true)
+  }
+
+  const confirmDelete = () => {
+    onDelete(meal.id)
   }
 
   const handleEdit = (e: React.MouseEvent) => {
@@ -490,6 +494,15 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Party Plan"
+        itemName={meal.name}
+        itemType="party plan"
+      />
     </div>
   )
 }
