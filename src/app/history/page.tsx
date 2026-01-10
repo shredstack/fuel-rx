@@ -13,7 +13,7 @@ export default async function HistoryPage() {
 
   const { data: mealPlans } = await supabase
     .from('meal_plans')
-    .select('id, week_start_date, title, is_favorite, created_at, theme_id')
+    .select('id, week_start_date, title, is_favorite, created_at, theme_id, shared_from_user_id, shared_from_user_name')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
