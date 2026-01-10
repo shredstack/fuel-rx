@@ -1372,3 +1372,30 @@ export const FEATURE_DISCOVERY_CONTENT: Record<FeatureDiscoveryId, FeatureConten
     href: '/history',
   },
 };
+
+// ============================================
+// Meal Plan Sharing Types
+// ============================================
+
+export interface CommunityUser {
+  id: string;
+  display_name: string | null;
+  name: string | null;
+  profile_photo_url: string | null;
+  is_following: boolean;
+}
+
+export interface SharedMealPlan {
+  id: string;
+  original_meal_plan_id: string;
+  recipient_meal_plan_id: string;
+  sharer_user_id: string;
+  recipient_user_id: string;
+  shared_at: string;
+}
+
+export interface ShareMealPlanResponse {
+  success: boolean;
+  message: string;
+  recipientMealPlanId: string;
+}

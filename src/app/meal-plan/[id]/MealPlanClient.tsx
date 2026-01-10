@@ -22,6 +22,7 @@ import { normalizeCoreIngredients } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapButton, SwapModal } from '@/components/meal'
+import { ShareMealPlanModal } from '@/components/ShareMealPlanModal'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import SpotlightTip from '@/components/onboarding/SpotlightTip'
 import { FIRST_PLAN_TOUR_STEPS } from '@/lib/types'
@@ -89,6 +90,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     mealSlot: MealSlot
     day: DayOfWeek
   } | null>(null)
+
+  // Share modal state
+  const [shareModalOpen, setShareModalOpen] = useState(false)
 
   // Onboarding state
   const {
@@ -582,6 +586,20 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               </svg>
               {isFavorite ? 'Favorited' : 'Favorite'}
             </button>
+            <button
+              onClick={() => setShareModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-gray-200 text-gray-700 hover:bg-gray-300"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                />
+              </svg>
+              Share
+            </button>
             <Link
               href={`/prep-view/${mealPlan.id}`}
               className="btn-outline"
@@ -716,6 +734,14 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             onSwapComplete={handleSwapComplete}
           />
         )}
+
+        {/* Share Modal */}
+        <ShareMealPlanModal
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          mealPlanId={mealPlan.id}
+          mealPlanTitle={mealPlan.title || (mealPlan.theme ? `${mealPlan.theme.emoji || ''} ${mealPlan.theme.display_name} Meal Plan` : 'Meal Plan')}
+        />
 
         {/* First Plan Tour */}
         {shouldShowTour && currentTourStep < FIRST_PLAN_TOUR_STEPS.length && (
