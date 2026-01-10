@@ -22,6 +22,9 @@ import { normalizeCoreIngredients } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapButton, SwapModal } from '@/components/meal'
+import { useOnboardingState } from '@/hooks/useOnboardingState'
+import SpotlightTip from '@/components/onboarding/SpotlightTip'
+import { FIRST_PLAN_TOUR_STEPS } from '@/lib/types'
 
 interface Props {
   mealPlan: MealPlanNormalized & {
@@ -86,6 +89,24 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     mealSlot: MealSlot
     day: DayOfWeek
   } | null>(null)
+
+  // Onboarding state
+  const {
+    state: onboardingState,
+    shouldShowTour,
+    currentTourStep,
+    advanceTourStep,
+    completeTour,
+    skipTour,
+    markMilestone,
+  } = useOnboardingState()
+
+  // Mark first_plan_viewed milestone on mount
+  useEffect(() => {
+    if (onboardingState && !onboardingState.first_plan_viewed) {
+      markMilestone('first_plan_viewed')
+    }
+  }, [onboardingState, markMilestone])
 
   // Load meal preferences on mount
   useEffect(() => {
@@ -181,6 +202,11 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       days: updatedDays,
       grocery_list: response.groceryList,
     })
+
+    // Track first_meal_swapped milestone
+    if (onboardingState && !onboardingState.first_meal_swapped) {
+      markMilestone('first_meal_swapped')
+    }
 
     setSwapModalOpen(false)
     setSwapTarget(null)
@@ -559,12 +585,14 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             <Link
               href={`/prep-view/${mealPlan.id}`}
               className="btn-outline"
+              data-tour="prep-schedule-link"
             >
               Prep Schedule
             </Link>
             <Link
               href={`/grocery-list/${mealPlan.id}`}
               className="btn-primary"
+              data-tour="grocery-list-link"
             >
               Grocery List
             </Link>
@@ -586,7 +614,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         )}
 
         {/* Day selector */}
-        <div className="flex overflow-x-auto gap-2 mb-6 pb-2">
+        <div className="flex overflow-x-auto gap-2 mb-6 pb-2" data-tour="day-selector">
           {mealPlan.days.map((day) => (
             <button
               key={day.day}
@@ -604,7 +632,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
         {/* Daily totals */}
         {currentDayPlan && (
-          <div className="card mb-6">
+          <div className="card mb-6" data-tour="daily-totals">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">
               {DAY_LABELS[selectedDay]} Daily Totals
             </h3>
@@ -639,7 +667,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
 
         {/* Meals */}
         <div className="space-y-4">
-          {sortedMeals.map((mealSlot) => {
+          {sortedMeals.map((mealSlot, idx) => {
             return (
               <MealCard
                 key={mealSlot.id}
@@ -651,7 +679,13 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                   )
                 }
                 preference={mealPreferences[mealSlot.meal.name]}
-                onLike={() => toggleMealPreference(mealSlot.meal, 'liked')}
+                onLike={async () => {
+                  await toggleMealPreference(mealSlot.meal, 'liked')
+                  // Track first_meal_liked milestone
+                  if (onboardingState && !onboardingState.first_meal_liked) {
+                    markMilestone('first_meal_liked')
+                  }
+                }}
                 onDislike={() => toggleMealPreference(mealSlot.meal, 'disliked')}
                 onIngredientChange={(ingredientIndex, newIngredient) =>
                   updateIngredientInMeal(mealSlot, ingredientIndex, newIngredient)
@@ -661,6 +695,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 onIngredientLike={(name) => toggleIngredientPreference(name, 'liked')}
                 onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
                 onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
+                isFirstMealCard={idx === 0}
               />
             )
           })}
@@ -681,6 +716,18 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             onSwapComplete={handleSwapComplete}
           />
         )}
+
+        {/* First Plan Tour */}
+        {shouldShowTour && currentTourStep < FIRST_PLAN_TOUR_STEPS.length && (
+          <SpotlightTip
+            step={FIRST_PLAN_TOUR_STEPS[currentTourStep]}
+            currentStepIndex={currentTourStep}
+            totalSteps={FIRST_PLAN_TOUR_STEPS.length}
+            onNext={advanceTourStep}
+            onSkip={skipTour}
+            onComplete={completeTour}
+          />
+        )}
       </main>
     </div>
   )
@@ -699,6 +746,7 @@ function MealCard({
   onIngredientLike,
   onIngredientDislike,
   onSwap,
+  isFirstMealCard = false,
 }: {
   mealSlot: MealSlot
   isExpanded: boolean
@@ -712,6 +760,7 @@ function MealCard({
   onIngredientLike: (ingredientName: string) => void
   onIngredientDislike: (ingredientName: string) => void
   onSwap: () => void
+  isFirstMealCard?: boolean
 }) {
   const meal = mealSlot.meal
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
@@ -725,7 +774,7 @@ function MealCard({
   }
 
   return (
-    <div className="card">
+    <div className="card" {...(isFirstMealCard ? { 'data-tour': 'meal-card' } : {})}>
       <div className="flex items-start justify-between">
         <button
           onClick={onToggle}
@@ -762,8 +811,13 @@ function MealCard({
         </button>
 
         {/* Swap, Like/Dislike and Expand buttons */}
-        <div className="flex items-center gap-2 ml-4">
-          <SwapButton onClick={onSwap} />
+        <div
+          className="flex items-center gap-2 ml-4"
+          {...(isFirstMealCard ? { 'data-tour': 'like-dislike' } : {})}
+        >
+          <span {...(isFirstMealCard ? { 'data-tour': 'swap-button' } : {})}>
+            <SwapButton onClick={onSwap} />
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation()

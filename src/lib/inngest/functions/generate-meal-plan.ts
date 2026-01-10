@@ -802,7 +802,20 @@ export const generateMealPlanFunction = inngest.createFunction(
         await updateJobStatus(jobId, 'completed', 'Meal plan ready!', savedPlanId);
       });
 
-      // Step 8: Send email notification (non-blocking - failure doesn't affect success)
+      // Step 8: Mark first_plan_completed onboarding milestone (only if not already marked)
+      await step.run('mark-onboarding-milestone', async () => {
+        const supabase = createServiceRoleClient();
+        await supabase
+          .from('user_onboarding_state')
+          .update({
+            first_plan_completed: true,
+            first_plan_completed_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .is('first_plan_completed', false);
+      });
+
+      // Step 9: Send email notification (non-blocking - failure doesn't affect success)
       await step.run('send-email-notification', async () => {
         try {
           await sendMealPlanReadyEmail({

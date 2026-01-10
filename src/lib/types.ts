@@ -1133,3 +1133,242 @@ export interface PartyPrepGuide {
 export interface PartyMealResponse {
   guide: PartyPrepGuide;
 }
+
+// ============================================
+// Onboarding State Types
+// ============================================
+
+export type OnboardingMilestone =
+  | 'profile_completed'
+  | 'first_plan_started'
+  | 'first_plan_completed'
+  | 'first_plan_viewed'
+  | 'grocery_list_viewed'
+  | 'prep_view_visited'
+  | 'first_meal_liked'
+  | 'first_meal_swapped';
+
+export type OnboardingTipId =
+  | 'meal_plan_day_selector'
+  | 'meal_like_dislike'
+  | 'ingredient_edit_nutrition'
+  | 'meal_swap'
+  | 'grocery_list_checklist'
+  | 'prep_view_schedule'
+  | 'core_ingredients_card'
+  | 'theme_badge'
+  | 'community_share';
+
+export type FeatureDiscoveryId =
+  | 'quick_cook'
+  | 'community_feed'
+  | 'theme_preferences'
+  | 'ingredient_preferences'
+  | 'household_servings'
+  | 'meal_history';
+
+export interface UserOnboardingState {
+  id: string;
+  user_id: string;
+
+  // Milestone flags
+  profile_completed: boolean;
+  first_plan_started: boolean;
+  first_plan_completed: boolean;
+  first_plan_viewed: boolean;
+  grocery_list_viewed: boolean;
+  prep_view_visited: boolean;
+  first_meal_liked: boolean;
+  first_meal_swapped: boolean;
+
+  // Milestone timestamps
+  profile_completed_at: string | null;
+  first_plan_started_at: string | null;
+  first_plan_completed_at: string | null;
+  first_plan_viewed_at: string | null;
+  grocery_list_viewed_at: string | null;
+  prep_view_visited_at: string | null;
+  first_meal_liked_at: string | null;
+  first_meal_swapped_at: string | null;
+
+  // Feature discovery and tips
+  features_discovered: FeatureDiscoveryId[];
+  tips_dismissed: OnboardingTipId[];
+
+  // First Plan Tour state
+  first_plan_tour_completed: boolean;
+  first_plan_tour_current_step: number;
+  first_plan_tour_skipped: boolean;
+
+  // Tutorial replay
+  tutorial_replay_count: number;
+  last_tutorial_replay_at: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+// First Plan Tour step definitions
+export interface TourStep {
+  id: string;
+  targetSelector: string;
+  title: string;
+  description: string;
+  position: 'top' | 'bottom' | 'left' | 'right';
+}
+
+export const FIRST_PLAN_TOUR_STEPS: TourStep[] = [
+  {
+    id: 'day_selector',
+    targetSelector: '[data-tour="day-selector"]',
+    title: 'Navigate Your Week',
+    description: 'Click any day to see meals planned for that day. Your week starts on Monday.',
+    position: 'bottom',
+  },
+  {
+    id: 'daily_totals',
+    targetSelector: '[data-tour="daily-totals"]',
+    title: 'Track Your Macros',
+    description: 'See your daily calorie, protein, carb, and fat totals at a glance.',
+    position: 'bottom',
+  },
+  {
+    id: 'meal_card',
+    targetSelector: '[data-tour="meal-card"]',
+    title: 'Explore Your Meals',
+    description: 'Click any meal to expand it and see ingredients, instructions, and nutrition details.',
+    position: 'top',
+  },
+  {
+    id: 'like_dislike',
+    targetSelector: '[data-tour="like-dislike"]',
+    title: 'Rate Your Meals',
+    description: 'Like or dislike meals to improve future meal plan recommendations.',
+    position: 'left',
+  },
+  {
+    id: 'swap_button',
+    targetSelector: '[data-tour="swap-button"]',
+    title: 'Swap Meals',
+    description: 'Not feeling a meal? Swap it with your custom meals, community favorites, or previous meals.',
+    position: 'left',
+  },
+  {
+    id: 'grocery_list',
+    targetSelector: '[data-tour="grocery-list-link"]',
+    title: 'Your Grocery List',
+    description: 'All ingredients aggregated and organized by category. Check items off as you shop!',
+    position: 'bottom',
+  },
+  {
+    id: 'prep_schedule',
+    targetSelector: '[data-tour="prep-schedule-link"]',
+    title: 'Prep Schedule',
+    description: 'Step-by-step prep instructions organized by day, with detailed cooking tips.',
+    position: 'bottom',
+  },
+];
+
+// Milestone achievement messages for MotivationalToast
+export interface MilestoneMessage {
+  title: string;
+  message: string;
+  emoji: string;
+}
+
+export const MILESTONE_MESSAGES: Record<OnboardingMilestone, MilestoneMessage> = {
+  profile_completed: {
+    title: 'Profile Complete!',
+    message: 'Your preferences are saved. Ready to generate your first personalized meal plan!',
+    emoji: '🎉',
+  },
+  first_plan_started: {
+    title: 'Plan Generation Started!',
+    message: 'Your AI-powered meal plan is being created. This takes about 5 minutes.',
+    emoji: '🚀',
+  },
+  first_plan_completed: {
+    title: 'Your First Meal Plan is Ready!',
+    message: 'Time to explore your personalized week of nutrition!',
+    emoji: '✨',
+  },
+  first_plan_viewed: {
+    title: 'Exploring Your Plan!',
+    message: "Check out each day's meals and see how they fit your macro targets.",
+    emoji: '👀',
+  },
+  grocery_list_viewed: {
+    title: 'Shopping Made Easy!',
+    message: 'Your organized grocery list is ready for your next shopping trip.',
+    emoji: '🛒',
+  },
+  prep_view_visited: {
+    title: 'Prep Like a Pro!',
+    message: 'Follow the step-by-step schedule for efficient meal prep.',
+    emoji: '👨‍🍳',
+  },
+  first_meal_liked: {
+    title: 'First Rating Added!',
+    message: "We'll use your feedback to suggest better meals in the future.",
+    emoji: '👍',
+  },
+  first_meal_swapped: {
+    title: 'First Meal Swapped!',
+    message: 'Great job customizing your plan to your preferences!',
+    emoji: '🔄',
+  },
+};
+
+// Feature discovery content
+export interface FeatureContent {
+  title: string;
+  description: string;
+  cta: string;
+  icon: string;
+  href: string;
+}
+
+export const FEATURE_DISCOVERY_CONTENT: Record<FeatureDiscoveryId, FeatureContent> = {
+  quick_cook: {
+    title: 'Quick Cook',
+    description: 'Need a single meal idea? Generate a quick meal or party menu based on your preferences.',
+    cta: 'Try Quick Cook',
+    icon: '⚡',
+    href: '/quick-cook',
+  },
+  community_feed: {
+    title: 'Community Feed',
+    description: 'Discover meals shared by other FuelRx users. Save your favorites to swap into your plans!',
+    cta: 'Browse Community',
+    icon: '🌍',
+    href: '/community',
+  },
+  theme_preferences: {
+    title: 'Theme Preferences',
+    description: 'Set preferred or blocked cuisine themes to customize your meal plan suggestions.',
+    cta: 'Set Themes',
+    icon: '🎨',
+    href: '/settings/theme-preferences',
+  },
+  ingredient_preferences: {
+    title: 'Ingredient Preferences',
+    description: 'Like or dislike ingredients to improve future meal recommendations.',
+    cta: 'Manage Ingredients',
+    icon: '🥬',
+    href: '/settings/ingredient-preferences',
+  },
+  household_servings: {
+    title: 'Household Servings',
+    description: 'Cooking for family? Adjust portion sizes while keeping your macros on track.',
+    cta: 'Configure Household',
+    icon: '👨‍👩‍👧‍👦',
+    href: '/settings/household',
+  },
+  meal_history: {
+    title: 'Meal History',
+    description: 'Access all your past meal plans. Favorite the ones you want to remember!',
+    cta: 'View History',
+    icon: '📚',
+    href: '/history',
+  },
+};
