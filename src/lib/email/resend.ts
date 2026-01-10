@@ -153,3 +153,143 @@ If you have any questions or feedback, just reply to this email!
     return { success: false, error: errorMessage };
   }
 }
+
+interface SendMealPlanSharedEmailParams {
+  to: string;
+  recipientName: string;
+  sharerName: string;
+  mealPlanId: string;
+  themeName?: string;
+}
+
+export async function sendMealPlanSharedEmail({
+  to,
+  recipientName,
+  sharerName,
+  mealPlanId,
+  themeName,
+}: SendMealPlanSharedEmailParams): Promise<{ success: boolean; error?: string }> {
+  const client = getResendClient();
+
+  // Skip if Resend is not configured
+  if (!client) {
+    console.log('[Email] Skipping email - RESEND_API_KEY not configured');
+    return { success: true };
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://fuelrx.app';
+  const mealPlanUrl = `${appUrl}/meal-plan/${mealPlanId}`;
+
+  const subject = themeName
+    ? `${sharerName} shared a ${themeName} Meal Plan with you!`
+    : `${sharerName} shared a Meal Plan with you!`;
+
+  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
+
+  try {
+    const { error } = await client.emails.send({
+      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      replyTo: REPLY_TO_EMAIL,
+      to: [to],
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
+                Coach Hill's FuelRx
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="margin: 0 0 16px; color: #374151; font-size: 16px; line-height: 1.5;">
+                ${greeting}
+              </p>
+              <p style="margin: 0 0 24px; color: #374151; font-size: 16px; line-height: 1.5;">
+                <strong>${sharerName}</strong> has shared ${themeName ? `a <strong>${themeName}</strong> meal plan` : 'a meal plan'} with you! Check it out and start fueling your training.
+              </p>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding: 16px 0 32px;">
+                    <a href="${mealPlanUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; padding: 14px 32px; border-radius: 8px;">
+                      View Shared Meal Plan
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 16px; color: #6b7280; font-size: 14px; line-height: 1.5;">
+                This meal plan has been copied to your account, so you can:
+              </p>
+              <ul style="margin: 0 0 24px; padding-left: 20px; color: #6b7280; font-size: 14px; line-height: 1.8;">
+                <li>View the full 7-day meal schedule</li>
+                <li>Swap out any meals to fit your preferences</li>
+                <li>Generate your own grocery list</li>
+              </ul>
+
+              <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.5;">
+                If you have any questions or feedback, just reply to this email!
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                Coach Hill's FuelRx — Fuel your training with personalized nutrition
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `.trim(),
+      text: `${greeting}
+
+${sharerName} has shared ${themeName ? `a ${themeName} meal plan` : 'a meal plan'} with you! Check it out and start fueling your training.
+
+View the shared meal plan here: ${mealPlanUrl}
+
+This meal plan has been copied to your account, so you can:
+- View the full 7-day meal schedule
+- Swap out any meals to fit your preferences
+- Generate your own grocery list
+
+If you have any questions or feedback, just reply to this email!
+
+— Coach Hill's FuelRx`,
+    });
+
+    if (error) {
+      console.error('[Email] Failed to send meal plan shared email:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('[Email] Meal plan shared email sent to:', to);
+    return { success: true };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[Email] Error sending email:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { sendMealPlanSharedEmail } from '@/lib/email/resend'
 
 interface ShareRequest {
   recipientUserId: string
@@ -58,7 +59,7 @@ export async function POST(
     // Verify recipient is opted into community
     const { data: recipient, error: recipientError } = await supabase
       .from('user_profiles')
-      .select('id, social_feed_enabled, display_name, name')
+      .select('id, social_feed_enabled, display_name, name, email')
       .eq('id', recipientUserId)
       .single()
 
@@ -166,6 +167,30 @@ export async function POST(
       // Clean up the created plan
       await serviceClient.from('meal_plans').delete().eq('id', newMealPlan.id)
       return NextResponse.json({ error: 'Failed to record sharing' }, { status: 500 })
+    }
+
+    // Send email notification to recipient (non-blocking)
+    if (recipient.email) {
+      // Fetch theme name if there's a theme_id
+      let themeName: string | undefined
+      if (originalPlan.theme_id) {
+        const { data: theme } = await supabase
+          .from('meal_plan_themes')
+          .select('name')
+          .eq('id', originalPlan.theme_id)
+          .single()
+        themeName = theme?.name
+      }
+
+      sendMealPlanSharedEmail({
+        to: recipient.email,
+        recipientName: recipient.display_name || recipient.name || '',
+        sharerName,
+        mealPlanId: newMealPlan.id,
+        themeName,
+      }).catch((err) => {
+        console.error('Error sending share notification email:', err)
+      })
     }
 
     return NextResponse.json({
