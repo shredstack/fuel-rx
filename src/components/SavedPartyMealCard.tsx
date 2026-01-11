@@ -1,8 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import type { SavedPartyMeal, PartyDish, PartyPrepPhase } from '@/lib/types'
+import { useState, useEffect } from 'react'
+import type { SavedPartyMeal, PartyDish, PartyPrepPhase, CookingStatus, SavedMealCookingStatus } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
+import ConfirmDeleteModal from './ConfirmDeleteModal'
+import CookingStatusButton from './meal/CookingStatusButton'
+import CookingStatusBadge from './meal/CookingStatusBadge'
 
 interface Props {
   meal: SavedPartyMeal
@@ -125,9 +128,52 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
   const [editDescription, setEditDescription] = useState(meal.description || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [cookingStatus, setCookingStatus] = useState<CookingStatus>('not_cooked')
 
   const supabase = createClient()
   const guide = meal.party_data
+
+  // Load cooking status on mount
+  useEffect(() => {
+    const loadCookingStatus = async () => {
+      try {
+        const response = await fetch(`/api/saved-meals/${meal.id}/cooking-status`)
+        if (response.ok) {
+          const data: SavedMealCookingStatus = await response.json()
+          setCookingStatus(data.cooking_status)
+        }
+      } catch (err) {
+        console.error('Error loading cooking status:', err)
+      }
+    }
+    loadCookingStatus()
+  }, [meal.id])
+
+  // Handle cooking status change
+  const handleCookingStatusChange = async (
+    status: CookingStatus,
+    notes?: string
+  ) => {
+    try {
+      const response = await fetch(`/api/saved-meals/${meal.id}/cooking-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cooking_status: status,
+          modification_notes: notes,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update cooking status')
+      }
+
+      setCookingStatus(status)
+    } catch (err) {
+      console.error('Error updating cooking status:', err)
+    }
+  }
 
   const handleCopyShoppingList = async () => {
     if (!guide?.shopping_list) return
@@ -150,9 +196,11 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
   }
 
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this party plan?')) {
-      onDelete(meal.id)
-    }
+    setShowDeleteModal(true)
+  }
+
+  const confirmDelete = () => {
+    onDelete(meal.id)
   }
 
   const handleEdit = (e: React.MouseEvent) => {
@@ -277,6 +325,7 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
                 <>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+                    <CookingStatusBadge status={cookingStatus} />
                     {meal.source_community_post_id && (
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium flex items-center gap-1">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -462,6 +511,16 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
             </div>
           )}
 
+          {/* Cooking Status */}
+          <div className="flex items-center justify-between py-3 border-t border-gray-100">
+            <span className="text-sm font-medium text-gray-700">Cooking Status</span>
+            <CookingStatusButton
+              status={cookingStatus}
+              mealName={meal.name}
+              onStatusChange={handleCookingStatusChange}
+            />
+          </div>
+
           {/* Actions */}
           <div className="flex gap-3 pt-2 print:hidden">
             <button
@@ -490,6 +549,15 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Party Plan"
+        itemName={meal.name}
+        itemType="party plan"
+      />
     </div>
   )
 }

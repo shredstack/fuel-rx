@@ -17,11 +17,15 @@ import type {
   IngredientWithNutrition,
   SwapResponse,
   CustomMealPrepTime,
+  CookingStatus,
+  MealPlanMealCookingStatus,
 } from '@/lib/types'
 import { normalizeCoreIngredients } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapButton, SwapModal } from '@/components/meal'
+import CookingStatusButton from '@/components/meal/CookingStatusButton'
+import CookingStatusBadge from '@/components/meal/CookingStatusBadge'
 import { ShareMealPlanModal } from '@/components/ShareMealPlanModal'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import SpotlightTip from '@/components/onboarding/SpotlightTip'
@@ -94,6 +98,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Share modal state
   const [shareModalOpen, setShareModalOpen] = useState(false)
 
+  // Cooking status state
+  const [cookingStatuses, setCookingStatuses] = useState<Map<string, MealPlanMealCookingStatus>>(new Map())
+
   // Onboarding state
   const {
     state: onboardingState,
@@ -156,6 +163,44 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     }
     loadIngredientPreferences()
   }, [])
+
+  // Load cooking statuses on mount
+  useEffect(() => {
+    const loadCookingStatuses = async () => {
+      try {
+        // Fetch all cooking statuses for this meal plan
+        const { data, error } = await supabase
+          .from('meal_plan_meal_cooking_status')
+          .select(`
+            *,
+            meal_plan_meals!inner(meal_plan_id)
+          `)
+          .eq('meal_plan_meals.meal_plan_id', mealPlan.id)
+
+        if (error) {
+          console.error('Error loading cooking statuses:', error)
+          return
+        }
+
+        const statusMap = new Map<string, MealPlanMealCookingStatus>()
+        data?.forEach((status) => {
+          statusMap.set(status.meal_plan_meal_id, {
+            id: status.id,
+            meal_plan_meal_id: status.meal_plan_meal_id,
+            cooking_status: status.cooking_status,
+            cooked_at: status.cooked_at,
+            modification_notes: status.modification_notes,
+            created_at: status.created_at,
+            updated_at: status.updated_at,
+          })
+        })
+        setCookingStatuses(statusMap)
+      } catch (error) {
+        console.error('Error loading cooking statuses:', error)
+      }
+    }
+    loadCookingStatuses()
+  }, [supabase, mealPlan.id])
 
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay) as DayPlanNormalized | undefined
 
@@ -480,6 +525,64 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     }
   }
 
+  // Handle cooking status change
+  const handleCookingStatusChange = async (
+    mealSlotId: string,
+    mealId: string,
+    status: CookingStatus,
+    notes?: string,
+    updatedInstructions?: string[]
+  ) => {
+    try {
+      const response = await fetch(`/api/meal-plans/${mealPlan.id}/meals/${mealSlotId}/cooking-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cooking_status: status,
+          modification_notes: notes,
+          updated_instructions: updatedInstructions,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update cooking status')
+      }
+
+      const updatedStatus = await response.json()
+
+      // Update local state
+      if (status === 'not_cooked') {
+        const newStatuses = new Map(cookingStatuses)
+        newStatuses.delete(mealSlotId)
+        setCookingStatuses(newStatuses)
+      } else {
+        setCookingStatuses(new Map(cookingStatuses).set(mealSlotId, updatedStatus))
+      }
+
+      // If instructions were updated, update the meal in local state
+      if (updatedInstructions && updatedInstructions.length > 0) {
+        const updatedDays = mealPlan.days.map(day => ({
+          ...day,
+          meals: day.meals.map(slot => {
+            if (slot.meal.id === mealId) {
+              return {
+                ...slot,
+                meal: {
+                  ...slot.meal,
+                  instructions: updatedInstructions,
+                },
+              }
+            }
+            return slot
+          }),
+        }))
+        setMealPlan({ ...mealPlan, days: updatedDays })
+      }
+    } catch (error) {
+      console.error('Error updating cooking status:', error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -714,6 +817,10 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
                 onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
                 isFirstMealCard={idx === 0}
+                cookingStatus={cookingStatuses.get(mealSlot.id)?.cooking_status || 'not_cooked'}
+                onCookingStatusChange={(status, notes, updatedInstructions) =>
+                  handleCookingStatusChange(mealSlot.id, mealSlot.meal.id, status, notes, updatedInstructions)
+                }
               />
             )
           })}
@@ -773,6 +880,8 @@ function MealCard({
   onIngredientDislike,
   onSwap,
   isFirstMealCard = false,
+  cookingStatus,
+  onCookingStatusChange,
 }: {
   mealSlot: MealSlot
   isExpanded: boolean
@@ -787,6 +896,8 @@ function MealCard({
   onIngredientDislike: (ingredientName: string) => void
   onSwap: () => void
   isFirstMealCard?: boolean
+  cookingStatus: CookingStatus
+  onCookingStatusChange: (status: CookingStatus, notes?: string, updatedInstructions?: string[]) => Promise<void>
 }) {
   const meal = mealSlot.meal
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
@@ -818,6 +929,7 @@ function MealCard({
                 Swapped
               </span>
             )}
+            <CookingStatusBadge status={cookingStatus} />
           </div>
           <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
           <div className="flex flex-wrap gap-4 mt-2 text-sm">
@@ -841,6 +953,13 @@ function MealCard({
           className="flex items-center gap-2 ml-4"
           {...(isFirstMealCard ? { 'data-tour': 'like-dislike' } : {})}
         >
+          <CookingStatusButton
+            status={cookingStatus}
+            mealName={meal.name}
+            currentInstructions={meal.instructions}
+            onStatusChange={onCookingStatusChange}
+            variant="icon"
+          />
           <span {...(isFirstMealCard ? { 'data-tour': 'swap-button' } : {})}>
             <SwapButton onClick={onSwap} />
           </span>
