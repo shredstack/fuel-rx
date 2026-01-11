@@ -1,10 +1,30 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
+import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
   onError?: (error: string) => void;
+}
+
+// Create reader instance lazily (singleton pattern)
+let readerInstance: BrowserMultiFormatReader | null = null;
+
+function getReader(): BrowserMultiFormatReader {
+  if (!readerInstance) {
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
+    ]);
+    readerInstance = new BrowserMultiFormatReader(hints);
+  }
+  return readerInstance;
 }
 
 export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
@@ -13,108 +33,79 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
-  // Cleanup camera stream on unmount
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
+  const stopCamera = useCallback(() => {
+    try {
+      const reader = getReader();
+      reader.reset();
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+    setIsScanning(false);
   }, []);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     setCameraError(null);
     setIsScanning(true);
 
     try {
-      // Check if camera is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera not supported on this device');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment', // Use back camera on mobile
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+      // Wait a tick for the video element to be rendered
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      if (!videoRef.current) {
+        throw new Error('Video element not ready. Please try again.');
+      }
+
+      const reader = getReader();
+
+      // Use ZXing to decode from video stream
+      await reader.decodeFromConstraints(
+        {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
         },
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      // Start barcode detection if available
-      if ('BarcodeDetector' in window) {
-        startBarcodeDetection();
-      } else {
-        setCameraError(
-          'Barcode detection not supported. Please enter the barcode manually or try a different browser.'
-        );
-        stopCamera();
-      }
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            const barcode = result.getText();
+            stopCamera();
+            onScan(barcode);
+          }
+          // ZXing continuously calls this callback, errors during scanning are expected
+          // Only log actual errors, not "not found" states
+          if (error && error.name !== 'NotFoundException') {
+            console.error('Barcode scan error:', error);
+          }
+        }
+      );
     } catch (error) {
       console.error('Camera error:', error);
+      let errorMessage = 'Failed to start camera';
+
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          setCameraError('Camera access denied. Please allow camera access and try again.');
+          errorMessage = 'Camera access denied. Please allow camera access and try again.';
         } else if (error.name === 'NotFoundError') {
-          setCameraError('No camera found on this device.');
+          errorMessage = 'No camera found on this device.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'Camera is in use by another application.';
         } else {
-          setCameraError(error.message || 'Failed to start camera');
+          errorMessage = error.message || 'Failed to start camera';
         }
       }
+
+      setCameraError(errorMessage);
+      onError?.(errorMessage);
       setIsScanning(false);
     }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsScanning(false);
-  };
-
-  const startBarcodeDetection = async () => {
-    if (!videoRef.current || !('BarcodeDetector' in window)) return;
-
-    // @ts-expect-error BarcodeDetector is not in TypeScript's lib yet
-    const barcodeDetector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
-    });
-
-    const detectBarcodes = async () => {
-      if (!videoRef.current || !streamRef.current) return;
-
-      try {
-        const barcodes = await barcodeDetector.detect(videoRef.current);
-        if (barcodes.length > 0) {
-          const barcode = barcodes[0].rawValue;
-          stopCamera();
-          onScan(barcode);
-          return;
-        }
-      } catch (error) {
-        console.error('Barcode detection error:', error);
-      }
-
-      // Continue scanning
-      if (streamRef.current) {
-        requestAnimationFrame(detectBarcodes);
-      }
-    };
-
-    detectBarcodes();
-  };
+  }, [onScan, onError, stopCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();

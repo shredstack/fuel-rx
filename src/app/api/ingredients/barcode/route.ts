@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { lookupBarcode } from '@/lib/barcode-service';
+import { lookupBarcodeOnFatSecret, isFatSecretConfigured } from '@/lib/fatsecret-service';
 import type { BarcodeProduct } from '@/lib/types';
 
 /**
@@ -69,12 +70,34 @@ export async function GET(request: Request) {
     });
   }
 
-  // Not in database, look up from Open Food Facts
-  const product = await lookupBarcode(cleanBarcode);
+  // Not in database, try Open Food Facts first
+  const openFoodFactsProduct = await lookupBarcode(cleanBarcode);
 
+  if (openFoodFactsProduct.found) {
+    return NextResponse.json({
+      ...openFoodFactsProduct,
+      source: 'open_food_facts',
+      is_user_added: false,
+    });
+  }
+
+  // Fallback to FatSecret if configured and Open Food Facts didn't find it
+  if (isFatSecretConfigured()) {
+    const fatSecretProduct = await lookupBarcodeOnFatSecret(cleanBarcode);
+
+    if (fatSecretProduct.found) {
+      return NextResponse.json({
+        ...fatSecretProduct,
+        source: 'fatsecret',
+        is_user_added: false,
+      });
+    }
+  }
+
+  // Neither API found the product
   return NextResponse.json({
-    ...product,
-    source: 'open_food_facts',
+    ...openFoodFactsProduct,
+    source: 'not_found',
     is_user_added: false,
   });
 }
