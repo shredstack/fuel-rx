@@ -322,9 +322,10 @@ export async function searchIngredients(userId: string, query: string): Promise<
     );
   }
 
-  // 2. Search ingredient_nutrition cache
+  // 2. Search ingredient_nutrition via view that joins with ingredients table
+  // The ingredient_nutrition table no longer has name columns - they're in the ingredients table
   const { data: cached } = await supabase
-    .from('ingredient_nutrition')
+    .from('ingredient_nutrition_with_details')
     .select('*')
     .ilike('name_normalized', `%${normalizedQuery}%`)
     .limit(10);
@@ -333,9 +334,9 @@ export async function searchIngredients(userId: string, query: string): Promise<
     const existingNames = new Set(results.map((r) => r.name.toLowerCase()));
     results.push(
       ...cached
-        .filter((c) => !existingNames.has(c.name.toLowerCase()))
+        .filter((c) => !existingNames.has(c.ingredient_name.toLowerCase()))
         .map((c) => ({
-          name: c.name,
+          name: c.ingredient_name,
           default_amount: c.serving_size,
           default_unit: c.serving_unit,
           calories_per_serving: c.calories,
