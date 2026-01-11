@@ -19,6 +19,7 @@ import MealSourceSection from '@/components/consumption/MealSourceSection';
 import IngredientQuickAdd from '@/components/consumption/IngredientQuickAdd';
 import IngredientAmountPicker from '@/components/consumption/IngredientAmountPicker';
 import AddIngredientModal from '@/components/consumption/AddIngredientModal';
+import MealPhotoModal from '@/components/consumption/MealPhotoModal';
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TrendChart from '@/components/consumption/TrendChart';
@@ -46,6 +47,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   // Modal states
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientToLog | null>(null);
   const [showIngredientSearch, setShowIngredientSearch] = useState(false);
+  const [showMealPhotoModal, setShowMealPhotoModal] = useState(false);
 
   // Fetch period data when period or date changes
   useEffect(() => {
@@ -405,6 +407,26 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               />
             )}
 
+            {/* Snap a Meal */}
+            <div className="mt-6">
+              <button
+                onClick={() => setShowMealPhotoModal(true)}
+                className="w-full flex items-center justify-center gap-3 py-4 px-4 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg hover:from-primary-600 hover:to-primary-700 transition-all shadow-md"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="font-medium">Snap a Meal</span>
+                <span className="text-sm opacity-90">Photo analysis with AI</span>
+              </button>
+            </div>
+
             {/* Quick Add Ingredients */}
             <div className="mt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">Quick Add Ingredients</h3>
@@ -531,6 +553,28 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           onSelectIngredient={(ing) => {
             setShowIngredientSearch(false);
             setSelectedIngredient(ing);
+          }}
+        />
+
+        {/* Meal Photo Modal */}
+        <MealPhotoModal
+          isOpen={showMealPhotoModal}
+          onClose={() => setShowMealPhotoModal(false)}
+          onMealLogged={(entry) => {
+            // Add the new entry to the summary optimistically
+            setSummary((prev) => ({
+              ...prev,
+              consumed: {
+                calories: prev.consumed.calories + entry.calories,
+                protein: prev.consumed.protein + entry.protein,
+                carbs: prev.consumed.carbs + entry.carbs,
+                fat: prev.consumed.fat + entry.fat,
+              },
+              entries: [...prev.entries, entry],
+              entry_count: prev.entry_count + 1,
+            }));
+            // Refresh data to get accurate totals
+            refreshData();
           }}
         />
       </main>
