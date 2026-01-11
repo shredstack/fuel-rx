@@ -456,9 +456,14 @@ export default function CustomMealsClient({ initialMeals }: Props) {
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-primary-600">My Meals</h1>
-          <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-            Back to Dashboard
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
+              Dashboard
+            </Link>
+            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
+              Log
+            </Link>
+          </div>
         </div>
       </header>
 

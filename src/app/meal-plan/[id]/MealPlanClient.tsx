@@ -595,6 +595,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
               Dashboard
             </Link>
+            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
+              Log
+            </Link>
             <Link href="/history" className="text-gray-600 hover:text-gray-900">
               My Plans
             </Link>
