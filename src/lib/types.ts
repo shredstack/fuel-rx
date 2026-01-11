@@ -1682,3 +1682,99 @@ export interface AddUserIngredientRequest {
   fat: number;
   barcode?: string;
 }
+
+// ============================================
+// Meal Photo Analysis Types (Snap a Meal)
+// ============================================
+
+export type MealPhotoAnalysisStatus = 'pending' | 'analyzing' | 'completed' | 'failed';
+
+/**
+ * Ingredient extracted from meal photo AI analysis
+ */
+export interface MealPhotoIngredient {
+  id: string;
+  meal_photo_id: string;
+  name: string;
+  estimated_amount: string;
+  estimated_unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  confidence_score: number;
+  category?: string;
+  display_order: number;
+}
+
+/**
+ * Meal photo record with analysis results
+ */
+export interface MealPhotoAnalysis {
+  id: string;
+  user_id: string;
+  storage_path: string;
+  image_url: string;
+  analysis_status: MealPhotoAnalysisStatus;
+  analysis_error?: string;
+  analyzed_at?: string;
+  raw_analysis?: MealPhotoAnalysisResult;
+  meal_name?: string;
+  meal_description?: string;
+  total_calories?: number;
+  total_protein?: number;
+  total_carbs?: number;
+  total_fat?: number;
+  confidence_score?: number;
+  consumption_entry_id?: string;
+  saved_meal_id?: string;
+  ingredients: MealPhotoIngredient[];
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Raw AI analysis result from Claude Vision
+ */
+export interface MealPhotoAnalysisResult {
+  meal_name: string;
+  meal_description?: string;
+  ingredients: Array<{
+    name: string;
+    estimated_amount: string;
+    estimated_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    confidence: number;
+    category?: string;
+  }>;
+  total_macros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  overall_confidence: number;
+  analysis_notes?: string;
+}
+
+/**
+ * Options for saving an analyzed meal photo
+ */
+export interface SaveMealPhotoOptions {
+  saveTo: 'consumption' | 'library' | 'both';
+  mealType?: MealType;
+  editedName?: string;
+  editedIngredients?: Array<{
+    name: string;
+    estimated_amount: string;
+    estimated_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>;
+  notes?: string;
+}
