@@ -688,6 +688,9 @@ export interface IngredientRecord {
   name_normalized: string;
   category: IngredientCategoryType | null;
   description?: string;
+  is_user_added?: boolean;
+  added_by_user_id?: string;
+  added_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -708,8 +711,9 @@ export interface IngredientNutrition {
   fiber?: number;
   sugar?: number;
   sodium?: number;
-  source: 'llm_estimated' | 'usda' | 'user_corrected';
+  source: 'llm_estimated' | 'usda' | 'user_corrected' | 'barcode_scan';
   usda_fdc_id?: string;
+  barcode?: string;
   confidence_score?: number;
   validated?: boolean;
   created_at: string;
@@ -1458,3 +1462,223 @@ export const COOKING_STATUS_LABELS: Record<CookingStatus, { label: string; short
   cooked_as_is: { label: 'Cooked', shortLabel: 'Cooked', color: 'green' },
   cooked_with_modifications: { label: 'Cooked (Modified)', shortLabel: 'Modified', color: 'blue' },
 };
+
+// ============================================
+// Meal Consumption Tracking Types
+// ============================================
+
+export type ConsumptionEntryType = 'meal_plan' | 'custom_meal' | 'quick_cook' | 'ingredient';
+
+/**
+ * A logged consumption entry - represents something the user ate
+ */
+export interface ConsumptionEntry {
+  id: string;
+  user_id: string;
+  entry_type: ConsumptionEntryType;
+
+  // Source references (one will be set based on entry_type)
+  meal_plan_meal_id?: string;
+  meal_id?: string;
+  ingredient_name?: string;
+
+  // When consumed
+  consumed_at: string;
+  consumed_date: string;
+
+  // Display info
+  display_name: string;
+  meal_type?: MealType;
+
+  // For ingredients - amount consumed
+  amount?: number;
+  unit?: string;
+
+  // Macro snapshot at time of logging
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Frequently logged ingredient for quick-add UI
+ */
+export interface FrequentIngredient {
+  id: string;
+  user_id: string;
+  ingredient_name: string;
+  ingredient_name_normalized: string;
+  default_amount: number;
+  default_unit: string;
+  calories_per_serving: number;
+  protein_per_serving: number;
+  carbs_per_serving: number;
+  fat_per_serving: number;
+  times_logged: number;
+  last_logged_at: string;
+  is_user_added?: boolean;
+  ingredient_id?: string;
+}
+
+/**
+ * Daily consumption summary with progress toward targets
+ */
+export interface DailyConsumptionSummary {
+  date: string;
+  targets: Macros;
+  consumed: Macros;
+  remaining: Macros;
+  percentages: Macros;
+  entries: ConsumptionEntry[];
+  entry_count: number;
+}
+
+/**
+ * A meal available to log (from any source)
+ */
+export interface MealToLog {
+  id: string;
+  source: ConsumptionEntryType;
+  source_id: string;  // meal_plan_meal_id or meal_id
+  name: string;
+  meal_type?: MealType;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  is_logged: boolean;
+  logged_entry_id?: string;
+  logged_at?: string;
+}
+
+/**
+ * An ingredient available to log
+ */
+export interface IngredientToLog {
+  name: string;
+  default_amount: number;
+  default_unit: string;
+  calories_per_serving: number;
+  protein_per_serving: number;
+  carbs_per_serving: number;
+  fat_per_serving: number;
+  source: 'frequent' | 'meal_plan' | 'cache' | 'usda' | 'barcode' | 'manual';
+  is_user_added?: boolean;
+  barcode?: string;
+}
+
+/**
+ * All available items to log, organized by source
+ */
+export interface AvailableMealsToLog {
+  from_todays_plan: MealToLog[];
+  from_week_plan: MealToLog[];
+  custom_meals: MealToLog[];
+  quick_cook_meals: MealToLog[];
+  recent_meals: MealToLog[];
+  frequent_ingredients: IngredientToLog[];
+}
+
+/**
+ * Request payload for logging a meal
+ */
+export interface LogMealRequest {
+  type: 'meal_plan' | 'custom_meal' | 'quick_cook';
+  source_id: string;
+  consumed_at?: string;
+  notes?: string;
+}
+
+/**
+ * Request payload for logging an ingredient
+ */
+export interface LogIngredientRequest {
+  type: 'ingredient';
+  ingredient_name: string;
+  amount: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  consumed_at?: string;
+  notes?: string;
+}
+
+export type LogConsumptionRequest = LogMealRequest | LogIngredientRequest;
+
+// ============================================
+// Period Consumption Summary Types (Weekly/Monthly)
+// ============================================
+
+export type ConsumptionPeriodType = 'daily' | 'weekly' | 'monthly';
+
+/**
+ * A single day's macro data for trend charts
+ */
+export interface DailyDataPoint {
+  date: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  entry_count: number;
+}
+
+/**
+ * Weekly or monthly consumption summary with trend data
+ */
+export interface PeriodConsumptionSummary {
+  periodType: 'weekly' | 'monthly';
+  startDate: string;
+  endDate: string;
+  dayCount: number;
+  daysWithData: number;
+  targets: Macros; // Daily targets * dayCount
+  consumed: Macros; // Actual totals
+  averagePerDay: Macros; // consumed / daysWithData
+  percentages: Macros; // (consumed / targets) * 100
+  dailyData: DailyDataPoint[]; // For line chart
+  entry_count: number;
+}
+
+// ============================================
+// Barcode Scanning Types
+// ============================================
+
+/**
+ * Product data from Open Food Facts API
+ */
+export interface BarcodeProduct {
+  barcode: string;
+  name: string;
+  brand?: string;
+  serving_size?: number;
+  serving_unit?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  image_url?: string;
+  found: boolean;
+}
+
+/**
+ * Request to add a user-created ingredient
+ */
+export interface AddUserIngredientRequest {
+  name: string;
+  category?: IngredientCategoryType;
+  serving_size: number;
+  serving_unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  barcode?: string;
+}
