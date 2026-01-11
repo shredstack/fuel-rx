@@ -1399,3 +1399,62 @@ export interface ShareMealPlanResponse {
   message: string;
   recipientMealPlanId: string;
 }
+
+// ============================================
+// Meal Cooking Tracker Types
+// ============================================
+
+export type CookingStatus = 'not_cooked' | 'cooked_as_is' | 'cooked_with_modifications';
+
+/**
+ * Cooking status for a specific meal in a meal plan
+ */
+export interface MealPlanMealCookingStatus {
+  id: string;
+  meal_plan_meal_id: string;
+  cooking_status: CookingStatus;
+  cooked_at: string | null;
+  modification_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Cooking status for saved meals (quick cook, party plans)
+ */
+export interface SavedMealCookingStatus {
+  id: string;
+  meal_id: string;
+  user_id: string;
+  cooking_status: CookingStatus;
+  cooked_at: string | null;
+  modification_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Request payload for marking a meal as cooked
+ */
+export interface MarkMealCookedRequest {
+  cooking_status: CookingStatus;
+  modification_notes?: string;
+  /** If modifications were made, optionally update prep_instructions on the meal */
+  updated_instructions?: string[];
+}
+
+/**
+ * Extended MealSlot with cooking status
+ */
+export interface MealSlotWithCookingStatus extends MealSlot {
+  cooking_status?: MealPlanMealCookingStatus;
+}
+
+/**
+ * Labels and styling for cooking status display
+ */
+export const COOKING_STATUS_LABELS: Record<CookingStatus, { label: string; shortLabel: string; color: string }> = {
+  not_cooked: { label: 'Not Cooked', shortLabel: 'Not Cooked', color: 'gray' },
+  cooked_as_is: { label: 'Cooked', shortLabel: 'Cooked', color: 'green' },
+  cooked_with_modifications: { label: 'Cooked (Modified)', shortLabel: 'Modified', color: 'blue' },
+};

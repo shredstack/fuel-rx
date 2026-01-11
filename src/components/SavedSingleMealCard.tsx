@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import type { SavedQuickCookMeal, IngredientWithNutrition } from '@/lib/types'
+import type { SavedQuickCookMeal, IngredientWithNutrition, CookingStatus, SavedMealCookingStatus } from '@/lib/types'
 import { MEAL_TYPE_LABELS } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
+import CookingStatusButton from './meal/CookingStatusButton'
+import CookingStatusBadge from './meal/CookingStatusBadge'
 
 interface Props {
   meal: SavedQuickCookMeal
@@ -32,8 +34,65 @@ export default function SavedSingleMealCard({ meal, onDelete, onUpdate }: Props)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [cookingStatus, setCookingStatus] = useState<CookingStatus>('not_cooked')
+  const [currentInstructions, setCurrentInstructions] = useState<string[]>(meal.instructions || [])
 
   const supabase = createClient()
+
+  // Load cooking status on mount
+  useEffect(() => {
+    const loadCookingStatus = async () => {
+      try {
+        const response = await fetch(`/api/saved-meals/${meal.id}/cooking-status`)
+        if (response.ok) {
+          const data: SavedMealCookingStatus = await response.json()
+          setCookingStatus(data.cooking_status)
+        }
+      } catch (err) {
+        console.error('Error loading cooking status:', err)
+      }
+    }
+    loadCookingStatus()
+  }, [meal.id])
+
+  // Handle cooking status change
+  const handleCookingStatusChange = async (
+    status: CookingStatus,
+    notes?: string,
+    updatedInstructions?: string[]
+  ) => {
+    try {
+      const response = await fetch(`/api/saved-meals/${meal.id}/cooking-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cooking_status: status,
+          modification_notes: notes,
+          updated_instructions: updatedInstructions,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update cooking status')
+      }
+
+      setCookingStatus(status)
+
+      // If instructions were updated, update local state
+      if (updatedInstructions && updatedInstructions.length > 0) {
+        setCurrentInstructions(updatedInstructions)
+        // Also update the meal via onUpdate if provided
+        if (onUpdate) {
+          onUpdate({
+            ...meal,
+            instructions: updatedInstructions,
+          })
+        }
+      }
+    } catch (err) {
+      console.error('Error updating cooking status:', err)
+    }
+  }
 
   const handleCopy = async () => {
     const text = formatMealAsText(meal)
@@ -189,6 +248,7 @@ export default function SavedSingleMealCard({ meal, onDelete, onUpdate }: Props)
                     <span className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
                       {MEAL_TYPE_LABELS[meal.meal_type]}
                     </span>
+                    <CookingStatusBadge status={cookingStatus} />
                     {meal.source_community_post_id && (
                       <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium flex items-center gap-1">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -338,6 +398,17 @@ export default function SavedSingleMealCard({ meal, onDelete, onUpdate }: Props)
               </ul>
             </div>
           )}
+
+          {/* Cooking Status */}
+          <div className="flex items-center justify-between py-3 border-t border-gray-100">
+            <span className="text-sm font-medium text-gray-700">Cooking Status</span>
+            <CookingStatusButton
+              status={cookingStatus}
+              mealName={meal.name}
+              currentInstructions={currentInstructions}
+              onStatusChange={handleCookingStatusChange}
+            />
+          </div>
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
