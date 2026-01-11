@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
 
 interface BarcodeScannerProps {
@@ -8,16 +8,11 @@ interface BarcodeScannerProps {
   onError?: (error: string) => void;
 }
 
-export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
-  const [manualBarcode, setManualBarcode] = useState('');
-  const [scanMode, setScanMode] = useState<'camera' | 'manual'>('manual');
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+// Create reader instance lazily (singleton pattern)
+let readerInstance: BrowserMultiFormatReader | null = null;
 
-  // Initialize barcode reader
-  useEffect(() => {
+function getReader(): BrowserMultiFormatReader {
+  if (!readerInstance) {
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.EAN_13,
@@ -27,24 +22,29 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       BarcodeFormat.CODE_128,
       BarcodeFormat.CODE_39,
     ]);
+    readerInstance = new BrowserMultiFormatReader(hints);
+  }
+  return readerInstance;
+}
 
-    readerRef.current = new BrowserMultiFormatReader(hints);
-
-    return () => {
-      if (readerRef.current) {
-        readerRef.current.reset();
-      }
-    };
-  }, []);
+export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
+  const [manualBarcode, setManualBarcode] = useState('');
+  const [scanMode, setScanMode] = useState<'camera' | 'manual'>('manual');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const stopCamera = useCallback(() => {
-    if (readerRef.current) {
-      readerRef.current.reset();
+    try {
+      const reader = getReader();
+      reader.reset();
+    } catch (e) {
+      // Ignore errors during cleanup
     }
     setIsScanning(false);
   }, []);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     setCameraError(null);
     setIsScanning(true);
 
@@ -53,12 +53,17 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         throw new Error('Camera not supported on this device');
       }
 
-      if (!readerRef.current || !videoRef.current) {
-        throw new Error('Scanner not initialized');
+      // Wait a tick for the video element to be rendered
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      if (!videoRef.current) {
+        throw new Error('Video element not ready. Please try again.');
       }
 
+      const reader = getReader();
+
       // Use ZXing to decode from video stream
-      await readerRef.current.decodeFromConstraints(
+      await reader.decodeFromConstraints(
         {
           video: {
             facingMode: 'environment',
@@ -82,21 +87,25 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       );
     } catch (error) {
       console.error('Camera error:', error);
+      let errorMessage = 'Failed to start camera';
+
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          setCameraError('Camera access denied. Please allow camera access and try again.');
+          errorMessage = 'Camera access denied. Please allow camera access and try again.';
         } else if (error.name === 'NotFoundError') {
-          setCameraError('No camera found on this device.');
+          errorMessage = 'No camera found on this device.';
         } else if (error.name === 'NotReadableError') {
-          setCameraError('Camera is in use by another application.');
+          errorMessage = 'Camera is in use by another application.';
         } else {
-          setCameraError(error.message || 'Failed to start camera');
+          errorMessage = error.message || 'Failed to start camera';
         }
       }
-      onError?.(cameraError || 'Camera error');
+
+      setCameraError(errorMessage);
+      onError?.(errorMessage);
       setIsScanning(false);
     }
-  };
+  }, [onScan, onError, stopCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
