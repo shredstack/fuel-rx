@@ -576,3 +576,258 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     frequent_ingredients,
   };
 }
+
+// Helper to get week end (Sunday) from week start
+function getWeekEnd(weekStart: Date): Date {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + 6);
+  return d;
+}
+
+// Helper to get month start and end dates
+function getMonthBounds(year: number, month: number): { start: Date; end: Date } {
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0); // Last day of month
+  return { start, end };
+}
+
+/**
+ * Get consumption data for a date range.
+ * Returns daily data points for charting.
+ */
+export async function getConsumptionRange(
+  userId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{
+  dailyData: import('@/lib/types').DailyDataPoint[];
+  totals: Macros;
+  entryCount: number;
+  daysWithData: number;
+}> {
+  const supabase = await createClient();
+  const startStr = startDate.toISOString().split('T')[0];
+  const endStr = endDate.toISOString().split('T')[0];
+
+  // Get all entries in date range
+  const { data: entries, error } = await supabase
+    .from('meal_consumption_log')
+    .select('consumed_date, calories, protein, carbs, fat')
+    .eq('user_id', userId)
+    .gte('consumed_date', startStr)
+    .lte('consumed_date', endStr)
+    .order('consumed_date', { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+
+  // Group entries by date
+  const dailyMap = new Map<
+    string,
+    { calories: number; protein: number; carbs: number; fat: number; count: number }
+  >();
+
+  for (const entry of entries || []) {
+    const date = entry.consumed_date;
+    const existing = dailyMap.get(date) || { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 };
+    dailyMap.set(date, {
+      calories: existing.calories + entry.calories,
+      protein: existing.protein + entry.protein,
+      carbs: existing.carbs + entry.carbs,
+      fat: existing.fat + entry.fat,
+      count: existing.count + 1,
+    });
+  }
+
+  // Generate all dates in range (even if no data)
+  const dailyData: import('@/lib/types').DailyDataPoint[] = [];
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dateStr = current.toISOString().split('T')[0];
+    const dayData = dailyMap.get(dateStr);
+    dailyData.push({
+      date: dateStr,
+      calories: dayData?.calories || 0,
+      protein: Math.round((dayData?.protein || 0) * 10) / 10,
+      carbs: Math.round((dayData?.carbs || 0) * 10) / 10,
+      fat: Math.round((dayData?.fat || 0) * 10) / 10,
+      entry_count: dayData?.count || 0,
+    });
+    current.setDate(current.getDate() + 1);
+  }
+
+  // Calculate totals
+  const totals: Macros = {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  };
+  let entryCount = 0;
+  let daysWithData = 0;
+
+  for (const day of dailyData) {
+    totals.calories += day.calories;
+    totals.protein += day.protein;
+    totals.carbs += day.carbs;
+    totals.fat += day.fat;
+    entryCount += day.entry_count;
+    if (day.entry_count > 0) daysWithData++;
+  }
+
+  return { dailyData, totals, entryCount, daysWithData };
+}
+
+/**
+ * Get weekly consumption summary with daily breakdown.
+ */
+export async function getWeeklyConsumption(
+  userId: string,
+  date: Date
+): Promise<import('@/lib/types').PeriodConsumptionSummary> {
+  const supabase = await createClient();
+
+  // Get user's daily macro targets
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('target_calories, target_protein, target_carbs, target_fat')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('Profile not found');
+
+  const weekStart = getWeekStart(date);
+  const weekEnd = getWeekEnd(weekStart);
+
+  const { dailyData, totals, entryCount, daysWithData } = await getConsumptionRange(
+    userId,
+    weekStart,
+    weekEnd
+  );
+
+  const dayCount = 7;
+  const dailyTargets: Macros = {
+    calories: profile.target_calories,
+    protein: profile.target_protein,
+    carbs: profile.target_carbs,
+    fat: profile.target_fat,
+  };
+
+  const weeklyTargets: Macros = {
+    calories: dailyTargets.calories * dayCount,
+    protein: dailyTargets.protein * dayCount,
+    carbs: dailyTargets.carbs * dayCount,
+    fat: dailyTargets.fat * dayCount,
+  };
+
+  const averagePerDay: Macros =
+    daysWithData > 0
+      ? {
+          calories: Math.round(totals.calories / daysWithData),
+          protein: Math.round((totals.protein / daysWithData) * 10) / 10,
+          carbs: Math.round((totals.carbs / daysWithData) * 10) / 10,
+          fat: Math.round((totals.fat / daysWithData) * 10) / 10,
+        }
+      : { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  const percentages: Macros = {
+    calories:
+      weeklyTargets.calories > 0 ? Math.round((totals.calories / weeklyTargets.calories) * 100) : 0,
+    protein:
+      weeklyTargets.protein > 0 ? Math.round((totals.protein / weeklyTargets.protein) * 100) : 0,
+    carbs: weeklyTargets.carbs > 0 ? Math.round((totals.carbs / weeklyTargets.carbs) * 100) : 0,
+    fat: weeklyTargets.fat > 0 ? Math.round((totals.fat / weeklyTargets.fat) * 100) : 0,
+  };
+
+  return {
+    periodType: 'weekly',
+    startDate: weekStart.toISOString().split('T')[0],
+    endDate: weekEnd.toISOString().split('T')[0],
+    dayCount,
+    daysWithData,
+    targets: weeklyTargets,
+    consumed: totals,
+    averagePerDay,
+    percentages,
+    dailyData,
+    entry_count: entryCount,
+  };
+}
+
+/**
+ * Get monthly consumption summary with daily breakdown.
+ */
+export async function getMonthlyConsumption(
+  userId: string,
+  year: number,
+  month: number
+): Promise<import('@/lib/types').PeriodConsumptionSummary> {
+  const supabase = await createClient();
+
+  // Get user's daily macro targets
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('target_calories, target_protein, target_carbs, target_fat')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('Profile not found');
+
+  const { start: monthStart, end: monthEnd } = getMonthBounds(year, month);
+  const dayCount = monthEnd.getDate(); // Number of days in month
+
+  const { dailyData, totals, entryCount, daysWithData } = await getConsumptionRange(
+    userId,
+    monthStart,
+    monthEnd
+  );
+
+  const dailyTargets: Macros = {
+    calories: profile.target_calories,
+    protein: profile.target_protein,
+    carbs: profile.target_carbs,
+    fat: profile.target_fat,
+  };
+
+  const monthlyTargets: Macros = {
+    calories: dailyTargets.calories * dayCount,
+    protein: dailyTargets.protein * dayCount,
+    carbs: dailyTargets.carbs * dayCount,
+    fat: dailyTargets.fat * dayCount,
+  };
+
+  const averagePerDay: Macros =
+    daysWithData > 0
+      ? {
+          calories: Math.round(totals.calories / daysWithData),
+          protein: Math.round((totals.protein / daysWithData) * 10) / 10,
+          carbs: Math.round((totals.carbs / daysWithData) * 10) / 10,
+          fat: Math.round((totals.fat / daysWithData) * 10) / 10,
+        }
+      : { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  const percentages: Macros = {
+    calories:
+      monthlyTargets.calories > 0
+        ? Math.round((totals.calories / monthlyTargets.calories) * 100)
+        : 0,
+    protein:
+      monthlyTargets.protein > 0 ? Math.round((totals.protein / monthlyTargets.protein) * 100) : 0,
+    carbs:
+      monthlyTargets.carbs > 0 ? Math.round((totals.carbs / monthlyTargets.carbs) * 100) : 0,
+    fat: monthlyTargets.fat > 0 ? Math.round((totals.fat / monthlyTargets.fat) * 100) : 0,
+  };
+
+  return {
+    periodType: 'monthly',
+    startDate: monthStart.toISOString().split('T')[0],
+    endDate: monthEnd.toISOString().split('T')[0],
+    dayCount,
+    daysWithData,
+    targets: monthlyTargets,
+    consumed: totals,
+    averagePerDay,
+    percentages,
+    dailyData,
+    entry_count: entryCount,
+  };
+}

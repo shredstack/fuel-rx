@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -11,12 +11,17 @@ import type {
   IngredientToLog,
   ConsumptionEntry,
   Macros,
+  ConsumptionPeriodType,
+  PeriodConsumptionSummary,
 } from '@/lib/types';
 import DailyProgressCard from '@/components/consumption/DailyProgressCard';
 import MealSourceSection from '@/components/consumption/MealSourceSection';
 import IngredientQuickAdd from '@/components/consumption/IngredientQuickAdd';
 import IngredientAmountPicker from '@/components/consumption/IngredientAmountPicker';
-import IngredientSearchModal from '@/components/consumption/IngredientSearchModal';
+import AddIngredientModal from '@/components/consumption/AddIngredientModal';
+import PeriodTabs from '@/components/consumption/PeriodTabs';
+import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
+import TrendChart from '@/components/consumption/TrendChart';
 
 interface Props {
   initialDate: string;
@@ -33,9 +38,46 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   const [available, setAvailable] = useState(initialAvailable);
   const [loading, setLoading] = useState(false);
 
+  // Period view state
+  const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
+  const [periodSummary, setPeriodSummary] = useState<PeriodConsumptionSummary | null>(null);
+  const [periodLoading, setPeriodLoading] = useState(false);
+
   // Modal states
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientToLog | null>(null);
   const [showIngredientSearch, setShowIngredientSearch] = useState(false);
+
+  // Fetch period data when period or date changes
+  useEffect(() => {
+    if (selectedPeriod === 'daily') {
+      setPeriodSummary(null);
+      return;
+    }
+
+    const fetchPeriodData = async () => {
+      setPeriodLoading(true);
+      try {
+        let url: string;
+        if (selectedPeriod === 'weekly') {
+          url = `/api/consumption/weekly?date=${selectedDate}`;
+        } else {
+          const date = new Date(selectedDate);
+          url = `/api/consumption/monthly?year=${date.getFullYear()}&month=${date.getMonth() + 1}`;
+        }
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setPeriodSummary(data);
+        }
+      } catch (error) {
+        console.error('Error fetching period data:', error);
+      }
+      setPeriodLoading(false);
+    };
+
+    fetchPeriodData();
+  }, [selectedPeriod, selectedDate]);
 
   // Refresh data for current date
   const refreshData = useCallback(async () => {
@@ -318,139 +360,159 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           />
         </div>
 
+        {/* Period Tabs */}
+        <PeriodTabs selected={selectedPeriod} onChange={setSelectedPeriod} />
+
         {/* Loading overlay */}
-        {loading && (
+        {(loading || periodLoading) && (
           <div className="fixed inset-0 bg-white/50 flex items-center justify-center z-40">
             <div className="text-gray-600">Loading...</div>
           </div>
         )}
 
-        {/* Daily Progress */}
-        <DailyProgressCard
-          date={selectedDate}
-          targets={summary.targets}
-          consumed={summary.consumed}
-          percentages={percentages}
-          entryCount={summary.entry_count}
-        />
-
-        {/* Today's Plan */}
-        {available.from_todays_plan.length > 0 && (
-          <MealSourceSection
-            title="From Today's Plan"
-            icon="calendar"
-            meals={available.from_todays_plan}
-            onLogMeal={handleLogMeal}
-            onUndoLog={handleUndoLog}
-          />
+        {/* Weekly/Monthly View */}
+        {selectedPeriod !== 'daily' && periodSummary && (
+          <>
+            <PeriodProgressCard summary={periodSummary} dailyTargets={summary.targets} />
+            <TrendChart
+              dailyData={periodSummary.dailyData}
+              dailyTargets={summary.targets}
+              periodType={periodSummary.periodType}
+            />
+          </>
         )}
 
-        {/* Quick Add Ingredients */}
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">Quick Add Ingredients</h3>
-          <IngredientQuickAdd
-            ingredients={available.frequent_ingredients}
-            onSelectIngredient={setSelectedIngredient}
-            onAddOther={() => setShowIngredientSearch(true)}
-          />
-        </div>
+        {/* Daily View */}
+        {selectedPeriod === 'daily' && (
+          <>
+            {/* Daily Progress */}
+            <DailyProgressCard
+              date={selectedDate}
+              targets={summary.targets}
+              consumed={summary.consumed}
+              percentages={percentages}
+              entryCount={summary.entry_count}
+            />
 
-        {/* My Recipes */}
-        {available.custom_meals.length > 0 && (
-          <MealSourceSection
-            title="My Recipes"
-            icon="utensils"
-            meals={available.custom_meals}
-            onLogMeal={handleLogMeal}
-            onUndoLog={handleUndoLog}
-            collapsible
-          />
-        )}
+            {/* Today's Plan */}
+            {available.from_todays_plan.length > 0 && (
+              <MealSourceSection
+                title="From Today's Plan"
+                icon="calendar"
+                meals={available.from_todays_plan}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+              />
+            )}
 
-        {/* Quick Cook */}
-        {available.quick_cook_meals.length > 0 && (
-          <MealSourceSection
-            title="Quick Cook"
-            icon="bolt"
-            meals={available.quick_cook_meals}
-            onLogMeal={handleLogMeal}
-            onUndoLog={handleUndoLog}
-            collapsible
-          />
-        )}
+            {/* Quick Add Ingredients */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">Quick Add Ingredients</h3>
+              <IngredientQuickAdd
+                ingredients={available.frequent_ingredients}
+                onSelectIngredient={setSelectedIngredient}
+                onAddOther={() => setShowIngredientSearch(true)}
+              />
+            </div>
 
-        {/* Other Days This Week */}
-        {available.from_week_plan.length > 0 && (
-          <MealSourceSection
-            title="Other Days This Week"
-            icon="calendar-week"
-            meals={available.from_week_plan}
-            onLogMeal={handleLogMeal}
-            onUndoLog={handleUndoLog}
-            collapsible
-            initialCollapsed
-          />
-        )}
+            {/* My Recipes */}
+            {available.custom_meals.length > 0 && (
+              <MealSourceSection
+                title="My Recipes"
+                icon="utensils"
+                meals={available.custom_meals}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+                collapsible
+              />
+            )}
 
-        {/* Logged Today Section */}
-        {summary.entries.length > 0 && (
-          <div className="mt-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Logged Today</h3>
-            <div className="card divide-y divide-gray-100">
-              {summary.entries.map((entry) => (
-                <div key={entry.id} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">{entry.display_name}</p>
-                    <p className="text-sm text-gray-500">
-                      {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      // Find the matching meal to pass to undo
-                      const meal = [...available.from_todays_plan, ...available.from_week_plan, ...available.custom_meals, ...available.quick_cook_meals].find(
-                        (m) => m.logged_entry_id === entry.id
-                      );
-                      if (meal) {
-                        handleUndoLog(entry.id, meal);
-                      } else {
-                        // For ingredients, just delete directly
-                        handleUndoLog(entry.id, {
-                          id: entry.id,
-                          source: entry.entry_type,
-                          source_id: entry.id,
-                          name: entry.display_name,
-                          calories: entry.calories,
-                          protein: entry.protein,
-                          carbs: entry.carbs,
-                          fat: entry.fat,
-                          is_logged: true,
-                          logged_entry_id: entry.id,
-                        });
-                      }
-                    }}
-                    className="text-sm text-red-600 hover:text-red-700"
-                  >
-                    Remove
-                  </button>
+            {/* Quick Cook */}
+            {available.quick_cook_meals.length > 0 && (
+              <MealSourceSection
+                title="Quick Cook"
+                icon="bolt"
+                meals={available.quick_cook_meals}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+                collapsible
+              />
+            )}
+
+            {/* Other Days This Week */}
+            {available.from_week_plan.length > 0 && (
+              <MealSourceSection
+                title="Other Days This Week"
+                icon="calendar-week"
+                meals={available.from_week_plan}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+                collapsible
+                initialCollapsed
+              />
+            )}
+
+            {/* Logged Today Section */}
+            {summary.entries.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Logged Today</h3>
+                <div className="card divide-y divide-gray-100">
+                  {summary.entries.map((entry) => (
+                    <div key={entry.id} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-900">{entry.display_name}</p>
+                        <p className="text-sm text-gray-500">
+                          {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          // Find the matching meal to pass to undo
+                          const meal = [...available.from_todays_plan, ...available.from_week_plan, ...available.custom_meals, ...available.quick_cook_meals].find(
+                            (m) => m.logged_entry_id === entry.id
+                          );
+                          if (meal) {
+                            handleUndoLog(entry.id, meal);
+                          } else {
+                            // For ingredients, just delete directly
+                            handleUndoLog(entry.id, {
+                              id: entry.id,
+                              source: entry.entry_type,
+                              source_id: entry.id,
+                              name: entry.display_name,
+                              calories: entry.calories,
+                              protein: entry.protein,
+                              carbs: entry.carbs,
+                              fat: entry.fat,
+                              is_logged: true,
+                              logged_entry_id: entry.id,
+                            });
+                          }
+                        }}
+                        className="text-sm text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
 
-        {/* Empty state */}
-        {available.from_todays_plan.length === 0 &&
-          available.custom_meals.length === 0 &&
-          available.quick_cook_meals.length === 0 &&
-          available.from_week_plan.length === 0 && (
-            <div className="mt-8 text-center py-12 card">
-              <p className="text-gray-500 mb-4">No meals available to log.</p>
-              <Link href="/dashboard" className="btn-primary">
-                Generate a Meal Plan
-              </Link>
-            </div>
-          )}
+            {/* Empty state */}
+            {available.from_todays_plan.length === 0 &&
+              available.custom_meals.length === 0 &&
+              available.quick_cook_meals.length === 0 &&
+              available.from_week_plan.length === 0 && (
+                <div className="mt-8 text-center py-12 card">
+                  <p className="text-gray-500 mb-4">No meals available to log.</p>
+                  <Link href="/dashboard" className="btn-primary">
+                    Generate a Meal Plan
+                  </Link>
+                </div>
+              )}
+          </>
+        )}
 
         {/* Ingredient Amount Picker Modal */}
         {selectedIngredient && (
@@ -462,8 +524,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           />
         )}
 
-        {/* Ingredient Search Modal */}
-        <IngredientSearchModal
+        {/* Add Ingredient Modal */}
+        <AddIngredientModal
           isOpen={showIngredientSearch}
           onClose={() => setShowIngredientSearch(false)}
           onSelectIngredient={(ing) => {
