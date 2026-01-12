@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import confetti from 'canvas-confetti';
 import { createClient } from '@/lib/supabase/client';
 import type {
   DailyConsumptionSummary,
@@ -61,6 +62,10 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   const [showIngredientSearch, setShowIngredientSearch] = useState(false);
   const [showMealPhotoModal, setShowMealPhotoModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+
+  // Track previous calorie percentage for confetti trigger
+  const prevCaloriePercentageRef = useRef<number | null>(null);
+  const hasShownConfettiRef = useRef(false);
 
   // Fetch period data when period or date changes
   useEffect(() => {
@@ -371,6 +376,59 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     carbs: summary.targets.carbs > 0 ? Math.round((summary.consumed.carbs / summary.targets.carbs) * 100) : 0,
     fat: summary.targets.fat > 0 ? Math.round((summary.consumed.fat / summary.targets.fat) * 100) : 0,
   };
+
+  // Trigger confetti when hitting calorie goal
+  useEffect(() => {
+    const currentPercentage = percentages.calories;
+    const prevPercentage = prevCaloriePercentageRef.current;
+
+    // Only trigger if:
+    // 1. We have a previous value (not initial load)
+    // 2. We crossed the 100% threshold (was below, now at or above)
+    // 3. We haven't already shown confetti for this date
+    if (
+      prevPercentage !== null &&
+      prevPercentage < 100 &&
+      currentPercentage >= 100 &&
+      !hasShownConfettiRef.current
+    ) {
+      hasShownConfettiRef.current = true;
+
+      // Fire confetti from both sides
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0'],
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0'],
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+      frame();
+    }
+
+    prevCaloriePercentageRef.current = currentPercentage;
+  }, [percentages.calories]);
+
+  // Reset confetti flag when date changes
+  useEffect(() => {
+    hasShownConfettiRef.current = false;
+    prevCaloriePercentageRef.current = null;
+  }, [selectedDate]);
 
   // Handle logout
   const handleLogout = async () => {
