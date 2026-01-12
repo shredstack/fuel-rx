@@ -34,7 +34,7 @@ export async function generateMealsFromCoreIngredients(
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
   theme?: MealPlanTheme
-): Promise<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
+): Promise<{ title: string; meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
     .map(pref => DIETARY_LABELS[pref] || pref)
@@ -239,11 +239,13 @@ ${snackInstructions}
 3. Use the nutrition reference data provided above when available
 4. For ingredients not in the reference, estimate based on USDA standards
 
+**TITLE**: Create a creative, descriptive title for this meal plan that captures its character${theme ? ` and reflects the "${theme.display_name}" theme` : ''}. Examples: "Mediterranean Power Week", "High-Protein Summer Eats", "Lean & Green Athlete Fuel".
+
 Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
 Order by day (monday first), then by meal type (breakfast, snack, lunch, snack, dinner for 5 meals/day).
 ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}
 
-Use the generate_meals tool to provide your meal plan.`;
+Use the generate_meals tool to provide your meal plan with a title.`;
 
   // ===== TEST MODE: Single-day generation =====
   const testConfig = getTestConfig();
@@ -261,7 +263,7 @@ Use the generate_meals tool to provide your meal plan.`;
   // ===== END TEST MODE =====
 
   // Use tool use for guaranteed valid JSON output
-  const { result: parsed } = await callLLMWithToolUse<{ meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }>({
+  const { result: parsed } = await callLLMWithToolUse<{ title: string; meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }>({
     prompt: finalPrompt,
     tool: mealsSchema,
     maxTokens: 32000,
