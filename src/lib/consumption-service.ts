@@ -335,16 +335,24 @@ export async function searchIngredients(userId: string, query: string): Promise<
     results.push(
       ...cached
         .filter((c) => !existingNames.has(c.ingredient_name.toLowerCase()))
-        .map((c) => ({
-          name: c.ingredient_name,
-          default_amount: c.serving_size,
-          default_unit: c.serving_unit,
-          calories_per_serving: c.calories,
-          protein_per_serving: c.protein,
-          carbs_per_serving: c.carbs,
-          fat_per_serving: c.fat,
-          source: 'cache' as const,
-        }))
+        .map((c) => {
+          // Format the unit to include serving size for clarity
+          // e.g., "4oz" instead of default_amount=4, default_unit="oz"
+          // This ensures default_amount is always 1 (one serving)
+          const unit = c.serving_size === 1
+            ? c.serving_unit
+            : `${c.serving_size}${c.serving_unit}`;
+          return {
+            name: c.ingredient_name,
+            default_amount: 1,
+            default_unit: unit,
+            calories_per_serving: c.calories,
+            protein_per_serving: c.protein,
+            carbs_per_serving: c.carbs,
+            fat_per_serving: c.fat,
+            source: 'cache' as const,
+          };
+        })
     );
   }
 

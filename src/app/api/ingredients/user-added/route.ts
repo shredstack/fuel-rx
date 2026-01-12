@@ -128,10 +128,15 @@ export async function POST(request: Request) {
   }
 
   // Return the ingredient in IngredientToLog format for immediate use
+  // default_amount should be 1 (one serving), not the gram weight
+  // The serving_size/serving_unit describe what one serving looks like (e.g., "27g")
+  // calories_per_serving etc. are the values for ONE serving
   const result: IngredientToLog = {
     name: body.name.trim(),
-    default_amount: body.serving_size,
-    default_unit: body.serving_unit,
+    default_amount: 1,
+    default_unit: body.serving_unit === 'g' || body.serving_unit === 'ml'
+      ? `serving (${body.serving_size}${body.serving_unit})`
+      : body.serving_unit,
     calories_per_serving: Math.round(body.calories),
     protein_per_serving: Math.round(body.protein * 10) / 10,
     carbs_per_serving: Math.round(body.carbs * 10) / 10,
@@ -202,14 +207,18 @@ export async function GET(request: Request) {
   }
 
   // Transform to IngredientToLog format
+  // default_amount should be 1 (one serving), not the gram weight
   const ingredients: IngredientToLog[] = (data || [])
     .filter((i) => i.ingredient_nutrition && i.ingredient_nutrition.length > 0)
     .map((i) => {
       const nutrition = i.ingredient_nutrition[0];
+      const unit = nutrition.serving_unit === 'g' || nutrition.serving_unit === 'ml'
+        ? `serving (${nutrition.serving_size}${nutrition.serving_unit})`
+        : nutrition.serving_unit;
       return {
         name: i.name,
-        default_amount: nutrition.serving_size,
-        default_unit: nutrition.serving_unit,
+        default_amount: 1,
+        default_unit: unit,
         calories_per_serving: nutrition.calories,
         protein_per_serving: nutrition.protein,
         carbs_per_serving: nutrition.carbs,
