@@ -522,7 +522,8 @@ export const generateMealPlanFunction = inngest.createFunction(
         );
       });
 
-      // Organize meals into day plans (quick operation, no step needed)
+      // Extract title and organize meals into day plans (quick operation, no step needed)
+      const { title: generatedTitle } = mealsResult;
       const days = organizeMealsIntoDays(mealsResult);
 
       // Step 4: Update status for prep generation
@@ -606,6 +607,7 @@ export const generateMealPlanFunction = inngest.createFunction(
             theme_id: userData.selectedTheme?.theme.id || null,
             is_favorite: false,
             prep_style: userData.profile.prep_style || 'day_of',
+            title: generatedTitle || null,
           })
           .select()
           .single();

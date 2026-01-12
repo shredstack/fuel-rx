@@ -58,7 +58,7 @@ export async function logMealConsumed(
   let mealId: string | null = null;
 
   if (request.type === 'meal_plan') {
-    // Fetch from meal_plan_meals with joined meal data
+    // Try to fetch from meal_plan_meals with joined meal data
     const { data, error } = await supabase
       .from('meal_plan_meals')
       .select(
@@ -79,21 +79,40 @@ export async function logMealConsumed(
       .eq('id', request.source_id)
       .single();
 
-    if (error || !data) throw new Error('Meal not found');
-    const mealPlanData = data.meal_plans as unknown as { user_id: string };
-    if (mealPlanData.user_id !== userId) throw new Error('Unauthorized');
+    if (error || !data) {
+      // Fallback: If meal_plan_meals record not found but we have meal_id, fetch from meals directly
+      if (request.meal_id) {
+        const { data: mealDirectData, error: mealDirectError } = await supabase
+          .from('meals')
+          .select('id, name, meal_type, calories, protein, carbs, fat, source_user_id')
+          .eq('id', request.meal_id)
+          .single();
 
-    const mealRecord = data.meals as unknown as {
-      name: string;
-      meal_type: MealType;
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    };
-    mealData = mealRecord;
-    mealPlanMealId = data.id;
-    mealId = data.meal_id;
+        if (mealDirectError || !mealDirectData) throw new Error('Meal not found');
+        if (mealDirectData.source_user_id !== userId) throw new Error('Unauthorized');
+
+        mealData = mealDirectData;
+        mealId = mealDirectData.id;
+        // mealPlanMealId stays null since the record doesn't exist
+      } else {
+        throw new Error('Meal not found');
+      }
+    } else {
+      const mealPlanData = data.meal_plans as unknown as { user_id: string };
+      if (mealPlanData.user_id !== userId) throw new Error('Unauthorized');
+
+      const mealRecord = data.meals as unknown as {
+        name: string;
+        meal_type: MealType;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fat: number;
+      };
+      mealData = mealRecord;
+      mealPlanMealId = data.id;
+      mealId = data.meal_id;
+    }
   } else {
     // Fetch from meals table (custom_meal or quick_cook)
     const { data, error } = await supabase
@@ -313,9 +332,9 @@ export async function getPinnedIngredients(userId: string): Promise<FrequentIngr
 }
 
 /**
- * Get meals from all user meal plans, deduplicated by meal_id (keeping newest).
+ * Get meals from the user's most recent meal plan only.
  * Excludes party_meal source_type.
- * Orders by plan creation date (newest first), then by meal type.
+ * Orders by meal type for display.
  */
 async function getLatestPlanMeals(
   userId: string,
@@ -323,12 +342,13 @@ async function getLatestPlanMeals(
 ): Promise<MealPlanMealToLog[]> {
   const supabase = await createClient();
 
-  // Get all user's meal plans ordered by creation (newest first)
+  // Get only the most recent meal plan (by creation date)
   const { data: userPlans, error: plansError } = await supabase
     .from('meal_plans')
     .select('id, week_start_date, title, created_at')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(1);
 
   console.log('[getLatestPlanMeals] userPlans count:', userPlans?.length, 'error:', plansError?.message);
 
@@ -336,10 +356,12 @@ async function getLatestPlanMeals(
     return [];
   }
 
-  const planIds = userPlans.map((p) => p.id);
-  const planMap = new Map(userPlans.map((p) => [p.id, p]));
+  // Only fetch meals from the latest plan
+  const latestPlan = userPlans[0];
+  const planIds = [latestPlan.id];
+  const planMap = new Map([[latestPlan.id, latestPlan]]);
 
-  // Fetch all meals from all plans
+  // Fetch all meals from the latest plan
   // Use meals!meal_id to specify the foreign key (there's also swapped_from_meal_id)
   const { data: planMeals, error: mealsError } = await supabase
     .from('meal_plan_meals')
@@ -383,23 +405,10 @@ async function getLatestPlanMeals(
     };
   };
 
-  // Sort by plan creation date (newest first) to ensure deduplication keeps newest
-  const sortedPlanMeals = [...filteredPlanMeals].sort((a, b) => {
-    const planA = planMap.get(a.meal_plan_id);
-    const planB = planMap.get(b.meal_plan_id);
-    if (!planA || !planB) return 0;
-    return new Date(planB.created_at).getTime() - new Date(planA.created_at).getTime();
-  });
-
-  // Deduplicate by meal_id, keeping only the first occurrence (from newest plan)
-  const seenMealIds = new Set<string>();
+  // Build results from the filtered meals (all from the single latest plan)
   const results: MealPlanMealToLog[] = [];
 
-  for (const pm of sortedPlanMeals) {
-    if (seenMealIds.has(pm.meal_id)) {
-      continue;
-    }
-    seenMealIds.add(pm.meal_id);
+  for (const pm of filteredPlanMeals) {
 
     const meal = pm.meals as unknown as {
       name: string;

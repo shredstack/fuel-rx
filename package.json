@@ -14,6 +14,7 @@
     "@supabase/supabase-js": "^2.39.0",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "canvas-confetti": "^1.9.4",
     "inngest": "^3.48.1",
     "next": "^15.0.0",
     "react": "^18.2.0",
@@ -22,6 +23,7 @@
     "resend": "^6.6.0"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

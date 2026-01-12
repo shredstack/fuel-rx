@@ -127,13 +127,17 @@ export const mealsSchema: Tool = {
   input_schema: {
     type: 'object' as const,
     properties: {
+      title: {
+        type: 'string',
+        description: 'A creative, descriptive title for this meal plan (e.g., "Mediterranean Power Week", "High-Protein Summer Eats"). Should reflect the theme or overall character of the meals.',
+      },
       meals: {
         type: 'array',
         items: mealSchema,
         description: 'Array of all meals for the week, ordered by day then meal type',
       },
     },
-    required: ['meals'],
+    required: ['title', 'meals'],
   },
 };
 

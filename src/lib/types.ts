@@ -1605,6 +1605,7 @@ export interface AvailableMealsToLog {
 export interface LogMealRequest {
   type: 'meal_plan' | 'custom_meal' | 'quick_cook';
   source_id: string;
+  meal_id?: string; // Fallback meal ID for when meal_plan_meals record is deleted
   consumed_at?: string;
   notes?: string;
 }
