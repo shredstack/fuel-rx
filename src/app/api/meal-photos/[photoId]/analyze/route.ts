@@ -44,9 +44,14 @@ export async function POST(request: Request, { params }: RouteParams) {
         .eq('meal_photo_id', photoId)
         .order('display_order');
 
+      // Generate fresh signed URL (the stored one may have expired)
+      const { data: signedUrlData } = await supabase.storage
+        .from('meal-photos')
+        .createSignedUrl(photo.storage_path, 3600);
+
       return NextResponse.json({
         photoId: photo.id,
-        imageUrl: photo.image_url,
+        imageUrl: signedUrlData?.signedUrl || photo.image_url,
         status: 'completed',
         analysis: photo.raw_analysis,
         mealName: photo.meal_name,
@@ -145,9 +150,14 @@ export async function POST(request: Request, { params }: RouteParams) {
       console.error('Error saving ingredients:', ingredientsError);
     }
 
+    // Generate fresh signed URL for the response
+    const { data: signedUrlData } = await supabase.storage
+      .from('meal-photos')
+      .createSignedUrl(photo.storage_path, 3600);
+
     return NextResponse.json({
       photoId: photo.id,
-      imageUrl: photo.image_url,
+      imageUrl: signedUrlData?.signedUrl || photo.image_url,
       status: 'completed',
       analysis: analysisResult,
       mealName: analysisResult.meal_name,
