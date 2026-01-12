@@ -163,10 +163,16 @@ export default function MealPlanMealsSection({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {/* Meal type + Meal Plan tag */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      {/* Meal type tag */}
+                      {meal.meal_type && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-primary-100 text-primary-700">
+                          {MEAL_TYPE_LABELS[meal.meal_type]}
+                        </span>
+                      )}
+                      {/* Meal Plan tag with title */}
                       <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-600">
-                        {meal.meal_type ? `${MEAL_TYPE_LABELS[meal.meal_type]} • Meal Plan` : 'Meal Plan'}
+                        Meal Plan{meal.plan_title ? ` ${meal.plan_title}` : ''}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
