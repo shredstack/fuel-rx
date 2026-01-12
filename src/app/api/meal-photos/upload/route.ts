@@ -61,16 +61,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to upload photo' }, { status: 500 });
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fileName);
+    // Generate signed URL for private bucket (1 hour expiry)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(fileName, 3600);
 
-    // Create database record
+    if (signedUrlError || !signedUrlData) {
+      console.error('Error creating signed URL:', signedUrlError);
+      // Clean up uploaded file
+      await supabase.storage.from(BUCKET_NAME).remove([fileName]);
+      return NextResponse.json({ error: 'Failed to generate image URL' }, { status: 500 });
+    }
+
+    // Create database record (store storage_path, not the signed URL which expires)
     const { data: photoRecord, error: dbError } = await supabase
       .from('meal_photos')
       .insert({
         user_id: user.id,
         storage_path: fileName,
-        image_url: urlData.publicUrl,
+        image_url: signedUrlData.signedUrl,
         analysis_status: 'pending',
       })
       .select('id, image_url, analysis_status')
