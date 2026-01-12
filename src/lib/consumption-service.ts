@@ -10,6 +10,7 @@ import type {
   DailyConsumptionSummary,
   AvailableMealsToLog,
   MealToLog,
+  MealPlanMealToLog,
   IngredientToLog,
   FrequentIngredient,
   LogMealRequest,
@@ -291,8 +292,161 @@ export async function getFrequentIngredients(userId: string, limit: number = 8):
 }
 
 /**
+ * Get user's pinned/favorite ingredients.
+ */
+export async function getPinnedIngredients(userId: string): Promise<FrequentIngredient[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('user_frequent_ingredients')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_pinned', true)
+    .order('ingredient_name', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching pinned ingredients:', error);
+    return [];
+  }
+
+  return data as FrequentIngredient[];
+}
+
+/**
+ * Get meals from all user meal plans, deduplicated by meal_id (keeping newest).
+ * Excludes party_meal source_type.
+ * Orders by plan creation date (newest first), then by meal type.
+ */
+async function getLatestPlanMeals(
+  userId: string,
+  todaysLogs: { id: string; meal_plan_meal_id: string | null; meal_id: string | null; consumed_at: string }[]
+): Promise<MealPlanMealToLog[]> {
+  const supabase = await createClient();
+
+  // Get all user's meal plans ordered by creation (newest first)
+  const { data: userPlans, error: plansError } = await supabase
+    .from('meal_plans')
+    .select('id, week_start_date, title, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  console.log('[getLatestPlanMeals] userPlans count:', userPlans?.length, 'error:', plansError?.message);
+
+  if (!userPlans || userPlans.length === 0) {
+    return [];
+  }
+
+  const planIds = userPlans.map((p) => p.id);
+  const planMap = new Map(userPlans.map((p) => [p.id, p]));
+
+  // Fetch all meals from all plans
+  // Use meals!meal_id to specify the foreign key (there's also swapped_from_meal_id)
+  const { data: planMeals, error: mealsError } = await supabase
+    .from('meal_plan_meals')
+    .select(`
+      id,
+      day,
+      meal_id,
+      meal_plan_id,
+      meals!meal_id(name, meal_type, calories, protein, carbs, fat, source_type)
+    `)
+    .in('meal_plan_id', planIds);
+
+  console.log('[getLatestPlanMeals] planMeals count:', planMeals?.length, 'error:', mealsError?.message);
+
+  if (!planMeals || planMeals.length === 0) {
+    return [];
+  }
+
+  // Filter out party_meal source_type in JavaScript (more reliable than PostgREST filter on joined table)
+  const filteredPlanMeals = planMeals.filter((pm) => {
+    const meal = pm.meals as unknown as { source_type?: string };
+    return meal.source_type !== 'party_meal';
+  });
+
+  console.log('[getLatestPlanMeals] after party_meal filter:', filteredPlanMeals.length);
+
+  const dayLabels: Record<string, string> = {
+    monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed',
+    thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun'
+  };
+
+  // Helper to check if logged
+  const getLoggedInfo = (mealPlanMealId: string, mealId: string) => {
+    const log = todaysLogs.find(
+      (l) => l.meal_plan_meal_id === mealPlanMealId || l.meal_id === mealId
+    );
+    return {
+      is_logged: !!log,
+      logged_entry_id: log?.id,
+      logged_at: log?.consumed_at,
+    };
+  };
+
+  // Sort by plan creation date (newest first) to ensure deduplication keeps newest
+  const sortedPlanMeals = [...filteredPlanMeals].sort((a, b) => {
+    const planA = planMap.get(a.meal_plan_id);
+    const planB = planMap.get(b.meal_plan_id);
+    if (!planA || !planB) return 0;
+    return new Date(planB.created_at).getTime() - new Date(planA.created_at).getTime();
+  });
+
+  // Deduplicate by meal_id, keeping only the first occurrence (from newest plan)
+  const seenMealIds = new Set<string>();
+  const results: MealPlanMealToLog[] = [];
+
+  for (const pm of sortedPlanMeals) {
+    if (seenMealIds.has(pm.meal_id)) {
+      continue;
+    }
+    seenMealIds.add(pm.meal_id);
+
+    const meal = pm.meals as unknown as {
+      name: string;
+      meal_type: MealType;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      source_type: string;
+    };
+
+    const plan = planMap.get(pm.meal_plan_id);
+    if (!plan) continue;
+
+    const logInfo = getLoggedInfo(pm.id, pm.meal_id);
+
+    results.push({
+      id: pm.id,
+      source: 'meal_plan' as ConsumptionEntryType,
+      source_id: pm.id,
+      name: meal.name,
+      meal_type: meal.meal_type,
+      calories: Math.round(meal.calories),
+      protein: Math.round(meal.protein),
+      carbs: Math.round(meal.carbs),
+      fat: Math.round(meal.fat),
+      plan_week_start: plan.week_start_date,
+      plan_title: plan.title,
+      day_of_week: pm.day,
+      day_label: dayLabels[pm.day] || pm.day,
+      meal_id: pm.meal_id,
+      ...logInfo,
+    });
+  }
+
+  // Sort by meal type order for display
+  const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+  results.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
+
+  console.log('[getLatestPlanMeals] final results count:', results.length);
+  return results;
+}
+
+/**
  * Search for ingredients to log.
  * Priority: frequent > cache
+ * Includes validation status for each ingredient.
  */
 export async function searchIngredients(userId: string, query: string): Promise<IngredientToLog[]> {
   const supabase = await createClient();
@@ -318,6 +472,9 @@ export async function searchIngredients(userId: string, query: string): Promise<
         carbs_per_serving: f.carbs_per_serving,
         fat_per_serving: f.fat_per_serving,
         source: 'frequent' as const,
+        is_user_added: true, // Frequent ingredients are always user-added
+        is_validated: false, // User-added ingredients are not validated by default
+        is_pinned: (f as { is_pinned?: boolean }).is_pinned || false,
       }))
     );
   }
@@ -342,6 +499,13 @@ export async function searchIngredients(userId: string, query: string): Promise<
           const unit = c.serving_size === 1
             ? c.serving_unit
             : `${c.serving_size}${c.serving_unit}`;
+
+          // Determine validation status:
+          // - System ingredients (not user_added) are considered validated
+          // - User-added ingredients check the validated column
+          const isUserAdded = c.is_user_added === true;
+          const isValidated = !isUserAdded || c.validated === true;
+
           return {
             name: c.ingredient_name,
             default_amount: 1,
@@ -351,6 +515,8 @@ export async function searchIngredients(userId: string, query: string): Promise<
             carbs_per_serving: c.carbs,
             fat_per_serving: c.fat,
             source: 'cache' as const,
+            is_user_added: isUserAdded,
+            is_validated: isValidated,
           };
         })
     );
@@ -469,7 +635,7 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
         id,
         day,
         meal_id,
-        meals!inner(name, meal_type, calories, protein, carbs, fat)
+        meals!meal_id(name, meal_type, calories, protein, carbs, fat, source_type)
       `
       )
       .eq('meal_plan_id', currentPlan.id);
@@ -483,7 +649,13 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
           protein: number;
           carbs: number;
           fat: number;
+          source_type?: string;
         };
+
+        // Skip party meals
+        if (meal.source_type === 'party_meal') {
+          continue;
+        }
         const logInfo = getLoggedInfo(pm.id, pm.meal_id);
         const mealToLog: MealToLog = {
           id: pm.id,
@@ -511,12 +683,14 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
   const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
   from_todays_plan.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
 
-  // 2. Get custom meals (user-created)
+  // 2. Get custom meals (user-created, excluding quick_cook and party_meal)
   const { data: customMeals } = await supabase
     .from('meals')
     .select('id, name, meal_type, calories, protein, carbs, fat')
     .eq('source_user_id', userId)
     .eq('is_user_created', true)
+    .neq('source_type', 'quick_cook')  // Exclude quick_cook meals (fetched separately)
+    .neq('source_type', 'party_meal')  // Exclude party meals
     .order('updated_at', { ascending: false })
     .limit(10);
 
@@ -536,13 +710,12 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     };
   });
 
-  // 3. Get quick cook meals (AI-generated, not user created)
+  // 3. Get quick cook meals (source_type = 'quick_cook', excludes party_meal and ai_generated meal plan meals)
   const { data: quickCookMeals } = await supabase
     .from('meals')
     .select('id, name, meal_type, calories, protein, carbs, fat')
     .eq('source_user_id', userId)
-    .eq('source_type', 'ai_generated')
-    .eq('is_user_created', false)
+    .eq('source_type', 'quick_cook')  // Only Quick Cook single meals
     .order('updated_at', { ascending: false })
     .limit(10);
 
@@ -573,15 +746,35 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     carbs_per_serving: fi.carbs_per_serving,
     fat_per_serving: fi.fat_per_serving,
     source: 'frequent' as const,
+    is_pinned: (fi as { is_pinned?: boolean }).is_pinned || false,
   }));
+
+  // 5. Get pinned ingredients (favorites)
+  const pinnedIngredients = await getPinnedIngredients(userId);
+  const pinned_ingredients: IngredientToLog[] = pinnedIngredients.map((fi) => ({
+    name: fi.ingredient_name,
+    default_amount: fi.default_amount,
+    default_unit: fi.default_unit,
+    calories_per_serving: fi.calories_per_serving,
+    protein_per_serving: fi.protein_per_serving,
+    carbs_per_serving: fi.carbs_per_serving,
+    fat_per_serving: fi.fat_per_serving,
+    source: 'frequent' as const,
+    is_pinned: true,
+  }));
+
+  // 6. Get latest meal plan meals (for the "Meal Plan Meals" section)
+  const latest_plan_meals = await getLatestPlanMeals(userId, todaysLogs || []);
 
   return {
     from_todays_plan,
     from_week_plan,
+    latest_plan_meals,
     custom_meals,
     quick_cook_meals,
     recent_meals: [], // Could populate from recent consumption entries later
     frequent_ingredients,
+    pinned_ingredients,
   };
 }
 

@@ -1557,6 +1557,17 @@ export interface MealToLog {
 }
 
 /**
+ * A meal from a meal plan with additional context (for historical plan search)
+ */
+export interface MealPlanMealToLog extends MealToLog {
+  plan_week_start: string;      // e.g., "2026-01-06"
+  plan_title?: string;          // e.g., "Mediterranean Week"
+  day_of_week: string;          // e.g., "monday"
+  day_label: string;            // e.g., "Mon"
+  meal_id: string;              // The underlying meal id for deduplication
+}
+
+/**
  * An ingredient available to log
  */
 export interface IngredientToLog {
@@ -1569,6 +1580,8 @@ export interface IngredientToLog {
   fat_per_serving: number;
   source: 'frequent' | 'meal_plan' | 'cache' | 'usda' | 'barcode' | 'manual';
   is_user_added?: boolean;
+  is_validated?: boolean;  // true if nutrition data is FuelRx-validated
+  is_pinned?: boolean;     // true if user has pinned this ingredient as a favorite
   barcode?: string;
 }
 
@@ -1578,10 +1591,12 @@ export interface IngredientToLog {
 export interface AvailableMealsToLog {
   from_todays_plan: MealToLog[];
   from_week_plan: MealToLog[];
+  latest_plan_meals: MealPlanMealToLog[];  // Meals from most recent plan (for Meal Plan Meals section)
   custom_meals: MealToLog[];
   quick_cook_meals: MealToLog[];
   recent_meals: MealToLog[];
   frequent_ingredients: IngredientToLog[];
+  pinned_ingredients: IngredientToLog[];   // User's favorite/pinned ingredients
 }
 
 /**
