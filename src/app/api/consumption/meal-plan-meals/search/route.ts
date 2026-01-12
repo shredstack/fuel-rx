@@ -69,10 +69,10 @@ export async function GET(request: Request) {
       carbs: number;
       fat: number;
       source_type?: string;
-    };
+    } | null;
 
-    // Skip party meals
-    if (meal.source_type === 'party_meal') {
+    // Skip if meal data is missing or it's a party meal
+    if (!meal || meal.source_type === 'party_meal') {
       continue;
     }
 

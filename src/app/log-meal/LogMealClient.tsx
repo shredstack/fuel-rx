@@ -166,13 +166,20 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     updateMealLoggedStatus(meal.id, meal.source, true, optimisticEntry.id);
 
     try {
+      // Build request payload, including meal_id for meal_plan type as fallback
+      const payload: { type: string; source_id: string; meal_id?: string } = {
+        type: meal.source,
+        source_id: meal.source_id,
+      };
+      // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
+      if (meal.source === 'meal_plan' && 'meal_id' in meal) {
+        payload.meal_id = (meal as MealPlanMealToLog).meal_id;
+      }
+
       const response = await fetch('/api/consumption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: meal.source,
-          source_id: meal.source_id,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -384,8 +391,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     ...available.quick_cook_meals,
   ];
 
-  // latest_plan_meals contains deduplicated meals from ALL meal plans (newest version of each meal)
-  // No need to filter - the MealPlanMealsSection handles its own display and provides search
+  // latest_plan_meals contains meals from the most recent meal plan only
+  // Search functionality in MealPlanMealsSection allows finding meals from older plans
   const latestPlanMeals = available.latest_plan_meals || [];
 
   return (
