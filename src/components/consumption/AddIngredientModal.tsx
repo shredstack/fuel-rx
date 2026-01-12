@@ -327,7 +327,7 @@ export default function AddIngredientModal({
           {/* Barcode Tab */}
           {activeTab === 'barcode' && (
             <div className="p-4">
-              {!barcodeProduct && !barcodeLoading && (
+              {!barcodeProduct && !barcodeLoading && !barcodeError && (
                 <BarcodeScanner onScan={handleBarcodeScanned} onError={setBarcodeError} />
               )}
 
@@ -340,16 +340,41 @@ export default function AddIngredientModal({
 
               {barcodeError && (
                 <div className="text-center py-8">
-                  <p className="text-red-600 mb-3">{barcodeError}</p>
-                  <button
-                    onClick={() => {
-                      setBarcodeError(null);
-                      setBarcodeProduct(null);
-                    }}
-                    className="text-primary-600 hover:text-primary-700 font-medium"
+                  <svg
+                    className="w-12 h-12 mx-auto text-amber-500 mb-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    Try again
-                  </button>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <p className="text-gray-900 font-medium mb-2">Product not found</p>
+                  <p className="text-gray-500 text-sm mb-4">{barcodeError}</p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        setBarcodeError(null);
+                        setBarcodeProduct(null);
+                      }}
+                      className="px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200"
+                    >
+                      Try scanning again
+                    </button>
+                    <button
+                      onClick={() => {
+                        setBarcodeError(null);
+                        setActiveTab('manual');
+                      }}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Add ingredient manually
+                    </button>
+                  </div>
                 </div>
               )}
 

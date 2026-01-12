@@ -8,18 +8,21 @@ import type {
   DailyConsumptionSummary,
   AvailableMealsToLog,
   MealToLog,
+  MealPlanMealToLog,
   IngredientToLog,
   ConsumptionEntry,
   Macros,
   ConsumptionPeriodType,
   PeriodConsumptionSummary,
+  MealType,
 } from '@/lib/types';
 import DailyProgressCard from '@/components/consumption/DailyProgressCard';
 import MealSourceSection from '@/components/consumption/MealSourceSection';
-import IngredientQuickAdd from '@/components/consumption/IngredientQuickAdd';
+import IngredientSearchBar from '@/components/consumption/IngredientSearchBar';
 import IngredientAmountPicker from '@/components/consumption/IngredientAmountPicker';
 import AddIngredientModal from '@/components/consumption/AddIngredientModal';
 import MealPhotoModal from '@/components/consumption/MealPhotoModal';
+import MealPlanMealsSection from '@/components/consumption/MealPlanMealsSection';
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TrendChart from '@/components/consumption/TrendChart';
@@ -28,6 +31,15 @@ interface Props {
   initialDate: string;
   initialSummary: DailyConsumptionSummary;
   initialAvailable: AvailableMealsToLog;
+}
+
+// Time-based meal type suggestions
+function getTimeBasedMealTypes(): MealType[] {
+  const hour = new Date().getHours();
+  if (hour < 10) return ['breakfast'];
+  if (hour < 14) return ['lunch', 'snack'];
+  if (hour < 18) return ['snack'];
+  return ['dinner', 'snack'];
 }
 
 export default function LogMealClient({ initialDate, initialSummary, initialAvailable }: Props) {
@@ -48,6 +60,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientToLog | null>(null);
   const [showIngredientSearch, setShowIngredientSearch] = useState(false);
   const [showMealPhotoModal, setShowMealPhotoModal] = useState(false);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   // Fetch period data when period or date changes
   useEffect(() => {
@@ -284,6 +297,32 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     }
   };
 
+  // Repeat yesterday's meals
+  const handleRepeatYesterday = async () => {
+    setLoading(true);
+    try {
+      const yesterday = new Date(selectedDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      const response = await fetch('/api/consumption/repeat-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceDate: yesterdayStr,
+          targetDate: selectedDate,
+        }),
+      });
+
+      if (response.ok) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Error repeating yesterday:', error);
+    }
+    setLoading(false);
+  };
+
   // Helper to update meal logged status in available lists
   const updateMealLoggedStatus = (
     mealId: string,
@@ -298,14 +337,21 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           m.id === mealId ? { ...m, is_logged: isLogged, logged_entry_id: entryId, logged_at: loggedAt } : m
         );
 
+      const updatePlanList = (list: MealPlanMealToLog[]) =>
+        list.map((m) =>
+          m.id === mealId ? { ...m, is_logged: isLogged, logged_entry_id: entryId, logged_at: loggedAt } : m
+        );
+
       return {
         ...prev,
         from_todays_plan: source === 'meal_plan' ? updateList(prev.from_todays_plan) : prev.from_todays_plan,
         from_week_plan: source === 'meal_plan' ? updateList(prev.from_week_plan) : prev.from_week_plan,
+        latest_plan_meals: source === 'meal_plan' ? updatePlanList(prev.latest_plan_meals || []) : (prev.latest_plan_meals || []),
         custom_meals: source === 'custom_meal' ? updateList(prev.custom_meals) : prev.custom_meals,
         quick_cook_meals: source === 'quick_cook' ? updateList(prev.quick_cook_meals) : prev.quick_cook_meals,
         recent_meals: prev.recent_meals,
         frequent_ingredients: prev.frequent_ingredients,
+        pinned_ingredients: prev.pinned_ingredients || [],
       };
     });
   };
@@ -324,6 +370,23 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     await supabase.auth.signOut();
     router.push('/login');
   };
+
+  // Get time-based suggested meals from today's plan
+  const suggestedMealTypes = getTimeBasedMealTypes();
+  const suggestedMeals = available.from_todays_plan
+    .filter((m) => m.meal_type && suggestedMealTypes.includes(m.meal_type) && !m.is_logged)
+    .slice(0, 3);
+
+  // Combine custom meals and quick cook for "My Meals" section
+  // Meal plan meals are shown separately in the MealPlanMealsSection with search functionality
+  const myMeals: MealToLog[] = [
+    ...available.custom_meals,
+    ...available.quick_cook_meals,
+  ];
+
+  // latest_plan_meals contains deduplicated meals from ALL meal plans (newest version of each meal)
+  // No need to filter - the MealPlanMealsSection handles its own display and provides search
+  const latestPlanMeals = available.latest_plan_meals || [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -396,18 +459,41 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               entryCount={summary.entry_count}
             />
 
-            {/* Today's Plan */}
-            {available.from_todays_plan.length > 0 && (
-              <MealSourceSection
-                title="From Today's Plan"
-                icon="calendar"
-                meals={available.from_todays_plan}
-                onLogMeal={handleLogMeal}
-                onUndoLog={handleUndoLog}
-              />
+            {/* Quick Actions: Same as Yesterday */}
+            {summary.entries.length === 0 && (
+              <div className="mt-4">
+                <button
+                  onClick={handleRepeatYesterday}
+                  className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Log same as yesterday
+                </button>
+              </div>
             )}
 
-            {/* Snap a Meal */}
+            {/* Today's Plan with Time-Based Suggestions */}
+            {available.from_todays_plan.length > 0 && (
+              <div className="mt-6">
+                <MealSourceSection
+                  title="From Today's Plan"
+                  icon="calendar"
+                  meals={available.from_todays_plan}
+                  onLogMeal={handleLogMeal}
+                  onUndoLog={handleUndoLog}
+                />
+                {/* Time-based suggestion badge */}
+                {suggestedMeals.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-2 ml-7">
+                    Suggested now: {suggestedMeals.map(m => m.name).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Snap a Meal Button */}
             <div className="mt-6">
               <button
                 onClick={() => setShowMealPhotoModal(true)}
@@ -427,57 +513,39 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               </button>
             </div>
 
-            {/* Quick Add Ingredients */}
+            {/* Quick Add Ingredients - Search-first design */}
             <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">Quick Add Ingredients</h3>
-              <IngredientQuickAdd
-                ingredients={available.frequent_ingredients}
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <span className="text-gray-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                </span>
+                Quick Add Ingredients
+              </h3>
+              <IngredientSearchBar
+                frequentIngredients={available.frequent_ingredients}
+                pinnedIngredients={available.pinned_ingredients || []}
                 onSelectIngredient={setSelectedIngredient}
-                onAddOther={() => setShowIngredientSearch(true)}
+                onScanBarcode={() => setShowBarcodeModal(true)}
+                onAddManually={() => setShowIngredientSearch(true)}
               />
             </div>
 
-            {/* My Recipes */}
-            {available.custom_meals.length > 0 && (
-              <MealSourceSection
-                title="My Recipes"
-                icon="utensils"
-                meals={available.custom_meals}
-                onLogMeal={handleLogMeal}
-                onUndoLog={handleUndoLog}
-                collapsible
-              />
-            )}
-
-            {/* Quick Cook */}
-            {available.quick_cook_meals.length > 0 && (
-              <MealSourceSection
-                title="Quick Cook"
-                icon="bolt"
-                meals={available.quick_cook_meals}
-                onLogMeal={handleLogMeal}
-                onUndoLog={handleUndoLog}
-                collapsible
-              />
-            )}
-
-            {/* Other Days This Week */}
-            {available.from_week_plan.length > 0 && (
-              <MealSourceSection
-                title="Other Days This Week"
-                icon="calendar-week"
-                meals={available.from_week_plan}
-                onLogMeal={handleLogMeal}
-                onUndoLog={handleUndoLog}
-                collapsible
-                initialCollapsed
-              />
-            )}
-
-            {/* Logged Today Section */}
-            {summary.entries.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Logged Today</h3>
+            {/* Logged Today Section - MOVED UP for visibility */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <span className="text-green-500">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+                Logged Today
+                <span className="text-sm font-normal text-gray-500">
+                  ({summary.entry_count} items)
+                </span>
+              </h3>
+              {summary.entries.length > 0 ? (
                 <div className="card divide-y divide-gray-100">
                   {summary.entries.map((entry) => (
                     <div key={entry.id} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
@@ -490,9 +558,13 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                       <button
                         onClick={() => {
                           // Find the matching meal to pass to undo
-                          const meal = [...available.from_todays_plan, ...available.from_week_plan, ...available.custom_meals, ...available.quick_cook_meals].find(
-                            (m) => m.logged_entry_id === entry.id
-                          );
+                          const meal = [
+                            ...available.from_todays_plan,
+                            ...available.from_week_plan,
+                            ...available.custom_meals,
+                            ...available.quick_cook_meals,
+                            ...(available.latest_plan_meals || []),
+                          ].find((m) => m.logged_entry_id === entry.id);
                           if (meal) {
                             handleUndoLog(entry.id, meal);
                           } else {
@@ -518,14 +590,45 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                     </div>
                   ))}
                 </div>
-              </div>
+              ) : (
+                <div className="text-center py-4 text-gray-400">
+                  <p className="text-sm">Nothing logged yet today</p>
+                </div>
+              )}
+            </div>
+
+            {/* My Meals - Custom meals and quick cook */}
+            {myMeals.length > 0 && (
+              <MealSourceSection
+                title="My Meals"
+                subtitle="Custom meals and quick cook creations"
+                icon="utensils"
+                meals={myMeals}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+                collapsible
+                initialCollapsed
+                showMealSource
+              />
+            )}
+
+            {/* Meal Plan Meals - Searchable section for finding historical meals */}
+            {latestPlanMeals.length > 0 && (
+              <MealPlanMealsSection
+                latestPlanMeals={latestPlanMeals}
+                latestPlanWeekStart={available.latest_plan_meals?.[0]?.plan_week_start}
+                latestPlanTitle={available.latest_plan_meals?.[0]?.plan_title}
+                onLogMeal={handleLogMeal}
+                onUndoLog={handleUndoLog}
+              />
             )}
 
             {/* Empty state */}
             {available.from_todays_plan.length === 0 &&
               available.custom_meals.length === 0 &&
               available.quick_cook_meals.length === 0 &&
-              available.from_week_plan.length === 0 && (
+              available.from_week_plan.length === 0 &&
+              latestPlanMeals.length === 0 && (
                 <div className="mt-8 text-center py-12 card">
                   <p className="text-gray-500 mb-4">No meals available to log.</p>
                   <Link href="/dashboard" className="btn-primary">
@@ -546,12 +649,16 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           />
         )}
 
-        {/* Add Ingredient Modal */}
+        {/* Add Ingredient Modal (for manual entry or barcode) */}
         <AddIngredientModal
-          isOpen={showIngredientSearch}
-          onClose={() => setShowIngredientSearch(false)}
+          isOpen={showIngredientSearch || showBarcodeModal}
+          onClose={() => {
+            setShowIngredientSearch(false);
+            setShowBarcodeModal(false);
+          }}
           onSelectIngredient={(ing) => {
             setShowIngredientSearch(false);
+            setShowBarcodeModal(false);
             setSelectedIngredient(ing);
           }}
         />

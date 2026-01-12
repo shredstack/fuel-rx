@@ -6,12 +6,14 @@ import MealLogCard from './MealLogCard';
 
 interface MealSourceSectionProps {
   title: string;
+  subtitle?: string;
   icon: 'calendar' | 'calendar-week' | 'utensils' | 'bolt';
   meals: MealToLog[];
   onLogMeal: (meal: MealToLog) => Promise<void>;
   onUndoLog: (entryId: string, meal: MealToLog) => Promise<void>;
   collapsible?: boolean;
   initialCollapsed?: boolean;
+  showMealSource?: boolean;  // Show "Recipe" or "Quick Cook" badge on each meal
 }
 
 const icons = {
@@ -54,12 +56,14 @@ const icons = {
 
 export default function MealSourceSection({
   title,
+  subtitle,
   icon,
   meals,
   onLogMeal,
   onUndoLog,
   collapsible = false,
   initialCollapsed = false,
+  showMealSource = false,
 }: MealSourceSectionProps) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
 
@@ -72,11 +76,16 @@ export default function MealSourceSection({
         className={`flex items-center justify-between w-full text-left mb-3 ${collapsible ? 'cursor-pointer' : ''}`}
         disabled={!collapsible}
       >
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <span className="text-gray-400">{icons[icon]}</span>
-          {title}
-          <span className="text-sm font-normal text-gray-500">({meals.length})</span>
-        </h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <span className="text-gray-400">{icons[icon]}</span>
+            {title}
+            <span className="text-sm font-normal text-gray-500">({meals.length})</span>
+          </h3>
+          {subtitle && (
+            <p className="text-sm text-gray-500 ml-7">{subtitle}</p>
+          )}
+        </div>
         {collapsible && (
           <svg
             className={`w-5 h-5 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
@@ -92,7 +101,13 @@ export default function MealSourceSection({
       {!isCollapsed && (
         <div className="grid gap-3">
           {meals.map((meal) => (
-            <MealLogCard key={meal.id} meal={meal} onLog={onLogMeal} onUndo={onUndoLog} />
+            <MealLogCard
+              key={meal.id}
+              meal={meal}
+              onLog={onLogMeal}
+              onUndo={onUndoLog}
+              showMealSource={showMealSource}
+            />
           ))}
         </div>
       )}
