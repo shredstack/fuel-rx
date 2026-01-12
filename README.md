@@ -43,6 +43,7 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
   - [Quick Meals](#quick-meals)
   - [Logging](#logging)
     - [Barcode Scanning](#barcode-scanning)
+    - [Snap a Picture](#snap-a-picture)
 - [Feature Roadmap](#feature-roadmap)
   - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
   - [⚡ Convenience Features](#-convenience-features)
@@ -394,6 +395,23 @@ When a barcode is found, displays the product image, name, brand, and nutrition 
 **Database Storage**
 
 When saved, creates an ingredient with `is_user_added: true` and stores nutrition with `source: 'barcode_scan'`. The barcode is persisted for future lookups.
+
+### Snap a Picture
+
+The Snap a Picture feature lets users photograph their meals for AI-powered nutritional analysis.
+
+**How It Works**
+
+Users take a photo or select from their gallery. The image is compressed client-side (1200x1200 max, 80% quality JPEG) to reduce storage and bandwidth, then uploaded to a private Supabase Storage bucket. The API generates signed URLs for secure, time-limited access to photos.
+
+**AI Analysis**
+
+Photos are analyzed using Claude Sonnet 4 (`claude-sonnet-4-20250514`) with vision capabilities. The model identifies individual ingredients, estimates portion sizes based on visual cues (plate size, utensils), and calculates macros using USDA FoodData Central guidelines. Portion estimates are calibrated for CrossFit athletes (4-8oz protein servings, 1-2 cups vegetables). Each ingredient receives a confidence score (0-1) indicating how certain the model is about the identification.
+
+**Review and Save**
+
+After analysis, users review the AI-generated results and can edit meal names, adjust ingredient quantities, or add/remove items. The meal can be logged to daily consumption, saved to the My Meals library, or both.
+
 
 # Feature Roadmap
 
