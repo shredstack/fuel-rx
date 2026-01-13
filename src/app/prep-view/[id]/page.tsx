@@ -5,7 +5,7 @@ import type { PrepSession, DailyAssembly, DayPlanNormalized, MealSlot, MealEntit
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'pre_workout', 'post_workout']
 
 export default async function PrepViewPage({
   params,

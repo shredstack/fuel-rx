@@ -25,6 +25,10 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
   displayOrder: number;
   caloriePercentRange: [number, number]; // [min%, max%] of daily calories
   isWorkoutMeal: boolean;
+  // Tailwind color classes for badges/tags
+  colorClasses: string;
+  // Hex color for charts
+  colorHex: string;
 }> = {
   breakfast: {
     label: 'Breakfast',
@@ -33,6 +37,8 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 1,
     caloriePercentRange: [0.20, 0.25],
     isWorkoutMeal: false,
+    colorClasses: 'bg-yellow-100 text-yellow-800',
+    colorHex: '#f59e0b', // amber-500
   },
   pre_workout: {
     label: 'Pre-Workout',
@@ -41,6 +47,8 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 2,
     caloriePercentRange: [0.05, 0.10],
     isWorkoutMeal: true,
+    colorClasses: 'bg-orange-100 text-orange-800',
+    colorHex: '#f97316', // orange-500
   },
   lunch: {
     label: 'Lunch',
@@ -49,6 +57,8 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 3,
     caloriePercentRange: [0.25, 0.30],
     isWorkoutMeal: false,
+    colorClasses: 'bg-teal-100 text-teal-800',
+    colorHex: '#14b8a6', // teal-500
   },
   post_workout: {
     label: 'Post-Workout',
@@ -57,6 +67,8 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 4,
     caloriePercentRange: [0.08, 0.12],
     isWorkoutMeal: true,
+    colorClasses: 'bg-lime-100 text-lime-800',
+    colorHex: '#84cc16', // lime-500
   },
   snack: {
     label: 'Snack',
@@ -65,6 +77,8 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 5,
     caloriePercentRange: [0.08, 0.12],
     isWorkoutMeal: false,
+    colorClasses: 'bg-purple-100 text-purple-800',
+    colorHex: '#a855f7', // purple-500
   },
   dinner: {
     label: 'Dinner',
@@ -73,7 +87,19 @@ export const MEAL_TYPE_CONFIG: Record<MealType, {
     displayOrder: 6,
     caloriePercentRange: [0.30, 0.35],
     isWorkoutMeal: false,
+    colorClasses: 'bg-blue-100 text-blue-800',
+    colorHex: '#3b82f6', // blue-500
   },
+};
+
+// Helper to get meal type color classes
+export const getMealTypeColorClasses = (mealType: MealType): string => {
+  return MEAL_TYPE_CONFIG[mealType]?.colorClasses ?? 'bg-gray-100 text-gray-800';
+};
+
+// Helper to get meal type hex color (for charts)
+export const getMealTypeColorHex = (mealType: MealType): string => {
+  return MEAL_TYPE_CONFIG[mealType]?.colorHex ?? '#9ca3af';
 };
 
 // Helper to get meals in display order
@@ -163,6 +189,12 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   dinner: 'Dinner',
 };
 
+// Selectable meal types (excludes 'snack' which is controlled by snack_count)
+export type SelectableMealType = 'breakfast' | 'pre_workout' | 'lunch' | 'post_workout' | 'dinner';
+
+// Default selected meal types for new users
+export const DEFAULT_SELECTED_MEAL_TYPES: SelectableMealType[] = ['breakfast', 'lunch', 'dinner'];
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -173,7 +205,11 @@ export interface UserProfile {
   target_fat: number;
   target_calories: number;
   dietary_prefs: DietaryPreference[];
+  // Legacy field - kept for backward compatibility
   meals_per_day: MealsPerDay;
+  // New meal type selection
+  selected_meal_types: SelectableMealType[];
+  snack_count: number;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
   ingredient_variety_prefs: IngredientVarietyPrefs;
@@ -184,7 +220,7 @@ export interface UserProfile {
   dinner_complexity: MealComplexity;
   // Household servings preferences
   household_servings: HouseholdServingsPrefs;
-  // Workout meal preferences
+  // Legacy workout meal preferences - kept for backward compatibility
   include_workout_meals: boolean;
   workout_time: WorkoutTime;
   pre_workout_preference: PreWorkoutPreference;
@@ -276,7 +312,9 @@ export interface OnboardingData {
   target_fat: number;
   target_calories: number;
   dietary_prefs: DietaryPreference[];
-  meals_per_day: MealsPerDay;
+  // New meal type selection
+  selected_meal_types: SelectableMealType[];
+  snack_count: number;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
   ingredient_variety_prefs: IngredientVarietyPrefs;
@@ -287,10 +325,6 @@ export interface OnboardingData {
   dinner_complexity: MealComplexity;
   // Household servings preferences
   household_servings: HouseholdServingsPrefs;
-  // Workout meal preferences
-  include_workout_meals: boolean;
-  workout_time: WorkoutTime;
-  pre_workout_preference: PreWorkoutPreference;
   profile_photo_url: string | null;
 }
 

@@ -6,8 +6,9 @@ import type {
   DayOfWeek,
   MealWithIngredientNutrition,
   MealComplexity,
+  SelectableMealType,
 } from '../types';
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, MEAL_COMPLEXITY_LABELS, getStandardMealTypes } from '../types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, MEAL_COMPLEXITY_LABELS, getStandardMealTypes, DEFAULT_SELECTED_MEAL_TYPES } from '../types';
 import { callLLMWithToolUse } from './client';
 import { fetchCachedNutrition, buildNutritionReferenceSection, cacheIngredientNutrition } from './ingredient-cache';
 import { DIETARY_LABELS, getMealTypesForPlan, buildHouseholdContextSection } from './helpers';
@@ -46,16 +47,22 @@ export async function generateMealsFromCoreIngredients(
   // Build the ingredients list as JSON
   const ingredientsJSON = JSON.stringify(coreIngredients, null, 2);
 
-  // Calculate per-meal targets
-  const targetCaloriesPerMeal = Math.round(profile.target_calories / profile.meals_per_day);
-  const targetProteinPerMeal = Math.round(profile.target_protein / profile.meals_per_day);
-  const targetCarbsPerMeal = Math.round(profile.target_carbs / profile.meals_per_day);
-  const targetFatPerMeal = Math.round(profile.target_fat / profile.meals_per_day);
-
   // Determine meal types needed and count snacks
-  const mealTypesNeeded = getMealTypesForPlan(profile.meals_per_day);
-  const snacksPerDay = mealTypesNeeded.filter(t => t === 'snack').length;
+  // Use new selected_meal_types and snack_count if available, fallback to legacy
+  const selectedMealTypes = (profile.selected_meal_types ?? DEFAULT_SELECTED_MEAL_TYPES) as SelectableMealType[];
+  const snackCount = profile.snack_count ?? 0;
+  const mealTypesNeeded = getMealTypesForPlan(selectedMealTypes, snackCount);
+  const snacksPerDay = snackCount;
   const uniqueMealTypes = Array.from(new Set(mealTypesNeeded)) as MealType[];
+
+  // Calculate total meals per day (selected meal types + snacks)
+  const actualMealsPerDay = selectedMealTypes.length + snackCount;
+
+  // Calculate per-meal targets based on actual meal count
+  const targetCaloriesPerMeal = Math.round(profile.target_calories / actualMealsPerDay);
+  const targetProteinPerMeal = Math.round(profile.target_protein / actualMealsPerDay);
+  const targetCarbsPerMeal = Math.round(profile.target_carbs / actualMealsPerDay);
+  const targetFatPerMeal = Math.round(profile.target_fat / actualMealsPerDay);
 
   // Build consistency instructions with proper snack count
   const consistencyInstructions = uniqueMealTypes.map(type => {
@@ -142,9 +149,11 @@ ${mealsList}
   const nutritionCache = await fetchCachedNutrition(allIngredientNames);
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
-  // Calculate total meals needed (add 2 for workout meals if enabled)
-  const workoutMealsPerDay = profile.include_workout_meals ? 2 : 0;
-  const totalMealsPerDay = profile.meals_per_day + workoutMealsPerDay;
+  // Calculate total meals needed (selected meal types + snacks)
+  // Workout meals are now included in selectedMealTypes if the user selected them
+  const hasPreWorkout = selectedMealTypes.includes('pre_workout');
+  const hasPostWorkout = selectedMealTypes.includes('post_workout');
+  const totalMealsPerDay = actualMealsPerDay;
   const totalMealsPerWeek = totalMealsPerDay * 7;
 
   // Build snack-specific instructions if multiple snacks per day
@@ -229,12 +238,19 @@ The user's daily targets are:
 - **Daily Fat:** ${profile.target_fat}g
 - Dietary Preferences: ${dietaryPrefsText}
 - Max Prep Time Per Meal: ${profile.prep_time} minutes
-- Meals Per Day: ${profile.meals_per_day}
+- Meals Per Day: ${totalMealsPerDay} (${selectedMealTypes.join(', ')}${snackCount > 0 ? ` + ${snackCount} snack${snackCount > 1 ? 's' : ''}` : ''})
 
 ### Guidance (Not Hard Requirements)
 - Aim for each day to total within ±150 calories of the daily target
 - Protein is the most important macro for CrossFit athletes — prioritize hitting protein targets
 - If you must fall short somewhere, prefer under on carbs/fat rather than protein
+
+### Macro Balance for Regular Meals (Soft Guideline)
+Each regular meal (breakfast, lunch, dinner, snacks) should approximately reflect the user's overall macro ratio:
+- **Target Ratio**: ~${Math.round((profile.target_protein * 4 / profile.target_calories) * 100)}% protein, ~${Math.round((profile.target_carbs * 4 / profile.target_calories) * 100)}% carbs, ~${Math.round((profile.target_fat * 9 / profile.target_calories) * 100)}% fat
+- This is a soft guideline — nutritional accuracy is more important than hitting exact ratios
+- Meals should include a balance of protein, carbs, and fat (don't create carb-only or fat-only meals)
+- Exception: Workout meals have specific macro ratios defined separately (pre-workout = carb-heavy, post-workout = protein-heavy)
 
 ### How to Approach This
 1. Generate meals using accurate ingredient portions
@@ -333,9 +349,9 @@ Before outputting your JSON, verify these items mentally:
 **TITLE**: Create a creative, descriptive title for this meal plan that captures its character${theme ? ` and reflects the "${theme.display_name}" theme` : ''}. Examples: "Mediterranean Power Week", "High-Protein Summer Eats", "Lean & Green Athlete Fuel".
 
 Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
-Order by day (monday first), then by meal type (breakfast, ${profile.include_workout_meals ? 'pre_workout, ' : ''}lunch, ${profile.include_workout_meals ? 'post_workout, ' : ''}snack, dinner).
+Order by day (monday first), then by meal type (breakfast, ${hasPreWorkout ? 'pre_workout, ' : ''}lunch, ${hasPostWorkout ? 'post_workout, ' : ''}snack, dinner).
 ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}
-${profile.include_workout_meals ? `Include "pre_workout" and "post_workout" meals for each day.` : ''}
+${hasPreWorkout || hasPostWorkout ? `Include ${hasPreWorkout ? '"pre_workout"' : ''}${hasPreWorkout && hasPostWorkout ? ' and ' : ''}${hasPostWorkout ? '"post_workout"' : ''} meals for each day.` : ''}
 
 Use the generate_meals tool to provide your meal plan with a title.`;
 

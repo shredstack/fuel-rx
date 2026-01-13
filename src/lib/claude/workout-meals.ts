@@ -1,4 +1,5 @@
-import type { UserProfile, MealType, MealWithIngredientNutrition, DayOfWeek } from '../types';
+import type { UserProfile, MealType, MealWithIngredientNutrition, DayOfWeek, SelectableMealType } from '../types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS } from '../types';
 
 interface WorkoutMealPromptParams {
   profile: UserProfile;
@@ -45,6 +46,13 @@ export function generateWorkoutMealPrompt(params: WorkoutMealPromptParams): stri
   const preWorkoutGuidance = `
 ## PRE-WORKOUT MEAL REQUIREMENTS
 
+**CRITICAL: GRAB-AND-GO SIMPLICITY**
+Pre-workout should be QUICK and SIMPLE - not a fancy meal. Think "something I can eat in 2 minutes before heading to the gym."
+- Minimal to NO prep required
+- 1-2 ingredients max
+- Can be eaten standing up or on-the-go
+- NO cooking required (raw, pre-made, or assembled only)
+
 **Timing Context:** Eaten 30-60 minutes before training
 
 **Nutritional Goals:**
@@ -57,28 +65,37 @@ export function generateWorkoutMealPrompt(params: WorkoutMealPromptParams): stri
 - Protein: 20-30% of calories
 - Fat: <10% of calories
 
-**Good Pre-Workout Foods:**
-- Banana (quick carbs, potassium)
-- Toast with honey
-- Rice cakes
-- Oatmeal (if >60 min before)
-- Greek yogurt (small portion)
+**IDEAL Pre-Workout Options (simple is better):**
+- A banana (perfect: quick carbs, easy to eat, no prep)
+- Toast with honey (minimal prep)
+- Rice cakes with a thin spread
+- Small bowl of oatmeal (if made ahead)
+- Greek yogurt (grab from fridge)
 - Apple slices
+- A few dates
 
 **Avoid Pre-Workout:**
 - High fat foods (nuts, avocado, cheese)
 - High fiber vegetables (broccoli, beans)
 - Large protein portions
 - Anything that sits heavy
+- Complex recipes with multiple steps
 `;
 
   const postWorkoutGuidance = `
 ## POST-WORKOUT MEAL REQUIREMENTS
 
+**CRITICAL: QUICK RECOVERY FUEL**
+Post-workout should be SIMPLE and PROTEIN-FOCUSED - not an elaborate recipe. Think "grab from the fridge after showering."
+- Minimal prep required (5 min max)
+- Focus on protein delivery first
+- Can be assembled quickly
+- NO complex cooking required
+
 **Timing Context:** Eaten within 30-60 minutes after training
 
 **Nutritional Goals:**
-- Protein for muscle recovery and synthesis
+- PROTEIN for muscle recovery and synthesis (this is the priority)
 - Carbs to replenish glycogen stores
 - Moderate fat is acceptable
 
@@ -87,18 +104,19 @@ export function generateWorkoutMealPrompt(params: WorkoutMealPromptParams): stri
 - Carbs: 40-50% of calories
 - Fat: 15-25% of calories
 
-**Good Post-Workout Foods:**
-- Greek yogurt with fruit
-- Protein shake with banana
-- Eggs with toast
-- Chocolate milk
+**IDEAL Post-Workout Options (protein-first, simple):**
+- Greek yogurt with berries (high protein, grab and eat)
 - Cottage cheese with fruit
-- Turkey/chicken wrap
+- Hard-boiled eggs with toast (can prep eggs ahead)
+- Chocolate milk (convenient, good protein-carb ratio)
+- Turkey or chicken slices with crackers
+- Protein shake with banana
 
 **Recovery Focus:**
-- Prioritize complete proteins (eggs, dairy, meat)
+- Prioritize COMPLETE proteins (eggs, dairy, meat)
 - Include fast-absorbing carbs
 - Hydration is also key
+- Keep it simple - recovery is the goal, not gourmet cooking
 `;
 
   return `
@@ -151,85 +169,115 @@ Return a single meal in this JSON format:
 
 /**
  * Get workout meal instructions to add to the main meal generation prompt
- * when user has workout meals enabled
+ * when user has workout meals selected
  */
 export function getWorkoutMealInstructions(profile: UserProfile): string {
-  if (!profile.include_workout_meals) {
+  // Check if user has selected workout meals in the new system
+  const selectedMealTypes = profile.selected_meal_types ?? [];
+  const hasPreWorkout = selectedMealTypes.includes('pre_workout');
+  const hasPostWorkout = selectedMealTypes.includes('post_workout');
+
+  // Fall back to legacy field if selected_meal_types is empty
+  const includeWorkoutMeals = (hasPreWorkout || hasPostWorkout) || profile.include_workout_meals;
+
+  if (!includeWorkoutMeals) {
     return '';
   }
 
   const preWorkoutCal = getPreWorkoutCalorieTarget(profile);
   const postWorkoutCal = getPostWorkoutCalorieTarget(profile);
 
-  return `
-## WORKOUT MEALS
+  const sections: string[] = ['## WORKOUT MEALS\n'];
 
-In addition to the standard meals, generate these workout-specific items for each day:
+  sections.push(`**CRITICAL**: Workout meals should be SIMPLE grab-and-go options, NOT fancy recipes.
+These are functional fuel, not gourmet meals. 1-3 ingredients max, minimal prep.`);
 
-### Pre-Workout (${preWorkoutCal} cal target)
+  // Add consistency instructions for workout meals
+  const mealConsistencyPrefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
+  const preWorkoutConsistency = mealConsistencyPrefs['pre_workout'] ?? 'consistent';
+  const postWorkoutConsistency = mealConsistencyPrefs['post_workout'] ?? 'consistent';
+
+  // Build consistency instruction for workout meals
+  const consistencyParts: string[] = [];
+  if (hasPreWorkout || profile.include_workout_meals) {
+    if (preWorkoutConsistency === 'consistent') {
+      consistencyParts.push(`- **Pre-Workout**: Generate 1 meal (will be eaten ALL 7 days - same pre-workout every day)`);
+    } else {
+      consistencyParts.push(`- **Pre-Workout**: Generate 7 different meals (one unique pre-workout per day)`);
+    }
+  }
+  if (hasPostWorkout || profile.include_workout_meals) {
+    if (postWorkoutConsistency === 'consistent') {
+      consistencyParts.push(`- **Post-Workout**: Generate 1 meal (will be eaten ALL 7 days - same post-workout every day)`);
+    } else {
+      consistencyParts.push(`- **Post-Workout**: Generate 7 different meals (one unique post-workout per day)`);
+    }
+  }
+
+  if (consistencyParts.length > 0) {
+    sections.push(`### Workout Meal Consistency
+${consistencyParts.join('\n')}`);
+  }
+
+  if (hasPreWorkout || profile.include_workout_meals) {
+    sections.push(`### Pre-Workout (${preWorkoutCal} cal target)
+- **KEEP IT SIMPLE** - 1-2 ingredients, no cooking required
 - Timing: 30-60 min before training
-- Focus: Quick carbs, moderate protein, minimal fat
-- Keep it light and easily digestible
-- Examples: banana, toast with honey, rice cakes, small yogurt
+- Focus: Quick carbs (60-70%), moderate protein (20-30%), minimal fat (<10%)
+- Macro ratio matters: CARB-HEAVY for energy
+- **Perfect examples**: just a banana, toast with honey, rice cakes, small yogurt
+- **NOT**: elaborate smoothie bowls or complex recipes`);
+  }
 
-### Post-Workout (${postWorkoutCal} cal target)
+  if (hasPostWorkout || profile.include_workout_meals) {
+    sections.push(`### Post-Workout (${postWorkoutCal} cal target)
+- **KEEP IT SIMPLE** - can be assembled in 5 min or less
 - Timing: Within 60 min after training
-- Focus: Protein for recovery, carbs for glycogen
-- More substantial than pre-workout
-- Examples: Greek yogurt with fruit, eggs with toast, protein shake
+- Focus: Protein first (30-40%), carbs for recovery (40-50%), moderate fat OK (15-25%)
+- Macro ratio matters: PROTEIN-HEAVY for muscle recovery
+- **Perfect examples**: Greek yogurt with berries, cottage cheese with fruit, hard-boiled eggs with toast
+- **NOT**: elaborate cooked meals or complex recipes`);
+  }
 
-Workout time preference: ${profile.workout_time}
+  sections.push(`
+Workout time preference: ${profile.workout_time || 'varies'}
 - Morning: Pre-workout after breakfast slot, post-workout before lunch
 - Midday: Pre-workout late morning, post-workout early afternoon
 - Evening: Pre-workout afternoon snack slot, post-workout after dinner
-- Varies: Place flexibly, athlete will adjust
-`;
+- Varies: Place flexibly, athlete will adjust`);
+
+  return sections.join('\n\n');
 }
 
 /**
  * Get the display order for workout meals based on workout time
+ * Default: Workout meals appear at the bottom (after all regular meals)
  */
 export function getWorkoutMealDisplayOrder(
   mealType: MealType,
   workoutTime: string
 ): number {
+  // Default order: Regular meals first, then workout meals at the bottom
+  // Breakfast (1), Lunch (2), Dinner (3), Snacks (4), Pre-workout (5), Post-workout (6)
   const baseOrder: Record<MealType, number> = {
     breakfast: 1,
-    pre_workout: 2, // Default position
-    lunch: 3,
-    post_workout: 4, // Default position
-    snack: 5,
-    dinner: 6,
+    lunch: 2,
+    dinner: 3,
+    snack: 4,
+    pre_workout: 5, // At bottom
+    post_workout: 6, // At bottom
   };
 
-  // Adjust based on workout time
+  // Workout meals always at the bottom, pre before post
   if (mealType === 'pre_workout') {
-    switch (workoutTime) {
-      case 'morning':
-        return 2; // After breakfast
-      case 'midday':
-        return 3; // Late morning (before lunch)
-      case 'evening':
-        return 5; // Afternoon (before dinner)
-      default:
-        return 2;
-    }
+    return 5;
   }
 
   if (mealType === 'post_workout') {
-    switch (workoutTime) {
-      case 'morning':
-        return 3; // Before lunch
-      case 'midday':
-        return 4; // Early afternoon
-      case 'evening':
-        return 7; // After dinner
-      default:
-        return 4;
-    }
+    return 6;
   }
 
-  return baseOrder[mealType] ?? 5;
+  return baseOrder[mealType] ?? 4;
 }
 
 /**

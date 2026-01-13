@@ -12,7 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import type { DailyDataPoint, Macros, MealType } from '@/lib/types';
-import { MEAL_TYPE_LABELS } from '@/lib/types';
+import { MEAL_TYPE_CONFIG, getMealTypeColorHex } from '@/lib/types';
 
 type MacroType = 'calories' | 'protein' | 'carbs' | 'fat';
 type MealTypeFilter = MealType | 'all';
@@ -41,15 +41,6 @@ const MACRO_CONFIG: Record<MacroType, { label: string; color: string; unit: stri
   protein: { label: 'Protein', color: '#3b82f6', unit: 'g' },
   carbs: { label: 'Carbs', color: '#22c55e', unit: 'g' },
   fat: { label: 'Fat', color: '#eab308', unit: 'g' },
-};
-
-const MEAL_TYPE_COLORS: Record<MealType, string> = {
-  breakfast: '#f97316',   // orange
-  pre_workout: '#fbbf24', // yellow
-  lunch: '#3b82f6',       // blue
-  post_workout: '#10b981',// teal
-  snack: '#22c55e',       // green
-  dinner: '#8b5cf6',      // purple
 };
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'];
@@ -182,11 +173,11 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
               }`}
               style={
                 !showingAll && selectedMealTypes.includes(type)
-                  ? { backgroundColor: MEAL_TYPE_COLORS[type] }
+                  ? { backgroundColor: getMealTypeColorHex(type) }
                   : undefined
               }
             >
-              {MEAL_TYPE_LABELS[type]}
+              {MEAL_TYPE_CONFIG[type].label}
             </button>
           ))}
         </div>
@@ -231,8 +222,8 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
                       ) : (
                         <>
                           {activeMealTypes.map((type) => (
-                            <p key={type} className="text-sm" style={{ color: MEAL_TYPE_COLORS[type] }}>
-                              {MEAL_TYPE_LABELS[type]}: {(data[type] as number).toLocaleString()} {config.unit}
+                            <p key={type} className="text-sm" style={{ color: getMealTypeColorHex(type) }}>
+                              {MEAL_TYPE_CONFIG[type].label}: {(data[type] as number).toLocaleString()} {config.unit}
                             </p>
                           ))}
                           <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
@@ -281,11 +272,11 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
                 key={type}
                 type="monotone"
                 dataKey={type}
-                name={MEAL_TYPE_LABELS[type]}
-                stroke={MEAL_TYPE_COLORS[type]}
+                name={MEAL_TYPE_CONFIG[type].label}
+                stroke={getMealTypeColorHex(type)}
                 strokeWidth={2}
-                dot={{ fill: MEAL_TYPE_COLORS[type], strokeWidth: 0, r: 4 }}
-                activeDot={{ fill: MEAL_TYPE_COLORS[type], strokeWidth: 0, r: 6 }}
+                dot={{ fill: getMealTypeColorHex(type), strokeWidth: 0, r: 4 }}
+                activeDot={{ fill: getMealTypeColorHex(type), strokeWidth: 0, r: 6 }}
               />
             ))}
           </LineChart>
@@ -313,9 +304,9 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
             <div key={type} className="flex items-center gap-2">
               <div
                 className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: MEAL_TYPE_COLORS[type] }}
+                style={{ backgroundColor: getMealTypeColorHex(type) }}
               />
-              <span>{MEAL_TYPE_LABELS[type]}</span>
+              <span>{MEAL_TYPE_CONFIG[type].label}</span>
             </div>
           ))
         )}

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { MealTypeBreakdown, Macros } from '@/lib/types';
-import { MEAL_TYPE_LABELS } from '@/lib/types';
+import type { MealTypeBreakdown, Macros, MealType } from '@/lib/types';
+import { MEAL_TYPE_LABELS, getMealTypeColorHex, MEAL_TYPE_CONFIG } from '@/lib/types';
 
 type MacroType = 'calories' | 'protein' | 'carbs' | 'fat';
 
@@ -18,12 +18,10 @@ const MACRO_CONFIG: Record<MacroType, { label: string; color: string; unit: stri
   fat: { label: 'Fat', color: '#eab308', unit: 'g' },
 };
 
-const MEAL_TYPE_COLORS: Record<string, string> = {
-  breakfast: '#f97316', // orange
-  lunch: '#3b82f6',     // blue
-  dinner: '#8b5cf6',    // purple
-  snack: '#22c55e',     // green
-  unassigned: '#9ca3af', // gray
+// Helper to get color for any meal type including 'unassigned'
+const getMealTypeColor = (type: string): string => {
+  if (type === 'unassigned') return '#9ca3af'; // gray for unassigned
+  return getMealTypeColorHex(type as MealType);
 };
 
 export default function MealTypeBreakdownChart({ breakdown, totalConsumed }: MealTypeBreakdownChartProps) {
@@ -32,7 +30,7 @@ export default function MealTypeBreakdownChart({ breakdown, totalConsumed }: Mea
   const config = MACRO_CONFIG[selectedMacro];
 
   // Get meal types that have data (excluding unassigned if empty)
-  const mealTypes = (['breakfast', 'lunch', 'dinner', 'snack', 'unassigned'] as const).filter(
+  const mealTypes = (['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner', 'unassigned'] as const).filter(
     (type) => breakdown[type][selectedMacro] > 0
   );
 
@@ -90,9 +88,9 @@ export default function MealTypeBreakdownChart({ breakdown, totalConsumed }: Mea
                 className="h-full transition-all duration-300"
                 style={{
                   width: `${percentage}%`,
-                  backgroundColor: MEAL_TYPE_COLORS[type],
+                  backgroundColor: getMealTypeColor(type),
                 }}
-                title={`${type === 'unassigned' ? 'Other' : MEAL_TYPE_LABELS[type as keyof typeof MEAL_TYPE_LABELS]}: ${value.toLocaleString()} ${config.unit}`}
+                title={`${type === 'unassigned' ? 'Other' : MEAL_TYPE_CONFIG[type as MealType]?.label || type}: ${value.toLocaleString()} ${config.unit}`}
               />
             );
           })}
@@ -104,14 +102,14 @@ export default function MealTypeBreakdownChart({ breakdown, totalConsumed }: Mea
         {sortedMealTypes.map((type) => {
           const value = breakdown[type][selectedMacro];
           const percentage = Math.round((value / total) * 100);
-          const label = type === 'unassigned' ? 'Other' : MEAL_TYPE_LABELS[type as keyof typeof MEAL_TYPE_LABELS];
+          const label = type === 'unassigned' ? 'Other' : MEAL_TYPE_CONFIG[type as MealType]?.label || type;
 
           return (
             <div key={type} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div
                   className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: MEAL_TYPE_COLORS[type] }}
+                  style={{ backgroundColor: getMealTypeColor(type) }}
                 />
                 <span className="text-sm text-gray-700">{label}</span>
               </div>

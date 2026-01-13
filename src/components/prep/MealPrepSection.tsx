@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { MealType } from '@/lib/types'
-import { MEAL_TYPE_CONFIG, type PrepTaskWithSession } from './prepUtils'
+import { MEAL_TYPE_CONFIG, getMealTypeColorClasses, type PrepTaskWithSession } from './prepUtils'
 import PrepTaskCard from './PrepTaskCard'
 
 interface MealPrepSectionProps {
@@ -43,7 +43,7 @@ export default function MealPrepSection({
         className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${config.color}`}>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getMealTypeColorClasses(mealType)}`}>
             {config.label}
           </span>
           <span className="text-sm text-gray-600">

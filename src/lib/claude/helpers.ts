@@ -7,8 +7,9 @@ import type {
   DayOfWeek,
   MealType,
   HouseholdServingsPrefs,
+  SelectableMealType,
 } from '../types';
-import { DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '../types';
+import { DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DEFAULT_SELECTED_MEAL_TYPES } from '../types';
 
 // ============================================
 // Constants
@@ -86,20 +87,77 @@ export function collectRawIngredients(days: DayPlan[]): Ingredient[] {
 }
 
 /**
- * Determine which meal types we need based on meals per day
+ * Determine which meal types we need based on selected meal types and snack count
+ *
+ * @param selectedMealTypes - Array of meal types user has selected (breakfast, pre_workout, lunch, post_workout, dinner)
+ * @param snackCount - Number of snacks per day (0-4)
+ * @returns Array of meal types in proper order for a day
  */
-export function getMealTypesForPlan(mealsPerDay: number): MealType[] {
+export function getMealTypesForPlan(
+  selectedMealTypes: SelectableMealType[] = DEFAULT_SELECTED_MEAL_TYPES,
+  snackCount: number = 0
+): MealType[] {
+  // Define the canonical order of all possible meal types
+  const mealOrder: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'dinner'];
+
+  // Filter to only selected meal types, maintaining order
+  const orderedMeals = mealOrder.filter(type =>
+    selectedMealTypes.includes(type as SelectableMealType)
+  );
+
+  // Add snacks - distribute them throughout the day
+  // If 1 snack: after lunch
+  // If 2 snacks: mid-morning and afternoon
+  // If 3 snacks: mid-morning, afternoon, evening
+  // If 4 snacks: spread throughout
+  const result: MealType[] = [];
+
+  for (const meal of orderedMeals) {
+    result.push(meal);
+
+    // Add snacks at strategic points
+    if (snackCount >= 2 && meal === 'breakfast') {
+      result.push('snack'); // Mid-morning snack
+    }
+    if (snackCount >= 1 && meal === 'lunch') {
+      result.push('snack'); // Afternoon snack
+    }
+    if (snackCount >= 3 && meal === 'dinner') {
+      result.push('snack'); // Evening snack
+    }
+  }
+
+  // If we have 4 snacks, add one more (before dinner if we haven't placed it)
+  if (snackCount >= 4) {
+    // Find dinner index and add snack before it
+    const dinnerIndex = result.indexOf('dinner');
+    if (dinnerIndex > 0) {
+      result.splice(dinnerIndex, 0, 'snack');
+    } else {
+      result.push('snack');
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Legacy helper for backward compatibility
+ * Converts old meals_per_day number to new format
+ * @deprecated Use getMealTypesForPlan with selectedMealTypes and snackCount instead
+ */
+export function getMealTypesForPlanLegacy(mealsPerDay: number): MealType[] {
   switch (mealsPerDay) {
     case 3:
-      return ['breakfast', 'lunch', 'dinner'];
+      return getMealTypesForPlan(['breakfast', 'lunch', 'dinner'], 0);
     case 4:
-      return ['breakfast', 'lunch', 'dinner', 'snack'];
+      return getMealTypesForPlan(['breakfast', 'lunch', 'dinner'], 1);
     case 5:
-      return ['breakfast', 'snack', 'lunch', 'snack', 'dinner'];
+      return getMealTypesForPlan(['breakfast', 'lunch', 'dinner'], 2);
     case 6:
-      return ['breakfast', 'snack', 'lunch', 'snack', 'dinner', 'snack'];
+      return getMealTypesForPlan(['breakfast', 'lunch', 'dinner'], 3);
     default:
-      return ['breakfast', 'lunch', 'dinner'];
+      return getMealTypesForPlan(['breakfast', 'lunch', 'dinner'], 0);
   }
 }
 

@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import type { SocialFeedPost, ValidatedMealIngredient, PartyDish, PartyPrepPhase } from '@/lib/types'
-import { CUSTOM_MEAL_PREP_TIME_OPTIONS } from '@/lib/types'
+import type { SocialFeedPost, ValidatedMealIngredient, PartyDish, PartyPrepPhase, MealType } from '@/lib/types'
+import { CUSTOM_MEAL_PREP_TIME_OPTIONS, getMealTypeColorClasses, MEAL_TYPE_CONFIG } from '@/lib/types'
 
 const ROLE_COLORS: Record<PartyDish['role'], string> = {
   main: 'bg-red-100 text-red-700',
@@ -132,11 +132,10 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
     o => o.value === post.prep_time
   )?.label
 
-  const mealTypeColors: Record<string, string> = {
-    breakfast: 'bg-yellow-100 text-yellow-800',
-    lunch: 'bg-teal-100 text-teal-800',
-    dinner: 'bg-blue-100 text-blue-800',
-    snack: 'bg-purple-100 text-purple-800',
+  // Get meal type label from centralized config
+  const getMealTypeLabel = (mealType: MealType | null): string => {
+    if (!mealType) return ''
+    return MEAL_TYPE_CONFIG[mealType]?.label || mealType
   }
 
   // Get source type label and styling
@@ -257,8 +256,8 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {post.meal_type && (
-                <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${mealTypeColors[post.meal_type] || 'bg-gray-100 text-gray-800'}`}>
-                  {post.meal_type}
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getMealTypeColorClasses(post.meal_type)}`}>
+                  {getMealTypeLabel(post.meal_type)}
                 </span>
               )}
               {prepTimeLabel && (

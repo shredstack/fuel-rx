@@ -5,6 +5,16 @@ const config: Config = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/lib/types.ts', // Include types.ts for MEAL_TYPE_CONFIG color classes
+  ],
+  // Safelist meal type colors to ensure they're always included
+  safelist: [
+    'bg-yellow-100', 'text-yellow-800',   // breakfast
+    'bg-orange-100', 'text-orange-800',   // pre_workout
+    'bg-teal-100', 'text-teal-800',       // lunch
+    'bg-lime-100', 'text-lime-800',       // post_workout
+    'bg-purple-100', 'text-purple-800',   // snack
+    'bg-blue-100', 'text-blue-800',       // dinner
   ],
   theme: {
     extend: {

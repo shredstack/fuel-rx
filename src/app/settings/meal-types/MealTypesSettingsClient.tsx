@@ -3,26 +3,25 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { WorkoutTime, PreWorkoutPreference } from '@/lib/types'
-import WorkoutMealsEditor from '@/components/WorkoutMealsEditor'
+import type { SelectableMealType, MealConsistencyPrefs } from '@/lib/types'
+import MealTypesSelector from '@/components/MealTypesSelector'
+import MealConsistencyEditor from '@/components/MealConsistencyEditor'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   initialSettings: {
-    include_workout_meals: boolean
-    workout_time: string
-    pre_workout_preference: string
+    selected_meal_types: SelectableMealType[]
+    snack_count: number
+    meal_consistency_prefs: MealConsistencyPrefs
   }
 }
 
-export default function WorkoutMealsSettingsClient({ initialSettings }: Props) {
+export default function MealTypesSettingsClient({ initialSettings }: Props) {
   const supabase = createClient()
-  const [values, setValues] = useState({
-    includeWorkoutMeals: initialSettings.include_workout_meals,
-    workoutTime: initialSettings.workout_time as WorkoutTime,
-    preWorkoutPreference: initialSettings.pre_workout_preference as PreWorkoutPreference,
-  })
+  const [selectedTypes, setSelectedTypes] = useState<SelectableMealType[]>(initialSettings.selected_meal_types)
+  const [snackCount, setSnackCount] = useState(initialSettings.snack_count)
+  const [consistencyPrefs, setConsistencyPrefs] = useState<MealConsistencyPrefs>(initialSettings.meal_consistency_prefs)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -38,12 +37,19 @@ export default function WorkoutMealsSettingsClient({ initialSettings }: Props) {
         throw new Error('Not authenticated')
       }
 
+      // Calculate legacy fields for backward compatibility
+      const legacyMealsPerDay = Math.min(6, Math.max(3, selectedTypes.length + snackCount)) as 3 | 4 | 5 | 6
+      const includeWorkoutMeals = selectedTypes.includes('pre_workout') || selectedTypes.includes('post_workout')
+
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
-          include_workout_meals: values.includeWorkoutMeals,
-          workout_time: values.workoutTime,
-          pre_workout_preference: values.preWorkoutPreference,
+          selected_meal_types: selectedTypes,
+          snack_count: snackCount,
+          meal_consistency_prefs: consistencyPrefs,
+          // Legacy fields
+          meals_per_day: legacyMealsPerDay,
+          include_workout_meals: includeWorkoutMeals,
         })
         .eq('id', user.id)
 
@@ -71,7 +77,7 @@ export default function WorkoutMealsSettingsClient({ initialSettings }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
-          <h1 className="text-2xl font-bold text-primary-600">Workout Nutrition</h1>
+          <h1 className="text-2xl font-bold text-primary-600">Meal Types</h1>
         </div>
 
         {error && (
@@ -84,12 +90,32 @@ export default function WorkoutMealsSettingsClient({ initialSettings }: Props) {
         )}
 
         <div className="card mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Pre & Post-Workout Meals</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Daily Meals</h2>
           <p className="text-gray-600 mb-4">
-            Configure workout-specific nutrition to fuel your training and recovery.
+            Select which meals you want in your plan. Pre/post-workout meals help fuel training and hit your calorie targets.
           </p>
 
-          <WorkoutMealsEditor values={values} onChange={setValues} />
+          <MealTypesSelector
+            selectedTypes={selectedTypes}
+            snackCount={snackCount}
+            onTypesChange={setSelectedTypes}
+            onSnackCountChange={setSnackCount}
+          />
+        </div>
+
+        <div className="card mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Meal Variety</h2>
+          <p className="text-gray-600 mb-4">
+            Choose which meals you want to keep the same each day vs. vary throughout the week.
+            Consistent meals simplify meal prep and grocery shopping.
+          </p>
+
+          <MealConsistencyEditor
+            prefs={consistencyPrefs}
+            onChange={setConsistencyPrefs}
+            selectedTypes={selectedTypes}
+            snackCount={snackCount}
+          />
 
           <button
             onClick={handleSave}
@@ -101,19 +127,16 @@ export default function WorkoutMealsSettingsClient({ initialSettings }: Props) {
 
           {success && (
             <div className="bg-green-50 text-green-600 p-4 rounded-lg mt-4">
-              Settings saved successfully! Your next meal plan will include workout meals.
+              Settings saved successfully! Your next meal plan will use these meal types.
             </div>
           )}
         </div>
 
         <div className="bg-primary-50 p-4 rounded-lg">
           <p className="text-sm text-primary-800">
-            <strong>Note:</strong> When workout meals are enabled, your meal plans will include:
+            <strong>Note:</strong> These preferences will be used when generating your next meal plan.
+            Your existing meal plans will not be affected.
           </p>
-          <ul className="text-sm text-primary-800 mt-2 list-disc list-inside space-y-1">
-            <li><strong>Pre-workout:</strong> Quick carbs for energy (30-60 min before training)</li>
-            <li><strong>Post-workout:</strong> Protein + carbs for recovery (within 60 min after)</li>
-          </ul>
         </div>
       </main>
 
