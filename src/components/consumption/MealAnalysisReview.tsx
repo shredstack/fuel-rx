@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { MealType, MealPhotoAnalysisResult } from '@/lib/types';
+import { MacroInput } from '@/components/ui';
 
 interface MealAnalysisReviewProps {
   photoId: string;
@@ -337,46 +338,31 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
                   &times;
                 </button>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                <div>
-                  <label className="text-gray-500">Cal</label>
-                  <input
-                    type="number"
-                    value={ing.calories}
-                    onChange={(e) => handleIngredientChange(index, 'calories', parseInt(e.target.value) || 0)}
-                    className="w-full input-field py-1 text-center"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-500">P</label>
-                  <input
-                    type="number"
-                    value={ing.protein}
-                    onChange={(e) => handleIngredientChange(index, 'protein', parseFloat(e.target.value) || 0)}
-                    className="w-full input-field py-1 text-center"
-                    step="0.5"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-500">C</label>
-                  <input
-                    type="number"
-                    value={ing.carbs}
-                    onChange={(e) => handleIngredientChange(index, 'carbs', parseFloat(e.target.value) || 0)}
-                    className="w-full input-field py-1 text-center"
-                    step="0.5"
-                  />
-                </div>
-                <div>
-                  <label className="text-gray-500">F</label>
-                  <input
-                    type="number"
-                    value={ing.fat}
-                    onChange={(e) => handleIngredientChange(index, 'fat', parseFloat(e.target.value) || 0)}
-                    className="w-full input-field py-1 text-center"
-                    step="0.5"
-                  />
-                </div>
+              <div className="grid grid-cols-4 gap-2">
+                <MacroInput
+                  macroType="calories"
+                  value={ing.calories}
+                  onChange={(val) => handleIngredientChange(index, 'calories', val)}
+                  size="sm"
+                />
+                <MacroInput
+                  macroType="protein"
+                  value={ing.protein}
+                  onChange={(val) => handleIngredientChange(index, 'protein', val)}
+                  size="sm"
+                />
+                <MacroInput
+                  macroType="carbs"
+                  value={ing.carbs}
+                  onChange={(val) => handleIngredientChange(index, 'carbs', val)}
+                  size="sm"
+                />
+                <MacroInput
+                  macroType="fat"
+                  value={ing.fat}
+                  onChange={(val) => handleIngredientChange(index, 'fat', val)}
+                  size="sm"
+                />
               </div>
             </div>
           ))}

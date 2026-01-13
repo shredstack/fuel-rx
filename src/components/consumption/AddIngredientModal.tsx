@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { IngredientToLog, BarcodeProduct, IngredientCategoryType } from '@/lib/types';
 import BarcodeScanner from './BarcodeScanner';
+import { MacroInput } from '@/components/ui';
 
 type TabType = 'search' | 'barcode' | 'manual';
 
@@ -530,69 +531,38 @@ export default function AddIngredientModal({
                   Nutrition per serving
                 </label>
                 <div className="grid grid-cols-4 gap-2">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Calories</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={manualForm.calories}
-                      onChange={(e) =>
-                        setManualForm((prev) => ({
-                          ...prev,
-                          calories: parseInt(e.target.value) || 0,
-                        }))
-                      }
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Protein (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={manualForm.protein}
-                      onChange={(e) =>
-                        setManualForm((prev) => ({
-                          ...prev,
-                          protein: parseFloat(e.target.value) || 0,
-                        }))
-                      }
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Carbs (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={manualForm.carbs}
-                      onChange={(e) =>
-                        setManualForm((prev) => ({
-                          ...prev,
-                          carbs: parseFloat(e.target.value) || 0,
-                        }))
-                      }
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Fat (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={manualForm.fat}
-                      onChange={(e) =>
-                        setManualForm((prev) => ({
-                          ...prev,
-                          fat: parseFloat(e.target.value) || 0,
-                        }))
-                      }
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                    />
-                  </div>
+                  <MacroInput
+                    macroType="calories"
+                    value={manualForm.calories}
+                    onChange={(val) =>
+                      setManualForm((prev) => ({ ...prev, calories: val }))
+                    }
+                    size="sm"
+                  />
+                  <MacroInput
+                    macroType="protein"
+                    value={manualForm.protein}
+                    onChange={(val) =>
+                      setManualForm((prev) => ({ ...prev, protein: val }))
+                    }
+                    size="sm"
+                  />
+                  <MacroInput
+                    macroType="carbs"
+                    value={manualForm.carbs}
+                    onChange={(val) =>
+                      setManualForm((prev) => ({ ...prev, carbs: val }))
+                    }
+                    size="sm"
+                  />
+                  <MacroInput
+                    macroType="fat"
+                    value={manualForm.fat}
+                    onChange={(val) =>
+                      setManualForm((prev) => ({ ...prev, fat: val }))
+                    }
+                    size="sm"
+                  />
                 </div>
               </div>
 
