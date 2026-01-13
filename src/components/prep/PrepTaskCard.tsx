@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { PrepTask } from '@/lib/types'
 import { formatCookingTemps, formatCookingTimes } from './prepUtils'
+import { CookingAssistantButton } from '@/components/CookingAssistant'
 
 interface PrepTaskCardProps {
   task: PrepTask
@@ -93,6 +94,12 @@ export default function PrepTaskCard({
                 {temp}
               </span>
             ))}
+            {task.meal_ids && task.meal_ids.length > 0 && !isCompleted && (
+              <CookingAssistantButton
+                mealId={task.meal_ids[0]}
+                mealName={task.description}
+              />
+            )}
           </div>
         </div>
       </div>
