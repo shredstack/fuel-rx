@@ -5,11 +5,56 @@
 :root {
   --foreground-rgb: 15, 23, 42;
   --background-rgb: 255, 255, 255;
+
+  /* Safe area insets for iOS notch/Dynamic Island */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
 }
 
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
+}
+
+/* iOS-specific styles */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .app-container {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Disable pull-to-refresh on iOS */
+html {
+  overscroll-behavior: none;
+}
+
+/* Disable text selection highlight on iOS for non-input elements */
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Allow text selection in input fields */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Smooth scrolling for iOS */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
 }
 
 @layer utilities {
