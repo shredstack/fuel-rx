@@ -104,8 +104,8 @@ export default function ProfileClient({
     <div className="min-h-screen bg-gray-50 pb-24">
       <Navbar />
 
-      {/* Header with gradient */}
-      <div className="bg-gradient-to-br from-green-500 to-green-600 pt-4">
+      {/* Header with rainbow gradient */}
+      <div className="bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 to-purple-500 pt-4 relative overflow-hidden">
         <div className="px-4 py-6">
           <ProfileHeader
             displayName={profile.display_name || profile.name}

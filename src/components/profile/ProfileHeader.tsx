@@ -18,7 +18,18 @@ export default function ProfileHeader({
   const initial = displayName?.[0]?.toUpperCase() || email[0].toUpperCase()
 
   return (
-    <div className="text-white">
+    <div className="text-white relative">
+      {/* FuelRx Logo - positioned right of center */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-25">
+        <Image
+          src="/fuelrx_logo.png"
+          alt="FuelRx"
+          width={120}
+          height={120}
+          className="w-24 h-24 md:w-32 md:h-32"
+        />
+      </div>
+
       {/* Avatar */}
       {profilePhotoUrl ? (
         <div className="w-20 h-20 rounded-full overflow-hidden mb-3 ring-4 ring-white/20">
