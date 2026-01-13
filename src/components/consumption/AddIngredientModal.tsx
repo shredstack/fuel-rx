@@ -132,12 +132,17 @@ export default function AddIngredientModal({
     if (!barcodeProduct) return;
 
     // Save the barcode product as a user-added ingredient
+    // Concatenate brand and name for a complete ingredient name (e.g., "Chobani Raspberry Lemon")
+    const ingredientName = barcodeProduct.brand
+      ? `${barcodeProduct.brand} ${barcodeProduct.name}`
+      : barcodeProduct.name;
+
     try {
       const response = await fetch('/api/ingredients/user-added', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: barcodeProduct.name,
+          name: ingredientName,
           serving_size: barcodeProduct.serving_size || 1,
           serving_unit: barcodeProduct.serving_unit || 'serving',
           calories: barcodeProduct.calories,
