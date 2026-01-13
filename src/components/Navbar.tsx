@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/community', label: 'Community' },
   { href: '/custom-meals', label: 'My Meals' },
   { href: '/history', label: 'My Plans' },
+  { href: '/profile', label: 'Profile' },
 ]
 
 export default function Navbar() {
