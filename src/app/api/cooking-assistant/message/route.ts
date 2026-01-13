@@ -23,6 +23,11 @@ function buildSystemPrompt(meal: MealEntity, batchContext?: {
     .map((inst: string, idx: number) => `${idx + 1}. ${inst}`)
     .join('\n');
 
+  // Include prep instructions if available
+  const prepInstructions = meal.prep_instructions
+    ? `\n**Additional Prep Notes**:\n${meal.prep_instructions}\n`
+    : '';
+
   let batchInfo = '';
   if (batchContext && batchContext.totalServings > 1) {
     batchInfo = `
@@ -46,7 +51,7 @@ ${ingredientsList || 'No ingredients listed'}
 
 **Instructions**:
 ${instructionsList || 'No instructions provided'}
-
+${prepInstructions}
 **Nutrition Facts** (per serving):
 - Calories: ${meal.calories}
 - Protein: ${meal.protein}g

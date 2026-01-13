@@ -5,6 +5,7 @@ import type { ConsolidatedMeal } from './prepUtils'
 import { DAY_LABELS, formatCookingTemps, formatCookingTimes, formatHouseholdContext, hasHouseholdForMeal, getServingMultiplier } from './prepUtils'
 import type { DayOfWeek, HouseholdServingsPrefs, DailyAssembly } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
+import { CookingAssistantButton } from '@/components/CookingAssistant'
 
 interface Props {
   meal: ConsolidatedMeal
@@ -94,6 +95,12 @@ export default function DaySpecificPrepTask({
             </span>
             {primaryTask.estimated_minutes && primaryTask.estimated_minutes > 0 && (
               <span className="text-xs text-gray-400">~{primaryTask.estimated_minutes} min</span>
+            )}
+            {primaryTask.meal_ids && primaryTask.meal_ids.length > 0 && !isCompleted && (
+              <CookingAssistantButton
+                mealId={primaryTask.meal_ids[0]}
+                mealName={meal.mealName}
+              />
             )}
           </div>
 
