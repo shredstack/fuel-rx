@@ -40,6 +40,7 @@ export default function AddIngredientModal({
   const [barcodeProduct, setBarcodeProduct] = useState<BarcodeProduct | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [barcodeEditedName, setBarcodeEditedName] = useState<string>('');
 
   // Manual entry state
   const [manualForm, setManualForm] = useState({
@@ -92,6 +93,7 @@ export default function AddIngredientModal({
       setSearchResults([]);
       setBarcodeProduct(null);
       setBarcodeError(null);
+      setBarcodeEditedName('');
       setManualForm({
         name: '',
         category: 'other',
@@ -118,6 +120,9 @@ export default function AddIngredientModal({
 
       if (data.found) {
         setBarcodeProduct(data);
+        // Initialize editable name with brand + product name
+        const initialName = data.brand ? `${data.brand} ${data.name}` : data.name;
+        setBarcodeEditedName(initialName);
       } else {
         setBarcodeError('Product not found. Try adding it manually.');
       }
@@ -129,20 +134,16 @@ export default function AddIngredientModal({
   };
 
   const handleBarcodeProductConfirm = async () => {
-    if (!barcodeProduct) return;
+    if (!barcodeProduct || !barcodeEditedName.trim()) return;
 
     // Save the barcode product as a user-added ingredient
-    // Concatenate brand and name for a complete ingredient name (e.g., "Chobani Raspberry Lemon")
-    const ingredientName = barcodeProduct.brand
-      ? `${barcodeProduct.brand} ${barcodeProduct.name}`
-      : barcodeProduct.name;
-
+    // Use the user-edited name (which defaults to brand + product name)
     try {
       const response = await fetch('/api/ingredients/user-added', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: ingredientName,
+          name: barcodeEditedName.trim(),
           serving_size: barcodeProduct.serving_size || 1,
           serving_unit: barcodeProduct.serving_unit || 'serving',
           calories: barcodeProduct.calories,
@@ -394,12 +395,21 @@ export default function AddIngredientModal({
                         className="w-20 h-20 object-contain mx-auto mb-3 rounded"
                       />
                     )}
-                    <h3 className="font-semibold text-gray-900 text-center">
-                      {barcodeProduct.name}
-                    </h3>
-                    {barcodeProduct.brand && (
-                      <p className="text-sm text-gray-500 text-center">{barcodeProduct.brand}</p>
-                    )}
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Ingredient Name
+                      </label>
+                      <input
+                        type="text"
+                        value={barcodeEditedName}
+                        onChange={(e) => setBarcodeEditedName(e.target.value)}
+                        className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                        placeholder="Enter ingredient name"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Edit if needed before saving
+                      </p>
+                    </div>
 
                     <div className="mt-4 grid grid-cols-4 gap-2 text-center">
                       <div className="bg-white rounded p-2">
@@ -438,6 +448,7 @@ export default function AddIngredientModal({
                       onClick={() => {
                         setBarcodeProduct(null);
                         setBarcodeError(null);
+                        setBarcodeEditedName('');
                       }}
                       className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
                     >
@@ -445,7 +456,8 @@ export default function AddIngredientModal({
                     </button>
                     <button
                       onClick={handleBarcodeProductConfirm}
-                      className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700"
+                      disabled={!barcodeEditedName.trim()}
+                      className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Add & Log
                     </button>
