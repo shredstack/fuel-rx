@@ -1793,4 +1793,5 @@ export interface SaveMealPhotoOptions {
     fat: number;
   }>;
   notes?: string;
+  consumedAt?: string;
 }

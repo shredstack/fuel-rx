@@ -172,9 +172,10 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
 
     try {
       // Build request payload, including meal_id for meal_plan type as fallback
-      const payload: { type: string; source_id: string; meal_id?: string } = {
+      const payload: { type: string; source_id: string; meal_id?: string; consumed_at: string } = {
         type: meal.source,
         source_id: meal.source_id,
+        consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
       };
       // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
       if (meal.source === 'meal_plan' && 'meal_id' in meal) {
@@ -733,6 +734,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
         <MealPhotoModal
           isOpen={showMealPhotoModal}
           onClose={() => setShowMealPhotoModal(false)}
+          selectedDate={selectedDate}
           onMealLogged={(entry) => {
             // Add the new entry to the summary optimistically
             setSummary((prev) => ({

@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   try {
     const body: SaveMealPhotoOptions = await request.json();
-    const { saveTo, mealType, editedName, editedIngredients, notes } = body;
+    const { saveTo, mealType, editedName, editedIngredients, notes, consumedAt } = body;
 
     // Get photo record and verify ownership
     const { data: photo, error: photoError } = await supabase
@@ -63,15 +63,16 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     // Save to consumption log
     if (saveTo === 'consumption' || saveTo === 'both') {
-      const now = new Date();
-      const consumedDate = now.toISOString().split('T')[0];
+      // Use provided consumedAt or fall back to current time
+      const consumedAtValue = consumedAt || new Date().toISOString();
+      const consumedDate = consumedAtValue.split('T')[0];
 
       const { data: consumptionEntry, error: consumptionError } = await supabase
         .from('meal_consumption_log')
         .insert({
           user_id: user.id,
           entry_type: 'photo_meal',
-          consumed_at: now.toISOString(),
+          consumed_at: consumedAtValue,
           consumed_date: consumedDate,
           display_name: mealName,
           meal_type: mealType || null,

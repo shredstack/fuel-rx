@@ -8,6 +8,7 @@ import type { MealType, ConsumptionEntry } from '@/lib/types';
 interface MealPhotoModalProps {
   isOpen: boolean;
   onClose: () => void;
+  selectedDate: string;
   onMealLogged: (entry: ConsumptionEntry) => void;
 }
 
@@ -40,7 +41,7 @@ interface SaveMealData {
   notes: string;
 }
 
-export default function MealPhotoModal({ isOpen, onClose, onMealLogged }: MealPhotoModalProps) {
+export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLogged }: MealPhotoModalProps) {
   const [step, setStep] = useState<ModalStep>('capture');
   const [photoData, setPhotoData] = useState<PhotoData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export default function MealPhotoModal({ isOpen, onClose, onMealLogged }: MealPh
             editedName: data.mealName,
             editedIngredients: data.ingredients,
             notes: data.notes,
+            consumedAt: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
           }),
         });
 
@@ -96,8 +98,8 @@ export default function MealPhotoModal({ isOpen, onClose, onMealLogged }: MealPh
             id: result.consumptionEntryId,
             user_id: '', // Will be filled by the actual data
             entry_type: 'photo_meal' as 'meal_plan', // Type coercion for compatibility
-            consumed_at: new Date().toISOString(),
-            consumed_date: new Date().toISOString().split('T')[0],
+            consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+            consumed_date: selectedDate,
             display_name: data.mealName,
             meal_type: data.mealType,
             calories: data.totalMacros.calories,
