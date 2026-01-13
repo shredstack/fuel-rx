@@ -11,7 +11,7 @@ import type {
   HouseholdServingsPrefs,
   HouseholdServingCount,
 } from '@/lib/types'
-import { CHILD_PORTION_MULTIPLIER } from '@/lib/types'
+import { CHILD_PORTION_MULTIPLIER, MEAL_TYPE_CONFIG, getMealTypeColorClasses } from '@/lib/types'
 
 // Helper to split method strings by arrow delimiter into individual steps
 export function parseMethodSteps(method: string | undefined): string[] {
@@ -206,16 +206,12 @@ export const DAY_LABELS: Record<DayOfWeek, string> = {
 // Days in order
 export const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
-// Meal type labels and colors
-export const MEAL_TYPE_CONFIG: Record<MealType, { label: string; color: string }> = {
-  breakfast: { label: 'Breakfast', color: 'bg-yellow-100 text-yellow-800' },
-  lunch: { label: 'Lunch', color: 'bg-teal-100 text-teal-800' },
-  dinner: { label: 'Dinner', color: 'bg-blue-100 text-blue-800' },
-  snack: { label: 'Snacks', color: 'bg-purple-100 text-purple-800' },
-}
+// Re-export from types.ts for backwards compatibility
+// Use MEAL_TYPE_CONFIG from @/lib/types instead
+export { MEAL_TYPE_CONFIG, getMealTypeColorClasses }
 
 // Meal types in order
-export const MEAL_TYPES_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+export const MEAL_TYPES_ORDER: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner']
 
 // ============================================
 // MEAL-FIRST ORGANIZATION TYPES AND FUNCTIONS
@@ -528,17 +524,21 @@ export function groupPrepDataFromMealPlan(
     // Group meals by type and track index for each type
     const mealsByType: Record<MealType, { meal: Meal; index: number }[]> = {
       breakfast: [],
+      pre_workout: [],
       lunch: [],
-      dinner: [],
+      post_workout: [],
       snack: [],
+      dinner: [],
     }
 
     // Count meals by type to get proper indices
     const typeCounters: Record<MealType, number> = {
       breakfast: 0,
+      pre_workout: 0,
       lunch: 0,
-      dinner: 0,
+      post_workout: 0,
       snack: 0,
+      dinner: 0,
     }
 
     for (const meal of dayPlan.meals) {

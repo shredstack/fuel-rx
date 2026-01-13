@@ -142,11 +142,19 @@ export function CookingAssistantDrawer({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/50 z-40 md:hidden"
-        onClick={handleEndSession}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleEndSession();
+        }}
       />
 
       {/* Drawer */}
-      <div className="fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl z-50 flex flex-col max-h-[85vh] md:right-0 md:left-auto md:w-[420px] md:h-screen md:rounded-none md:inset-y-0">
+      <div
+        className="fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl z-50 flex flex-col max-h-[85vh] md:right-0 md:left-auto md:w-[420px] md:h-screen md:rounded-none md:inset-y-0"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <div className="flex-1 min-w-0">

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { PrepSession, PrepTask, MealType, DayOfWeek } from '@/lib/types'
-import { getSessionTasks, MEAL_TYPE_CONFIG, DAY_LABELS, DAYS_ORDER } from './prepUtils'
+import { getSessionTasks, MEAL_TYPE_CONFIG, getMealTypeColorClasses, DAY_LABELS, DAYS_ORDER } from './prepUtils'
 import PrepTaskCard from './PrepTaskCard'
 
 interface BatchPrepSectionProps {
@@ -180,7 +180,7 @@ function MealGroupDropdown({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Meal type badge */}
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${mealConfig.color}`}>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getMealTypeColorClasses(group.mealType)}`}>
                 {mealConfig.label}
               </span>
               {/* Meal name */}

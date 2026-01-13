@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OnboardingData } from '@/lib/types'
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DEFAULT_SELECTED_MEAL_TYPES } from '@/lib/types'
 import HouseholdServingsEditor from '@/components/HouseholdServingsEditor'
 import MacrosEditor from '@/components/MacrosEditor'
 import DietaryPrefsEditor from '@/components/DietaryPrefsEditor'
-import MealsPerDaySelector from '@/components/MealsPerDaySelector'
+import MealTypesSelector from '@/components/MealTypesSelector'
 import PrepTimeSelector from '@/components/PrepTimeSelector'
 import MealConsistencyEditor from '@/components/MealConsistencyEditor'
 import PrepStyleSelector from '@/components/PrepStyleSelector'
@@ -17,7 +17,7 @@ import IngredientVarietyEditor from '@/components/IngredientVarietyEditor'
 import BasicInfoEditor from '@/components/BasicInfoEditor'
 import Logo from '@/components/Logo'
 
-const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
+const STEPS = ['basics', 'macros', 'meal_types', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -35,7 +35,8 @@ export default function OnboardingPage() {
     target_fat: 70,
     target_calories: 2000,
     dietary_prefs: ['no_restrictions'],
-    meals_per_day: 3,
+    selected_meal_types: [...DEFAULT_SELECTED_MEAL_TYPES],
+    snack_count: 1,
     prep_time: 30,
     meal_consistency_prefs: { ...DEFAULT_MEAL_CONSISTENCY_PREFS },
     ingredient_variety_prefs: { ...DEFAULT_INGREDIENT_VARIETY_PREFS },
@@ -77,6 +78,11 @@ export default function OnboardingPage() {
       return
     }
 
+    // Calculate legacy meals_per_day for backward compatibility
+    const legacyMealsPerDay = Math.min(6, Math.max(3, formData.selected_meal_types.length + formData.snack_count)) as 3 | 4 | 5 | 6
+    // Check if workout meals are included
+    const includeWorkoutMeals = formData.selected_meal_types.includes('pre_workout') || formData.selected_meal_types.includes('post_workout')
+
     const { error: updateError } = await supabase
       .from('user_profiles')
       .update({
@@ -87,7 +93,12 @@ export default function OnboardingPage() {
         target_fat: formData.target_fat,
         target_calories: formData.target_calories,
         dietary_prefs: formData.dietary_prefs,
-        meals_per_day: formData.meals_per_day,
+        // New fields
+        selected_meal_types: formData.selected_meal_types,
+        snack_count: formData.snack_count,
+        // Legacy fields for backward compatibility
+        meals_per_day: legacyMealsPerDay,
+        include_workout_meals: includeWorkoutMeals,
         prep_time: formData.prep_time,
         meal_consistency_prefs: formData.meal_consistency_prefs,
         ingredient_variety_prefs: formData.ingredient_variety_prefs,
@@ -221,10 +232,20 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 3: Preferences */}
-          {currentStep === 'preferences' && (
+          {/* Step 3: Meal Types (replaces old Preferences step) */}
+          {currentStep === 'meal_types' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-gray-900">Meal Preferences</h3>
+              <h3 className="text-xl font-semibold text-gray-900">Your Daily Meals</h3>
+              <p className="text-gray-600">
+                Select the meals you want in your plan. Pre/post-workout meals help fuel training and recovery.
+              </p>
+
+              <MealTypesSelector
+                selectedTypes={formData.selected_meal_types}
+                snackCount={formData.snack_count}
+                onTypesChange={(types) => setFormData(prev => ({ ...prev, selected_meal_types: types }))}
+                onSnackCountChange={(count) => setFormData(prev => ({ ...prev, snack_count: count }))}
+              />
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -233,16 +254,6 @@ export default function OnboardingPage() {
                 <DietaryPrefsEditor
                   selectedPrefs={formData.dietary_prefs}
                   onChange={(prefs) => setFormData(prev => ({ ...prev, dietary_prefs: prefs }))}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Meals Per Day
-                </label>
-                <MealsPerDaySelector
-                  value={formData.meals_per_day}
-                  onChange={(value) => setFormData(prev => ({ ...prev, meals_per_day: value }))}
                 />
               </div>
 
@@ -270,6 +281,8 @@ export default function OnboardingPage() {
               <MealConsistencyEditor
                 prefs={formData.meal_consistency_prefs}
                 onChange={(prefs) => setFormData(prev => ({ ...prev, meal_consistency_prefs: prefs }))}
+                selectedTypes={formData.selected_meal_types}
+                snackCount={formData.snack_count}
               />
 
               <div className="bg-primary-50 p-4 rounded-lg">

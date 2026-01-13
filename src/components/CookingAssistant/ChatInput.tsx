@@ -27,7 +27,10 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
+            e.stopPropagation();
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSubmit(e);

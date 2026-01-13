@@ -21,7 +21,7 @@ import type {
   CookingStatus,
   MealPlanMealCookingStatus,
 } from '@/lib/types'
-import { normalizeCoreIngredients } from '@/lib/types'
+import { normalizeCoreIngredients, getMealTypeColorClasses, MEAL_TYPE_CONFIG } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapButton, SwapModal } from '@/components/meal'
@@ -62,7 +62,7 @@ const DAY_LABELS: Record<string, string> = {
   sunday: 'Sunday',
 }
 
-const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack']
+const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack', 'pre_workout', 'post_workout']
 
 // Convert prep_time_minutes to CustomMealPrepTime format for social feed
 function minutesToPrepTime(minutes: number): CustomMealPrepTime {
@@ -1012,12 +1012,7 @@ function MealCard({
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
   const [savingIngredient, setSavingIngredient] = useState(false)
 
-  const mealTypeColors: Record<string, string> = {
-    breakfast: 'bg-yellow-100 text-yellow-800',
-    lunch: 'bg-teal-100 text-teal-800',
-    dinner: 'bg-blue-100 text-blue-800',
-    snack: 'bg-purple-100 text-purple-800',
-  }
+  const mealTypeConfig = MEAL_TYPE_CONFIG[meal.meal_type]
 
   return (
     <div className="card" {...(isFirstMealCard ? { 'data-tour': 'meal-card' } : {})}>
@@ -1027,8 +1022,8 @@ function MealCard({
           className="flex-1 text-left"
         >
           <div className="flex items-center gap-3 mb-2">
-            <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${mealTypeColors[meal.meal_type]}`}>
-              {meal.meal_type}
+            <span className={`px-2 py-1 rounded text-xs font-medium ${getMealTypeColorClasses(meal.meal_type)}`}>
+              {mealTypeConfig?.label || meal.meal_type}
             </span>
             <span className="text-sm text-gray-500">
               {meal.prep_time_minutes} min prep

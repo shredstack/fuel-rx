@@ -25,7 +25,7 @@ import { getCoreIngredientName } from '@/lib/types';
 import { saveMealsWithDeduplication, type GeneratedMeal } from './meal-service';
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_TYPE_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'pre_workout', 'post_workout'];
 
 /**
  * Maps grocery list ingredient categories to core ingredient categories.

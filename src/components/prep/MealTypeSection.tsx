@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { MealTypeGroup } from './prepUtils'
-import { MEAL_TYPE_CONFIG, formatDayRange } from './prepUtils'
+import { MEAL_TYPE_CONFIG, formatDayRange, getMealTypeColorClasses } from './prepUtils'
 import type { HouseholdServingsPrefs, DailyAssembly } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import ConsolidatedPrepTask from './ConsolidatedPrepTask'
@@ -45,7 +45,7 @@ export default function MealTypeSection({
     : group.mealType.charAt(0).toUpperCase() + group.mealType.slice(1)
 
   // Get color for meal type
-  const colorClass = MEAL_TYPE_CONFIG[group.mealType]?.color || 'bg-gray-100 text-gray-800'
+  const colorClass = getMealTypeColorClasses(group.mealType)
 
   // Summarize what's in this section
   const getSummaryText = () => {

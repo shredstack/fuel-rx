@@ -97,7 +97,7 @@ const mealSchema = {
     },
     type: {
       type: 'string',
-      enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+      enum: ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'],
       description: 'Meal type',
     },
     snack_number: {
@@ -208,7 +208,7 @@ const prepTaskSchema = {
       description: 'Category for batch prep: sunday_batch (prep Sunday), day_of_quick (<10 min fresh), day_of_cooking (longer fresh cooking)',
     },
   },
-  required: ['id', 'description', 'detailed_steps', 'estimated_minutes', 'meal_ids', 'completed'],
+  required: ['id', 'description', 'equipment_needed', 'ingredients_to_prep', 'detailed_steps', 'estimated_minutes', 'meal_ids', 'completed'],
 };
 
 const prepSessionSchema = {
@@ -255,9 +255,11 @@ const dailyAssemblyDaySchema = {
   type: 'object' as const,
   properties: {
     breakfast: dailyAssemblyEntrySchema,
+    pre_workout: dailyAssemblyEntrySchema,
     lunch: dailyAssemblyEntrySchema,
-    dinner: dailyAssemblyEntrySchema,
+    post_workout: dailyAssemblyEntrySchema,
     snack: dailyAssemblyEntrySchema,
+    dinner: dailyAssemblyEntrySchema,
   },
   required: [],
 };
@@ -354,7 +356,7 @@ const simpleMealSchema = {
     name: { type: 'string', description: 'Meal name' },
     type: {
       type: 'string',
-      enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+      enum: ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'],
       description: 'Meal type',
     },
     prep_time_minutes: { type: 'number', description: 'Preparation time in minutes' },

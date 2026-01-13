@@ -6,13 +6,15 @@ import type {
   DayOfWeek,
   MealWithIngredientNutrition,
   MealComplexity,
+  SelectableMealType,
 } from '../types';
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, MEAL_COMPLEXITY_LABELS } from '../types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, MEAL_COMPLEXITY_LABELS, getStandardMealTypes, DEFAULT_SELECTED_MEAL_TYPES } from '../types';
 import { callLLMWithToolUse } from './client';
 import { fetchCachedNutrition, buildNutritionReferenceSection, cacheIngredientNutrition } from './ingredient-cache';
 import { DIETARY_LABELS, getMealTypesForPlan, buildHouseholdContextSection } from './helpers';
 import { mealsSchema } from '../llm-schemas';
 import { getTestConfig } from '../claude_test';
+import { getWorkoutMealInstructions } from './workout-meals';
 
 interface ValidatedMealMacros {
   meal_name: string;
@@ -45,16 +47,22 @@ export async function generateMealsFromCoreIngredients(
   // Build the ingredients list as JSON
   const ingredientsJSON = JSON.stringify(coreIngredients, null, 2);
 
-  // Calculate per-meal targets
-  const targetCaloriesPerMeal = Math.round(profile.target_calories / profile.meals_per_day);
-  const targetProteinPerMeal = Math.round(profile.target_protein / profile.meals_per_day);
-  const targetCarbsPerMeal = Math.round(profile.target_carbs / profile.meals_per_day);
-  const targetFatPerMeal = Math.round(profile.target_fat / profile.meals_per_day);
-
   // Determine meal types needed and count snacks
-  const mealTypesNeeded = getMealTypesForPlan(profile.meals_per_day);
-  const snacksPerDay = mealTypesNeeded.filter(t => t === 'snack').length;
+  // Use new selected_meal_types and snack_count if available, fallback to legacy
+  const selectedMealTypes = (profile.selected_meal_types ?? DEFAULT_SELECTED_MEAL_TYPES) as SelectableMealType[];
+  const snackCount = profile.snack_count ?? 0;
+  const mealTypesNeeded = getMealTypesForPlan(selectedMealTypes, snackCount);
+  const snacksPerDay = snackCount;
   const uniqueMealTypes = Array.from(new Set(mealTypesNeeded)) as MealType[];
+
+  // Calculate total meals per day (selected meal types + snacks)
+  const actualMealsPerDay = selectedMealTypes.length + snackCount;
+
+  // Calculate per-meal targets based on actual meal count
+  const targetCaloriesPerMeal = Math.round(profile.target_calories / actualMealsPerDay);
+  const targetProteinPerMeal = Math.round(profile.target_protein / actualMealsPerDay);
+  const targetCarbsPerMeal = Math.round(profile.target_carbs / actualMealsPerDay);
+  const targetFatPerMeal = Math.round(profile.target_fat / actualMealsPerDay);
 
   // Build consistency instructions with proper snack count
   const consistencyInstructions = uniqueMealTypes.map(type => {
@@ -141,8 +149,11 @@ ${mealsList}
   const nutritionCache = await fetchCachedNutrition(allIngredientNames);
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
-  // Calculate total meals needed
-  const totalMealsPerDay = profile.meals_per_day;
+  // Calculate total meals needed (selected meal types + snacks)
+  // Workout meals are now included in selectedMealTypes if the user selected them
+  const hasPreWorkout = selectedMealTypes.includes('pre_workout');
+  const hasPostWorkout = selectedMealTypes.includes('post_workout');
+  const totalMealsPerDay = actualMealsPerDay;
   const totalMealsPerWeek = totalMealsPerDay * 7;
 
   // Build snack-specific instructions if multiple snacks per day
@@ -184,35 +195,112 @@ ${theme.meal_name_style}` : ''}
 
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
+## CRITICAL: ACCURACY HIERARCHY
+
+You must follow this priority order — earlier priorities ALWAYS override later ones:
+
+### Priority 1: INGREDIENT ACCURACY (NON-NEGOTIABLE)
+- Every ingredient's nutrition values MUST match the reference data provided
+- If an ingredient isn't in the reference data, use your knowledge of USDA standard values
+- NEVER fabricate or adjust ingredient nutrition values to hit targets
+- If you're uncertain about an ingredient's nutrition, use conservative estimates
+
+### Priority 2: MATHEMATICAL INTEGRITY (NON-NEGOTIABLE)
+- Each meal's total macros MUST equal the exact sum of its ingredients
+- Show your work: if a meal has 3 ingredients, calories = ing1_cal + ing2_cal + ing3_cal
+- Round to whole numbers only at the meal level, not ingredient level
+
+### Priority 3: TARGET ALIGNMENT (BEST EFFORT)
+- Daily totals should approach the user's targets
+- To adjust totals, ONLY modify PORTION SIZES — never fabricate nutrition values
+- If targets cannot be met with the available ingredients, that's acceptable
+- Under-target is better than inaccurate
+
+### What This Means In Practice
+✅ CORRECT: "User needs more calories → increase chicken breast from 5oz to 7oz"
+✅ CORRECT: "User needs more protein → add an extra egg to breakfast"
+✅ CORRECT: "Cannot hit 2000 cal with these ingredients → generate 1850 cal (honest)"
+❌ WRONG: "User needs 2000 cal → adjust salmon from 180 cal to 250 cal" (fabrication!)
+❌ WRONG: "Meal needs to hit 500 cal → report 500 cal even though ingredients sum to 420"
+
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
 ${themeStyleSection}${preferencesSection}${validatedMealsSection}${householdSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
 ${nutritionReference}
-## USER MACROS (daily targets) - MUST BE MET
-- **Daily Calories: ${profile.target_calories} kcal** (this is the PRIMARY goal)
-- Daily Protein: ${profile.target_protein}g
-- Daily Carbs: ${profile.target_carbs}g
-- Daily Fat: ${profile.target_fat}g
+
+## DAILY NUTRITION CONTEXT
+
+The user's daily targets are:
+- **Daily Calories:** ${profile.target_calories} kcal
+- **Daily Protein:** ${profile.target_protein}g
+- **Daily Carbs:** ${profile.target_carbs}g
+- **Daily Fat:** ${profile.target_fat}g
 - Dietary Preferences: ${dietaryPrefsText}
 - Max Prep Time Per Meal: ${profile.prep_time} minutes
-- Meals Per Day: ${profile.meals_per_day}
+- Meals Per Day: ${totalMealsPerDay} (${selectedMealTypes.join(', ')}${snackCount > 0 ? ` + ${snackCount} snack${snackCount > 1 ? 's' : ''}` : ''})
 
-## TARGET MACROS PER MEAL (approximately)
-- Calories: ~${targetCaloriesPerMeal} kcal per meal
-- Protein: ~${targetProteinPerMeal}g per meal
-- Carbs: ~${targetCarbsPerMeal}g per meal
-- Fat: ~${targetFatPerMeal}g per meal
+### Guidance (Not Hard Requirements)
+- Aim for each day to total within ±150 calories of the daily target
+- Protein is the most important macro for CrossFit athletes — prioritize hitting protein targets
+- If you must fall short somewhere, prefer under on carbs/fat rather than protein
 
-**CRITICAL**: Each day's meals MUST total approximately ${profile.target_calories} calories.
-Do NOT generate meals that total significantly less than this target (within 5-10% is acceptable).
+### Macro Balance for Regular Meals (Soft Guideline)
+Each regular meal (breakfast, lunch, dinner, snacks) should approximately reflect the user's overall macro ratio:
+- **Target Ratio**: ~${Math.round((profile.target_protein * 4 / profile.target_calories) * 100)}% protein, ~${Math.round((profile.target_carbs * 4 / profile.target_calories) * 100)}% carbs, ~${Math.round((profile.target_fat * 9 / profile.target_calories) * 100)}% fat
+- This is a soft guideline — nutritional accuracy is more important than hitting exact ratios
+- Meals should include a balance of protein, carbs, and fat (don't create carb-only or fat-only meals)
+- Exception: Workout meals have specific macro ratios defined separately (pre-workout = carb-heavy, post-workout = protein-heavy)
+
+### How to Approach This
+1. Generate meals using accurate ingredient portions
+2. After drafting all meals for a day, mentally sum the totals
+3. If significantly under target (>200 cal short):
+   - Look for opportunities to increase portion sizes
+   - Consider adding more calorie-dense ingredients where appropriate (extra olive oil, larger protein portions, more rice/quinoa)
+4. If still under target after reasonable adjustments, that's okay — accuracy matters more
+
+### Realistic Expectations
+A day with 5 meals (breakfast, snack, lunch, snack, dinner) eating whole foods typically ranges:
+- Lower bound: ~1400-1600 cal (lighter portions, lean proteins, lots of vegetables)
+- Mid range: ~1800-2200 cal (moderate portions, mixed protein sources)
+- Upper bound: ~2400-3000 cal (larger portions, calorie-dense additions)
+
+If the user's target is ${profile.target_calories} cal, your portions should reflect this range.
+
+## TARGET RANGES PER MEAL TYPE
+
+These are guidelines to help you plan, not hard requirements. Accuracy always wins.
+
+### For a ${profile.target_calories} cal/day target:
+
+**Breakfast** (${Math.round(profile.target_calories * 0.20)}-${Math.round(profile.target_calories * 0.25)} cal)
+- Typically 20-25% of daily calories
+- Should include protein source (eggs, Greek yogurt, protein in oats)
+
+**Lunch** (${Math.round(profile.target_calories * 0.25)}-${Math.round(profile.target_calories * 0.30)} cal)
+- Typically 25-30% of daily calories
+- Substantial protein + complex carbs
+
+**Dinner** (${Math.round(profile.target_calories * 0.30)}-${Math.round(profile.target_calories * 0.35)} cal)
+- Typically 30-35% of daily calories
+- Largest meal, most flexibility for hitting targets
+
+**Snacks** (${Math.round(profile.target_calories * 0.08)}-${Math.round(profile.target_calories * 0.12)} cal each)
+- Two snacks, each ~8-12% of daily calories
+- Quick, simple, protein-inclusive
+
+### Adjustment Guidance
+- If running under target: Increase dinner portions first (most flexibility)
+- If running over target: Reduce carb portions slightly
+- Protein portions should rarely be reduced
 
 ## MEAL CONSISTENCY SETTINGS
 ${consistencyInstructions}
 ${complexityInstructions}
-${snackInstructions}
+${snackInstructions}${getWorkoutMealInstructions(profile)}
 ## INSTRUCTIONS
-1. **PRIORITIZE HITTING CALORIE TARGETS** - use adequate portion sizes
+1. **PRIORITIZE HITTING CALORIE TARGETS THROUGH PORTION SIZES** - use adequate, realistic portions
 2. Create variety through different:
    - Cooking methods (grilled, baked, stir-fried, steamed, raw)
    - Flavor profiles (Mediterranean, Asian, Mexican, Italian, American)
@@ -232,6 +320,25 @@ ${snackInstructions}
 - Verify that calories approximately = (protein × 4) + (carbs × 4) + (fat × 9)
 - **MUST generate exactly ${totalMealsPerDay} meals per day (${totalMealsPerWeek} total)**
 
+## PRE-OUTPUT VERIFICATION
+
+Before outputting your JSON, verify these items mentally:
+
+### Accuracy Check
+□ Every ingredient's calories match the reference data (or USDA standards)
+□ Every meal's total = exact sum of its ingredients
+□ No ingredient has been assigned fabricated nutrition values
+
+### Target Check
+□ Each day's total is reasonable given the ingredients used
+□ If any day is significantly under target (>200 cal), I've maximized portions appropriately
+□ Protein totals are prioritized over carb/fat totals
+
+### Honesty Check
+□ If I couldn't hit the targets, I've reported accurate numbers anyway
+□ I have not "rounded up" meal totals to look closer to targets
+□ All nutrition values are defensible based on real food data
+
 ## RESPONSE FORMAT
 **CRITICAL NUTRITION REQUIREMENTS**:
 1. **Each ingredient MUST include its individual nutrition values** (calories, protein, carbs, fat) for the specified amount
@@ -242,8 +349,9 @@ ${snackInstructions}
 **TITLE**: Create a creative, descriptive title for this meal plan that captures its character${theme ? ` and reflects the "${theme.display_name}" theme` : ''}. Examples: "Mediterranean Power Week", "High-Protein Summer Eats", "Lean & Green Athlete Fuel".
 
 Generate all ${totalMealsPerWeek} meals for all 7 days in a single "meals" array.
-Order by day (monday first), then by meal type (breakfast, snack, lunch, snack, dinner for 5 meals/day).
+Order by day (monday first), then by meal type (breakfast, ${hasPreWorkout ? 'pre_workout, ' : ''}lunch, ${hasPostWorkout ? 'post_workout, ' : ''}snack, dinner).
 ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish snack 1 from snack 2.` : ''}
+${hasPreWorkout || hasPostWorkout ? `Include ${hasPreWorkout ? '"pre_workout"' : ''}${hasPreWorkout && hasPostWorkout ? ' and ' : ''}${hasPostWorkout ? '"post_workout"' : ''} meals for each day.` : ''}
 
 Use the generate_meals tool to provide your meal plan with a title.`;
 

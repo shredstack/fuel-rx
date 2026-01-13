@@ -13,6 +13,7 @@ export {
   DAYS_ORDER,
   MEAL_TYPE_CONFIG,
   MEAL_TYPES_ORDER,
+  getMealTypeColorClasses,
   type PrepTaskWithSession,
   type GroupedPrepData,
 } from './prepUtils'
