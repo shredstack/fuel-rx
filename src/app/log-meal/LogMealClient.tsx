@@ -43,6 +43,15 @@ function getTimeBasedMealTypes(): MealType[] {
   return ['dinner', 'snack'];
 }
 
+// Helper to get today's date in user's local timezone as YYYY-MM-DD
+function getLocalTodayString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function LogMealClient({ initialDate, initialSummary, initialAvailable }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -66,6 +75,35 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   // Track previous calorie percentage for confetti trigger
   const prevCaloriePercentageRef = useRef<number | null>(null);
   const hasShownConfettiRef = useRef(false);
+
+  // On mount, check if server-provided date matches client's local date
+  // If not (due to timezone mismatch), correct it to user's local today
+  useEffect(() => {
+    const localToday = getLocalTodayString();
+    if (initialDate !== localToday) {
+      // Server date doesn't match client's local date - refetch with correct date
+      setSelectedDate(localToday);
+      setLoading(true);
+      Promise.all([
+        fetch(`/api/consumption/daily?date=${localToday}`),
+        fetch(`/api/consumption/available?date=${localToday}`),
+      ])
+        .then(async ([summaryRes, availableRes]) => {
+          if (summaryRes.ok && availableRes.ok) {
+            setSummary(await summaryRes.json());
+            setAvailable(await availableRes.json());
+          }
+        })
+        .catch((error) => {
+          console.error('Error correcting date:', error);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch period data when period or date changes
   useEffect(() => {
