@@ -35,6 +35,27 @@ function getWeekStart(date: Date): Date {
   return d;
 }
 
+// Helper to get week start (Monday) from a date string (YYYY-MM-DD)
+// This avoids timezone issues by parsing the date components directly
+function getWeekStartFromDateStr(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Create date at noon UTC to avoid any DST issues
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const dayOfWeek = date.getUTCDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is 1, Sunday is 0
+  date.setUTCDate(date.getUTCDate() + diff);
+  return date.toISOString().split('T')[0];
+}
+
+// Helper to get day of week name from a date string (YYYY-MM-DD)
+function getDayOfWeekFromDateStr(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Create date at noon UTC to avoid any DST issues
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  return dayNames[date.getUTCDay()];
+}
+
 /**
  * Log a meal as consumed.
  * Fetches meal details from source and creates consumption entry with macro snapshot.
@@ -225,6 +246,76 @@ export async function removeConsumptionEntry(entryId: string, userId: string): P
 export async function getDailyConsumption(userId: string, date: Date): Promise<DailyConsumptionSummary> {
   const supabase = await createClient();
   const dateStr = date.toISOString().split('T')[0];
+
+  // Get user's macro targets
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('target_calories, target_protein, target_carbs, target_fat')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('Profile not found');
+
+  const targets: Macros = {
+    calories: profile.target_calories,
+    protein: profile.target_protein,
+    carbs: profile.target_carbs,
+    fat: profile.target_fat,
+  };
+
+  // Get all entries for the day
+  const { data: entries, error: entriesError } = await supabase
+    .from('meal_consumption_log')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('consumed_date', dateStr)
+    .order('consumed_at', { ascending: true });
+
+  if (entriesError) throw new Error(`Failed to fetch entries: ${entriesError.message}`);
+
+  // Calculate consumed totals
+  const consumed: Macros = (entries || []).reduce(
+    (acc, entry) => ({
+      calories: acc.calories + entry.calories,
+      protein: acc.protein + entry.protein,
+      carbs: acc.carbs + entry.carbs,
+      fat: acc.fat + entry.fat,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  // Calculate remaining and percentages
+  const remaining: Macros = {
+    calories: Math.max(0, targets.calories - consumed.calories),
+    protein: Math.max(0, targets.protein - consumed.protein),
+    carbs: Math.max(0, targets.carbs - consumed.carbs),
+    fat: Math.max(0, targets.fat - consumed.fat),
+  };
+
+  const percentages: Macros = {
+    calories: targets.calories > 0 ? Math.round((consumed.calories / targets.calories) * 100) : 0,
+    protein: targets.protein > 0 ? Math.round((consumed.protein / targets.protein) * 100) : 0,
+    carbs: targets.carbs > 0 ? Math.round((consumed.carbs / targets.carbs) * 100) : 0,
+    fat: targets.fat > 0 ? Math.round((consumed.fat / targets.fat) * 100) : 0,
+  };
+
+  return {
+    date: dateStr,
+    targets,
+    consumed,
+    remaining,
+    percentages,
+    entries: (entries || []) as ConsumptionEntry[],
+    entry_count: entries?.length || 0,
+  };
+}
+
+/**
+ * Get daily consumption summary using a date string (YYYY-MM-DD).
+ * This avoids timezone issues by not converting through Date objects.
+ */
+export async function getDailyConsumptionByDateStr(userId: string, dateStr: string): Promise<DailyConsumptionSummary> {
+  const supabase = await createClient();
 
   // Get user's macro targets
   const { data: profile, error: profileError } = await supabase
@@ -782,6 +873,198 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     custom_meals,
     quick_cook_meals,
     recent_meals: [], // Could populate from recent consumption entries later
+    frequent_ingredients,
+    pinned_ingredients,
+  };
+}
+
+/**
+ * Get all meals available to log for a given date string (YYYY-MM-DD).
+ * This avoids timezone issues by not converting through Date objects.
+ */
+export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: string): Promise<AvailableMealsToLog> {
+  const supabase = await createClient();
+
+  // Get day of week from date string
+  const dayOfWeek = getDayOfWeekFromDateStr(dateStr);
+
+  // Get today's logged entries for is_logged status
+  const { data: todaysLogs } = await supabase
+    .from('meal_consumption_log')
+    .select('id, meal_plan_meal_id, meal_id, consumed_at')
+    .eq('user_id', userId)
+    .eq('consumed_date', dateStr);
+
+  // Helper to check if logged
+  const getLoggedInfo = (mealPlanMealId?: string, mealId?: string) => {
+    const log = (todaysLogs || []).find(
+      (l) => (mealPlanMealId && l.meal_plan_meal_id === mealPlanMealId) || (mealId && l.meal_id === mealId)
+    );
+    return {
+      is_logged: !!log,
+      logged_entry_id: log?.id,
+      logged_at: log?.consumed_at,
+    };
+  };
+
+  // 1. Get current week's meal plan
+  const weekStartStr = getWeekStartFromDateStr(dateStr);
+  const { data: currentPlan } = await supabase
+    .from('meal_plans')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('week_start_date', weekStartStr)
+    .single();
+
+  const from_todays_plan: MealToLog[] = [];
+  const from_week_plan: MealToLog[] = [];
+
+  if (currentPlan) {
+    const { data: planMeals } = await supabase
+      .from('meal_plan_meals')
+      .select(
+        `
+        id,
+        day,
+        meal_id,
+        meals!meal_id(name, meal_type, calories, protein, carbs, fat, source_type)
+      `
+      )
+      .eq('meal_plan_id', currentPlan.id);
+
+    if (planMeals) {
+      for (const pm of planMeals) {
+        const meal = pm.meals as unknown as {
+          name: string;
+          meal_type: MealType;
+          calories: number;
+          protein: number;
+          carbs: number;
+          fat: number;
+          source_type?: string;
+        };
+
+        // Skip party meals
+        if (meal.source_type === 'party_meal') {
+          continue;
+        }
+        const logInfo = getLoggedInfo(pm.id, pm.meal_id);
+        const mealToLog: MealToLog = {
+          id: pm.id,
+          source: 'meal_plan' as ConsumptionEntryType,
+          source_id: pm.id,
+          name: meal.name,
+          meal_type: meal.meal_type,
+          calories: Math.round(meal.calories),
+          protein: Math.round(meal.protein),
+          carbs: Math.round(meal.carbs),
+          fat: Math.round(meal.fat),
+          ...logInfo,
+        };
+
+        if (pm.day === dayOfWeek) {
+          from_todays_plan.push(mealToLog);
+        } else {
+          from_week_plan.push(mealToLog);
+        }
+      }
+    }
+  }
+
+  // Sort today's plan by meal type order
+  const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+  from_todays_plan.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
+
+  // 2. Get custom meals (user-created, excluding quick_cook and party_meal)
+  const { data: customMeals } = await supabase
+    .from('meals')
+    .select('id, name, meal_type, calories, protein, carbs, fat')
+    .eq('source_user_id', userId)
+    .eq('is_user_created', true)
+    .neq('source_type', 'quick_cook')
+    .neq('source_type', 'party_meal')
+    .order('updated_at', { ascending: false })
+    .limit(10);
+
+  const custom_meals: MealToLog[] = (customMeals || []).map((m) => {
+    const logInfo = getLoggedInfo(undefined, m.id);
+    return {
+      id: m.id,
+      source: 'custom_meal' as ConsumptionEntryType,
+      source_id: m.id,
+      name: m.name,
+      meal_type: m.meal_type,
+      calories: Math.round(m.calories),
+      protein: Math.round(m.protein),
+      carbs: Math.round(m.carbs),
+      fat: Math.round(m.fat),
+      ...logInfo,
+    };
+  });
+
+  // 3. Get quick cook meals
+  const { data: quickCookMeals } = await supabase
+    .from('meals')
+    .select('id, name, meal_type, calories, protein, carbs, fat')
+    .eq('source_user_id', userId)
+    .eq('source_type', 'quick_cook')
+    .order('updated_at', { ascending: false })
+    .limit(10);
+
+  const quick_cook_meals: MealToLog[] = (quickCookMeals || []).map((m) => {
+    const logInfo = getLoggedInfo(undefined, m.id);
+    return {
+      id: m.id,
+      source: 'quick_cook' as ConsumptionEntryType,
+      source_id: m.id,
+      name: m.name,
+      meal_type: m.meal_type,
+      calories: Math.round(m.calories),
+      protein: Math.round(m.protein),
+      carbs: Math.round(m.carbs),
+      fat: Math.round(m.fat),
+      ...logInfo,
+    };
+  });
+
+  // 4. Get frequent ingredients
+  const frequentIngredients = await getFrequentIngredients(userId);
+  const frequent_ingredients: IngredientToLog[] = frequentIngredients.map((fi) => ({
+    name: fi.ingredient_name,
+    default_amount: fi.default_amount,
+    default_unit: fi.default_unit,
+    calories_per_serving: fi.calories_per_serving,
+    protein_per_serving: fi.protein_per_serving,
+    carbs_per_serving: fi.carbs_per_serving,
+    fat_per_serving: fi.fat_per_serving,
+    source: 'frequent' as const,
+    is_pinned: (fi as { is_pinned?: boolean }).is_pinned || false,
+  }));
+
+  // 5. Get pinned ingredients (favorites)
+  const pinnedIngredients = await getPinnedIngredients(userId);
+  const pinned_ingredients: IngredientToLog[] = pinnedIngredients.map((fi) => ({
+    name: fi.ingredient_name,
+    default_amount: fi.default_amount,
+    default_unit: fi.default_unit,
+    calories_per_serving: fi.calories_per_serving,
+    protein_per_serving: fi.protein_per_serving,
+    carbs_per_serving: fi.carbs_per_serving,
+    fat_per_serving: fi.fat_per_serving,
+    source: 'frequent' as const,
+    is_pinned: true,
+  }));
+
+  // 6. Get latest meal plan meals (for the "Meal Plan Meals" section)
+  const latest_plan_meals = await getLatestPlanMeals(userId, todaysLogs || []);
+
+  return {
+    from_todays_plan,
+    from_week_plan,
+    latest_plan_meals,
+    custom_meals,
+    quick_cook_meals,
+    recent_meals: [],
     frequent_ingredients,
     pinned_ingredients,
   };

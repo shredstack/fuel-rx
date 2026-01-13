@@ -6,7 +6,14 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getDailyConsumption } from '@/lib/consumption-service';
+import { getDailyConsumptionByDateStr } from '@/lib/consumption-service';
+
+// Helper to get today's date string in a consistent format
+function getTodayDateString(): string {
+  // Use UTC to avoid server timezone issues
+  // The client should always pass the date explicitly
+  return new Date().toISOString().split('T')[0];
+}
 
 export async function GET(request: Request) {
   try {
@@ -21,10 +28,10 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    const date = dateParam ? new Date(dateParam) : new Date();
+    // Use the date string directly without converting to Date object
+    const dateStr = searchParams.get('date') || getTodayDateString();
 
-    const summary = await getDailyConsumption(user.id, date);
+    const summary = await getDailyConsumptionByDateStr(user.id, dateStr);
 
     return NextResponse.json(summary);
   } catch (error) {
