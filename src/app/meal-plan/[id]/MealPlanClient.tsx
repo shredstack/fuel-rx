@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type {
@@ -189,19 +190,32 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         }
 
         const statusMap = new Map<string, MealPlanMealCookingStatus>()
-        data?.forEach((status) => {
+
+        // Process each status and generate signed URLs for photos
+        for (const status of data || []) {
+          let photoUrl = status.cooked_photo_url
+
+          // If photo URL is a storage path (not a full URL), generate signed URL
+          if (photoUrl && !photoUrl.startsWith('http')) {
+            const { data: signedUrlData } = await supabase.storage
+              .from('meal-photos')
+              .createSignedUrl(photoUrl, 60 * 60 * 24 * 7) // 7 days
+
+            photoUrl = signedUrlData?.signedUrl || null
+          }
+
           statusMap.set(status.meal_plan_meal_id, {
             id: status.id,
             meal_plan_meal_id: status.meal_plan_meal_id,
             cooking_status: status.cooking_status,
             cooked_at: status.cooked_at,
             modification_notes: status.modification_notes,
-            cooked_photo_url: status.cooked_photo_url,
+            cooked_photo_url: photoUrl,
             share_with_community: status.share_with_community ?? true,
             created_at: status.created_at,
             updated_at: status.updated_at,
           })
-        })
+        }
         setCookingStatuses(statusMap)
       } catch (error) {
         console.error('Error loading cooking statuses:', error)
@@ -587,7 +601,19 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         newStatuses.delete(mealSlotId)
         setCookingStatuses(newStatuses)
       } else {
-        setCookingStatuses(new Map(cookingStatuses).set(mealSlotId, updatedStatus))
+        // Generate signed URL if photo is a storage path
+        let cookedPhotoUrl = updatedStatus.cooked_photo_url
+        if (cookedPhotoUrl && !cookedPhotoUrl.startsWith('http')) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('meal-photos')
+            .createSignedUrl(cookedPhotoUrl, 60 * 60 * 24 * 7) // 7 days
+          cookedPhotoUrl = signedUrlData?.signedUrl || null
+        }
+
+        setCookingStatuses(new Map(cookingStatuses).set(mealSlotId, {
+          ...updatedStatus,
+          cooked_photo_url: cookedPhotoUrl,
+        }))
       }
 
       // If instructions were updated, update the meal in local state
@@ -615,7 +641,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+    <div className="min-h-screen bg-gray-50 pb-36 md:pb-0">
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -680,7 +706,49 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               })}
             </p>
           </div>
-          <div className="flex gap-3">
+          {/* Mobile: compact action row with favorite and share only */}
+          <div className="flex gap-2 md:hidden">
+            <button
+              onClick={toggleFavorite}
+              disabled={togglingFavorite}
+              className={`p-2 rounded-lg transition-colors ${
+                isFavorite
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-gray-200 text-gray-700'
+              }`}
+              title={isFavorite ? 'Favorited' : 'Favorite'}
+            >
+              <svg
+                className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`}
+                fill={isFavorite ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShareModalOpen(true)}
+              className="p-2 rounded-lg transition-colors bg-gray-200 text-gray-700"
+              title="Share"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                />
+              </svg>
+            </button>
+          </div>
+          {/* Desktop: full action row */}
+          <div className="hidden md:flex gap-3">
             <button
               onClick={toggleFavorite}
               disabled={togglingFavorite}
@@ -749,6 +817,23 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             <CoreIngredientsCard coreIngredients={normalizeCoreIngredients(mealPlan.core_ingredients)!} />
           </div>
         )}
+
+        {/* Mobile sticky action bar - key actions always visible */}
+        <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex gap-3 shadow-lg">
+          <Link
+            href={`/prep-view/${mealPlan.id}`}
+            className="btn-outline flex-1 text-center text-sm py-2"
+          >
+            Prep Schedule
+          </Link>
+          <Link
+            href={`/grocery-list/${mealPlan.id}`}
+            className="btn-primary flex-1 text-center text-sm py-2"
+            data-tour="grocery-list-link-mobile"
+          >
+            Grocery List
+          </Link>
+        </div>
 
         {/* Day selector */}
         <div className="flex overflow-x-auto gap-2 mb-6 pb-2" data-tour="day-selector">
@@ -834,6 +919,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
                 isFirstMealCard={idx === 0}
                 cookingStatus={cookingStatuses.get(mealSlot.id)?.cooking_status || 'not_cooked'}
+                cookingStatusData={cookingStatuses.get(mealSlot.id)}
                 onCookingStatusChange={(status, notes, updatedInstructions, photoUrl, shareWithCommunity) =>
                   handleCookingStatusChange(mealSlot.id, mealSlot.meal.id, status, notes, updatedInstructions, photoUrl, shareWithCommunity)
                 }
@@ -900,6 +986,7 @@ function MealCard({
   onSwap,
   isFirstMealCard = false,
   cookingStatus,
+  cookingStatusData,
   onCookingStatusChange,
   socialFeedEnabled = false,
 }: {
@@ -917,6 +1004,7 @@ function MealCard({
   onSwap: () => void
   isFirstMealCard?: boolean
   cookingStatus: CookingStatus
+  cookingStatusData?: MealPlanMealCookingStatus
   onCookingStatusChange: (status: CookingStatus, notes?: string, updatedInstructions?: string[], photoUrl?: string, shareWithCommunity?: boolean) => Promise<void>
   socialFeedEnabled?: boolean
 }) {
@@ -1035,6 +1123,16 @@ function MealCard({
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-gray-200">
+          {/* Your Modifications Section - shown when there are notes or photos */}
+          {cookingStatusData && (cookingStatusData.modification_notes || cookingStatusData.cooked_photo_url) && (
+            <MealModificationsSection
+              cookingStatusData={cookingStatusData}
+              meal={meal}
+              mealPlanId={mealPlanId}
+              mealSlotId={mealSlot.id}
+            />
+          )}
+
           <div className="grid md:grid-cols-2 gap-6">
             {/* Ingredients with Nutrition */}
             <div>
@@ -1087,6 +1185,134 @@ function MealCard({
   )
 }
 
+// Meal Modifications Section - displays notes, photos, and save as custom meal option
+function MealModificationsSection({
+  cookingStatusData,
+  meal,
+  mealPlanId,
+  mealSlotId,
+}: {
+  cookingStatusData: MealPlanMealCookingStatus
+  meal: MealEntity
+  mealPlanId: string
+  mealSlotId: string
+}) {
+  const [savingAsCustom, setSavingAsCustom] = useState(false)
+  const [savedAsCustom, setSavedAsCustom] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const hasModifications = cookingStatusData.modification_notes || cookingStatusData.cooked_photo_url
+
+  const handleSaveAsCustomMeal = async () => {
+    setSavingAsCustom(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/meals/save-as-custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceMealId: meal.id,
+          mealPlanId,
+          mealSlotId,
+          includeNotes: true,
+          includePhoto: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to save as custom meal')
+      }
+
+      setSavedAsCustom(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSavingAsCustom(false)
+    }
+  }
+
+  if (!hasModifications) return null
+
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+      <div className="flex items-center justify-between mb-3">
+        <h5 className="font-medium text-blue-900 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Your Modifications
+        </h5>
+        {!savedAsCustom ? (
+          <button
+            onClick={handleSaveAsCustomMeal}
+            disabled={savingAsCustom}
+            className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+          >
+            {savingAsCustom ? (
+              'Saving...'
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+                Save as My Meal
+              </>
+            )}
+          </button>
+        ) : (
+          <span className="text-sm text-green-700 flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Saved to My Meals
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-sm text-red-600 mb-3">{error}</p>
+      )}
+
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* Photo */}
+        {cookingStatusData.cooked_photo_url && (
+          <div className="flex-shrink-0">
+            <div className="relative w-full md:w-32 h-32 rounded-lg overflow-hidden bg-gray-100">
+              <Image
+                src={cookingStatusData.cooked_photo_url}
+                alt="Your cooked meal"
+                fill
+                className="object-cover"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {cookingStatusData.modification_notes && (
+          <div className="flex-1">
+            <p className="text-xs text-blue-700 font-medium mb-1">Your Notes</p>
+            <p className="text-sm text-gray-700">{cookingStatusData.modification_notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Cooked timestamp */}
+      {cookingStatusData.cooked_at && (
+        <p className="text-xs text-blue-600 mt-3">
+          Cooked on {new Date(cookingStatusData.cooked_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Ingredient row component with inline editing
 function IngredientRow({
   ingredient,
@@ -1114,10 +1340,10 @@ function IngredientRow({
   onDislike: () => void
 }) {
   const [editValues, setEditValues] = useState({
-    calories: ingredient.calories.toString(),
-    protein: ingredient.protein.toString(),
-    carbs: ingredient.carbs.toString(),
-    fat: ingredient.fat.toString(),
+    calories: (ingredient.calories ?? 0).toString(),
+    protein: (ingredient.protein ?? 0).toString(),
+    carbs: (ingredient.carbs ?? 0).toString(),
+    fat: (ingredient.fat ?? 0).toString(),
   })
 
   // IngredientWithNutrition always has nutrition data
@@ -1243,10 +1469,10 @@ function IngredientRow({
           </div>
           {hasNutritionData && (
             <div className="flex gap-3 text-xs text-gray-400 mt-1">
-              <span>{ingredient.calories} cal</span>
-              <span className="text-blue-400">{ingredient.protein}g P</span>
-              <span className="text-orange-400">{ingredient.carbs}g C</span>
-              <span className="text-purple-400">{ingredient.fat}g F</span>
+              <span>{ingredient.calories ?? 0} cal</span>
+              <span className="text-blue-400">{ingredient.protein ?? 0}g P</span>
+              <span className="text-orange-400">{ingredient.carbs ?? 0}g C</span>
+              <span className="text-purple-400">{ingredient.fat ?? 0}g F</span>
             </div>
           )}
         </div>
