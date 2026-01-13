@@ -97,7 +97,7 @@ const mealSchema = {
     },
     type: {
       type: 'string',
-      enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+      enum: ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'],
       description: 'Meal type',
     },
     snack_number: {
@@ -255,9 +255,11 @@ const dailyAssemblyDaySchema = {
   type: 'object' as const,
   properties: {
     breakfast: dailyAssemblyEntrySchema,
+    pre_workout: dailyAssemblyEntrySchema,
     lunch: dailyAssemblyEntrySchema,
-    dinner: dailyAssemblyEntrySchema,
+    post_workout: dailyAssemblyEntrySchema,
     snack: dailyAssemblyEntrySchema,
+    dinner: dailyAssemblyEntrySchema,
   },
   required: [],
 };
@@ -354,7 +356,7 @@ const simpleMealSchema = {
     name: { type: 'string', description: 'Meal name' },
     type: {
       type: 'string',
-      enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+      enum: ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'],
       description: 'Meal type',
     },
     prep_time_minutes: { type: 'number', description: 'Preparation time in minutes' },

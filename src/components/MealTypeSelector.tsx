@@ -12,12 +12,14 @@ interface Props {
 
 const MEAL_TYPE_ICONS: Record<MealType, string> = {
   breakfast: '🍳',
+  pre_workout: '⚡',
   lunch: '🥗',
-  dinner: '🍽️',
+  post_workout: '💪',
   snack: '🍎',
+  dinner: '🍽️',
 }
 
-const MEAL_TYPE_OPTIONS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+const MEAL_TYPE_OPTIONS: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner']
 
 export default function MealTypeSelector({ value, onChange, disabled }: Props) {
   const [expanded, setExpanded] = useState(false)

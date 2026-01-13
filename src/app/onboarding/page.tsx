@@ -15,9 +15,10 @@ import PrepStyleSelector from '@/components/PrepStyleSelector'
 import MealComplexityEditor from '@/components/MealComplexityEditor'
 import IngredientVarietyEditor from '@/components/IngredientVarietyEditor'
 import BasicInfoEditor from '@/components/BasicInfoEditor'
+import WorkoutMealsEditor from '@/components/WorkoutMealsEditor'
 import Logo from '@/components/Logo'
 
-const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
+const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'workout_meals', 'household'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -44,6 +45,9 @@ export default function OnboardingPage() {
     lunch_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.lunch,
     dinner_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.dinner,
     household_servings: { ...DEFAULT_HOUSEHOLD_SERVINGS_PREFS },
+    include_workout_meals: false,
+    workout_time: 'morning',
+    pre_workout_preference: 'light',
     profile_photo_url: null,
   })
 
@@ -96,6 +100,9 @@ export default function OnboardingPage() {
         lunch_complexity: formData.lunch_complexity,
         dinner_complexity: formData.dinner_complexity,
         household_servings: formData.household_servings,
+        include_workout_meals: formData.include_workout_meals,
+        workout_time: formData.workout_time,
+        pre_workout_preference: formData.pre_workout_preference,
         profile_photo_url: formData.profile_photo_url,
       })
       .eq('id', user.id)
@@ -357,7 +364,38 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 8: Household Servings */}
+          {/* Step 8: Workout Meals */}
+          {currentStep === 'workout_meals' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">Workout Nutrition</h3>
+              <p className="text-gray-600">
+                Want pre and post-workout meals in your plan? These help fuel your training and recovery.
+              </p>
+
+              <WorkoutMealsEditor
+                values={{
+                  includeWorkoutMeals: formData.include_workout_meals,
+                  workoutTime: formData.workout_time,
+                  preWorkoutPreference: formData.pre_workout_preference,
+                }}
+                onChange={(values) => setFormData(prev => ({
+                  ...prev,
+                  include_workout_meals: values.includeWorkoutMeals,
+                  workout_time: values.workoutTime,
+                  pre_workout_preference: values.preWorkoutPreference,
+                }))}
+              />
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> Workout meals are optional and can be enabled later in settings.
+                  They&apos;re great for CrossFit athletes who want targeted nutrition around training.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 9: Household Servings */}
           {currentStep === 'household' && (
             <div className="space-y-6">
               <h3 className="text-xl font-semibold text-gray-900">Feeding Your Household</h3>

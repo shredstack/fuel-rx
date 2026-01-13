@@ -23,9 +23,11 @@ interface ChartDataPoint {
   total: number;
   entry_count: number;
   breakfast: number;
+  pre_workout: number;
   lunch: number;
-  dinner: number;
+  post_workout: number;
   snack: number;
+  dinner: number;
 }
 
 interface TrendChartProps {
@@ -42,13 +44,15 @@ const MACRO_CONFIG: Record<MacroType, { label: string; color: string; unit: stri
 };
 
 const MEAL_TYPE_COLORS: Record<MealType, string> = {
-  breakfast: '#f97316', // orange
-  lunch: '#3b82f6',     // blue
-  dinner: '#8b5cf6',    // purple
-  snack: '#22c55e',     // green
+  breakfast: '#f97316',   // orange
+  pre_workout: '#fbbf24', // yellow
+  lunch: '#3b82f6',       // blue
+  post_workout: '#10b981',// teal
+  snack: '#22c55e',       // green
+  dinner: '#8b5cf6',      // purple
 };
 
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_TYPES: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'];
 
 function formatDate(dateStr: string, periodType: 'weekly' | 'monthly'): string {
   const date = new Date(dateStr);
@@ -111,9 +115,11 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
       total: day[selectedMacro],
       entry_count: day.entry_count,
       breakfast: getMealTypeValue('breakfast'),
+      pre_workout: getMealTypeValue('pre_workout'),
       lunch: getMealTypeValue('lunch'),
-      dinner: getMealTypeValue('dinner'),
+      post_workout: getMealTypeValue('post_workout'),
       snack: getMealTypeValue('snack'),
+      dinner: getMealTypeValue('dinner'),
     };
   });
 

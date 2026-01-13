@@ -1138,17 +1138,21 @@ export async function getConsumptionRange(
     count: number;
     byMealType: {
       breakfast: Macros;
+      pre_workout: Macros;
       lunch: Macros;
-      dinner: Macros;
+      post_workout: Macros;
       snack: Macros;
+      dinner: Macros;
     };
   };
 
   const emptyMealTypeBreakdown = () => ({
     breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    pre_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
     lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    post_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
     snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
   });
 
   // Group entries by date
@@ -1157,9 +1161,11 @@ export async function getConsumptionRange(
   // Initialize period-level meal type breakdown
   const byMealType: MealTypeBreakdown = {
     breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    pre_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
     lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    post_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
     snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
     unassigned: { calories: 0, protein: 0, carbs: 0, fat: 0 },
   };
 

@@ -209,13 +209,15 @@ export const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thurs
 // Meal type labels and colors
 export const MEAL_TYPE_CONFIG: Record<MealType, { label: string; color: string }> = {
   breakfast: { label: 'Breakfast', color: 'bg-yellow-100 text-yellow-800' },
+  pre_workout: { label: 'Pre-Workout', color: 'bg-orange-100 text-orange-800' },
   lunch: { label: 'Lunch', color: 'bg-teal-100 text-teal-800' },
-  dinner: { label: 'Dinner', color: 'bg-blue-100 text-blue-800' },
+  post_workout: { label: 'Post-Workout', color: 'bg-green-100 text-green-800' },
   snack: { label: 'Snacks', color: 'bg-purple-100 text-purple-800' },
+  dinner: { label: 'Dinner', color: 'bg-blue-100 text-blue-800' },
 }
 
 // Meal types in order
-export const MEAL_TYPES_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+export const MEAL_TYPES_ORDER: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner']
 
 // ============================================
 // MEAL-FIRST ORGANIZATION TYPES AND FUNCTIONS
@@ -528,17 +530,21 @@ export function groupPrepDataFromMealPlan(
     // Group meals by type and track index for each type
     const mealsByType: Record<MealType, { meal: Meal; index: number }[]> = {
       breakfast: [],
+      pre_workout: [],
       lunch: [],
-      dinner: [],
+      post_workout: [],
       snack: [],
+      dinner: [],
     }
 
     // Count meals by type to get proper indices
     const typeCounters: Record<MealType, number> = {
       breakfast: 0,
+      pre_workout: 0,
       lunch: 0,
-      dinner: 0,
+      post_workout: 0,
       snack: 0,
+      dinner: 0,
     }
 
     for (const meal of dayPlan.meals) {

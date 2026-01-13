@@ -9,7 +9,89 @@ export type PrepTime = 5 | 15 | 30 | 45 | 60;
 
 export type MealsPerDay = 3 | 4 | 5 | 6;
 
-export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+export type MealType = 'breakfast' | 'pre_workout' | 'lunch' | 'post_workout' | 'snack' | 'dinner';
+
+// Workout time preference
+export type WorkoutTime = 'morning' | 'midday' | 'evening' | 'varies';
+
+// Pre-workout meal size preference
+export type PreWorkoutPreference = 'light' | 'moderate' | 'substantial';
+
+// Meal type configuration for display and calorie allocation
+export const MEAL_TYPE_CONFIG: Record<MealType, {
+  label: string;
+  shortLabel: string;
+  icon: string;
+  displayOrder: number;
+  caloriePercentRange: [number, number]; // [min%, max%] of daily calories
+  isWorkoutMeal: boolean;
+}> = {
+  breakfast: {
+    label: 'Breakfast',
+    shortLabel: 'Bfast',
+    icon: '🌅',
+    displayOrder: 1,
+    caloriePercentRange: [0.20, 0.25],
+    isWorkoutMeal: false,
+  },
+  pre_workout: {
+    label: 'Pre-Workout',
+    shortLabel: 'Pre-WO',
+    icon: '⚡',
+    displayOrder: 2,
+    caloriePercentRange: [0.05, 0.10],
+    isWorkoutMeal: true,
+  },
+  lunch: {
+    label: 'Lunch',
+    shortLabel: 'Lunch',
+    icon: '☀️',
+    displayOrder: 3,
+    caloriePercentRange: [0.25, 0.30],
+    isWorkoutMeal: false,
+  },
+  post_workout: {
+    label: 'Post-Workout',
+    shortLabel: 'Post-WO',
+    icon: '💪',
+    displayOrder: 4,
+    caloriePercentRange: [0.08, 0.12],
+    isWorkoutMeal: true,
+  },
+  snack: {
+    label: 'Snack',
+    shortLabel: 'Snack',
+    icon: '🍎',
+    displayOrder: 5,
+    caloriePercentRange: [0.08, 0.12],
+    isWorkoutMeal: false,
+  },
+  dinner: {
+    label: 'Dinner',
+    shortLabel: 'Dinner',
+    icon: '🌙',
+    displayOrder: 6,
+    caloriePercentRange: [0.30, 0.35],
+    isWorkoutMeal: false,
+  },
+};
+
+// Helper to get meals in display order
+export const getMealTypesInOrder = (): MealType[] => {
+  return Object.entries(MEAL_TYPE_CONFIG)
+    .sort(([, a], [, b]) => a.displayOrder - b.displayOrder)
+    .map(([type]) => type as MealType);
+};
+
+// Helper to check if a meal type is workout-related
+export const isWorkoutMeal = (type: MealType): boolean => {
+  return MEAL_TYPE_CONFIG[type]?.isWorkoutMeal ?? false;
+};
+
+// Helper to get standard (non-workout) meal types
+export const getStandardMealTypes = (): MealType[] => {
+  return ['breakfast', 'lunch', 'dinner', 'snack'];
+};
 
 export type MealConsistency = 'consistent' | 'varied';
 
@@ -65,16 +147,20 @@ export const DEFAULT_MEAL_COMPLEXITY_PREFS: MealComplexityPrefs = {
 
 export const DEFAULT_MEAL_CONSISTENCY_PREFS: MealConsistencyPrefs = {
   breakfast: 'varied',
+  pre_workout: 'consistent',
   lunch: 'varied',
-  dinner: 'varied',
+  post_workout: 'consistent',
   snack: 'varied',
+  dinner: 'varied',
 };
 
 export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
+  pre_workout: 'Pre-Workout',
   lunch: 'Lunch',
-  dinner: 'Dinner',
+  post_workout: 'Post-Workout',
   snack: 'Snack',
+  dinner: 'Dinner',
 };
 
 export interface UserProfile {
@@ -98,6 +184,10 @@ export interface UserProfile {
   dinner_complexity: MealComplexity;
   // Household servings preferences
   household_servings: HouseholdServingsPrefs;
+  // Workout meal preferences
+  include_workout_meals: boolean;
+  workout_time: WorkoutTime;
+  pre_workout_preference: PreWorkoutPreference;
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
@@ -134,7 +224,7 @@ export interface Macros {
 
 export interface Meal {
   name: string;
-  type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  type: MealType;
   prep_time_minutes: number;
   ingredients: Ingredient[];
   instructions: string[];
@@ -144,7 +234,7 @@ export interface Meal {
 // Meal with ingredient-level nutrition data
 export interface MealWithIngredientNutrition {
   name: string;
-  type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  type: MealType;
   prep_time_minutes: number;
   ingredients: IngredientWithNutrition[];
   instructions: string[];
@@ -197,6 +287,10 @@ export interface OnboardingData {
   dinner_complexity: MealComplexity;
   // Household servings preferences
   household_servings: HouseholdServingsPrefs;
+  // Workout meal preferences
+  include_workout_meals: boolean;
+  workout_time: WorkoutTime;
+  pre_workout_preference: PreWorkoutPreference;
   profile_photo_url: string | null;
 }
 
@@ -577,9 +671,11 @@ export interface PrepItem {
 // Daily assembly instructions for a single day
 export interface DailyAssemblyDay {
   breakfast?: { time: string; instructions: string };
+  pre_workout?: { time: string; instructions: string };
   lunch?: { time: string; instructions: string };
-  dinner?: { time: string; instructions: string };
+  post_workout?: { time: string; instructions: string };
   snack?: { time: string; instructions: string };
+  dinner?: { time: string; instructions: string };
 }
 
 // Daily assembly for all days
@@ -1659,9 +1755,11 @@ export interface DailyDataPoint {
   // Per-meal-type breakdown for filtering
   byMealType?: {
     breakfast: Macros;
+    pre_workout: Macros;
     lunch: Macros;
-    dinner: Macros;
+    post_workout: Macros;
     snack: Macros;
+    dinner: Macros;
   };
 }
 
@@ -1670,9 +1768,11 @@ export interface DailyDataPoint {
  */
 export interface MealTypeBreakdown {
   breakfast: Macros;
+  pre_workout: Macros;
   lunch: Macros;
-  dinner: Macros;
+  post_workout: Macros;
   snack: Macros;
+  dinner: Macros;
   unassigned: Macros; // For legacy entries without meal_type
 }
 
