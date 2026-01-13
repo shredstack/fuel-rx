@@ -155,8 +155,9 @@ export default function IngredientSearchBar({
           {/* Scan Barcode Button */}
           <button
             onClick={onScanBarcode}
-            className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg
-                       text-gray-600 transition-colors flex items-center gap-2"
+            className="px-4 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600
+                       hover:from-primary-600 hover:to-primary-700 rounded-lg
+                       text-white transition-all shadow-md flex items-center gap-2"
             title="Scan barcode"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
