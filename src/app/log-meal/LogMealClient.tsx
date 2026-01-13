@@ -289,6 +289,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           amount,
           unit,
           ...totalMacros,
+          consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
         }),
       });
 
