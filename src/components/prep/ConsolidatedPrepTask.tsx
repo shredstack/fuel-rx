@@ -5,6 +5,7 @@ import type { ConsolidatedMeal } from './prepUtils'
 import { formatDayRange, formatCookingTemps, formatCookingTimes, formatHouseholdContextForDays, generateHouseholdScalingGuide } from './prepUtils'
 import type { HouseholdServingsPrefs, DailyAssembly } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
+import { CookingAssistantButton } from '@/components/CookingAssistant'
 
 interface Props {
   meal: ConsolidatedMeal
@@ -140,6 +141,16 @@ export default function ConsolidatedPrepTask({
                 <span className="ml-1">~{primaryTask.estimated_minutes} min</span>
               )}
             </span>
+            {primaryTask.meal_ids && primaryTask.meal_ids.length > 0 && !allTasksCompleted && (
+              <CookingAssistantButton
+                mealId={primaryTask.meal_ids[0]}
+                mealName={meal.mealName}
+                batchContext={{
+                  totalServings: meal.totalServings,
+                  days: meal.days,
+                }}
+              />
+            )}
           </div>
 
           {/* Progress indicator shown in header when collapsed */}

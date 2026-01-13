@@ -11,6 +11,7 @@ import {
 } from '@/components/prep/prepUtils'
 import MealTypeSection from '@/components/prep/MealTypeSection'
 import BatchPrepSection from '@/components/prep/BatchPrepSection'
+import { MealIdProvider } from '@/components/prep/MealIdContext'
 
 interface PrepViewClientProps {
   mealPlan: {
@@ -57,6 +58,23 @@ export default function PrepViewClient({
 
   // Convert normalized days to legacy DayPlan format for prep utilities
   const mealPlanDays: DayPlan[] = days.map(convertToLegacyDayPlan)
+
+  // Build a map from composite meal IDs (meal_monday_breakfast_0) to actual meal UUIDs
+  // This is needed for the cooking assistant to look up meals in the database
+  const mealIdMap: Record<string, { id: string; name: string }> = {}
+  for (const day of days) {
+    const snackCounts: Record<string, number> = {}
+    for (const slot of day.meals) {
+      let index = 0
+      if (slot.meal_type === 'snack') {
+        snackCounts[slot.meal_type] = (snackCounts[slot.meal_type] || 0)
+        index = snackCounts[slot.meal_type]
+        snackCounts[slot.meal_type]++
+      }
+      const compositeId = `meal_${day.day}_${slot.meal_type}_${index}`
+      mealIdMap[compositeId] = { id: slot.meal.id, name: slot.meal.name }
+    }
+  }
 
   // Note: We no longer trigger LLM regeneration when prep sessions are missing.
   // Instead, groupPrepDataByMealType() creates prep tasks directly from meal data.
@@ -137,6 +155,7 @@ export default function PrepViewClient({
   const totalCompleted = completedTasks.size
 
   return (
+    <MealIdProvider mealIdMap={mealIdMap}>
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 py-8 px-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
@@ -236,5 +255,6 @@ export default function PrepViewClient({
         </div>
       </div>
     </div>
+    </MealIdProvider>
   )
 }

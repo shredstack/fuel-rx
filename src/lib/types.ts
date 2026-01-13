@@ -1826,3 +1826,47 @@ export interface SaveMealPhotoOptions {
   notes?: string;
   consumedAt?: string;
 }
+
+// ============================================
+// Cooking Assistant Types
+// ============================================
+
+/**
+ * A chat session between a user and the cooking assistant for a specific meal
+ */
+export interface CookingChatSession {
+  id: string;
+  user_id: string;
+  meal_id: string;
+  created_at: string;
+  updated_at: string;
+  ended_at: string | null;
+}
+
+/**
+ * A single message in a cooking chat session
+ */
+export interface CookingChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+/**
+ * Response from creating/resuming a cooking assistant session
+ */
+export interface CookingAssistantSessionResponse {
+  sessionId: string;
+  messages: CookingChatMessage[];
+  suggestedQuestions: string[];
+}
+
+/**
+ * Response from sending a message to the cooking assistant
+ */
+export interface CookingAssistantMessageResponse {
+  reply: string;
+  created_at: string;
+}
