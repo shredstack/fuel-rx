@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -20,6 +20,24 @@ export default function Navbar() {
   const router = useRouter()
   const supabase = createClient()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Check admin status on mount
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single()
+
+      setIsAdmin(data?.is_admin === true)
+    }
+    checkAdminStatus()
+  }, [supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -54,6 +72,16 @@ export default function Navbar() {
               {item.label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              href="/admin/ingredients"
+              className={`text-purple-600 hover:text-purple-800 ${
+                pathname.startsWith('/admin') ? 'font-medium' : ''
+              }`}
+            >
+              Admin
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             className="text-gray-600 hover:text-gray-900"
@@ -98,6 +126,19 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+            {isAdmin && (
+              <Link
+                href="/admin/ingredients"
+                className={`block px-3 py-2 rounded-md text-base ${
+                  pathname.startsWith('/admin')
+                    ? 'bg-purple-50 text-purple-700 font-medium'
+                    : 'text-purple-600 hover:bg-purple-50 hover:text-purple-800'
+                }`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Admin
+              </Link>
+            )}
             <button
               onClick={() => {
                 setMobileMenuOpen(false)

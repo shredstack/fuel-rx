@@ -1634,6 +1634,10 @@ export interface ConsumptionEntry {
   amount?: number;
   unit?: string;
 
+  // 800g Challenge tracking
+  grams?: number;  // Weight in grams (for fruit/vegetable tracking)
+  ingredient_category?: IngredientCategoryType;  // Category for 800g calculation
+
   // Macro snapshot at time of logging
   calories: number;
   protein: number;
@@ -1663,6 +1667,19 @@ export interface FrequentIngredient {
   last_logged_at: string;
   is_user_added?: boolean;
   ingredient_id?: string;
+  // 800g Challenge tracking
+  category?: IngredientCategoryType;
+  default_grams?: number;
+}
+
+/**
+ * 800g Challenge fruit/vegetable tracking
+ */
+export interface FruitVegProgress {
+  currentGrams: number;
+  goalGrams: number;  // 800 by default
+  percentage: number;
+  goalCelebrated: boolean;
 }
 
 /**
@@ -1676,6 +1693,8 @@ export interface DailyConsumptionSummary {
   percentages: Macros;
   entries: ConsumptionEntry[];
   entry_count: number;
+  // 800g Challenge tracking
+  fruitVeg?: FruitVegProgress;
 }
 
 /**
@@ -1723,6 +1742,9 @@ export interface IngredientToLog {
   is_validated?: boolean;  // true if nutrition data is FuelRx-validated
   is_pinned?: boolean;     // true if user has pinned this ingredient as a favorite
   barcode?: string;
+  // 800g Challenge tracking
+  category?: IngredientCategoryType;
+  default_grams?: number;
 }
 
 /**
@@ -1766,6 +1788,9 @@ export interface LogIngredientRequest {
   fat: number;
   consumed_at?: string;
   notes?: string;
+  // 800g Challenge tracking
+  grams?: number;
+  category?: IngredientCategoryType;
 }
 
 export type LogConsumptionRequest = LogMealRequest | LogIngredientRequest;
@@ -2003,4 +2028,104 @@ export interface CookingAssistantSessionResponse {
 export interface CookingAssistantMessageResponse {
   reply: string;
   created_at: string;
+}
+
+// ============================================
+// Admin Types
+// ============================================
+
+/**
+ * Admin ingredient with nutrition data joined
+ */
+export interface AdminIngredient {
+  id: string;
+  name: string;
+  name_normalized: string;
+  category: IngredientCategoryType | null;
+  validated: boolean;
+  is_user_added: boolean;
+  added_by_user_id: string | null;
+  added_at: string | null;
+  created_at: string;
+  updated_at: string;
+  nutrition?: IngredientNutrition[];
+}
+
+/**
+ * Paginated response for admin ingredient list
+ */
+export interface PaginatedAdminIngredients {
+  data: AdminIngredient[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/**
+ * Admin ingredient filter options
+ */
+export interface AdminIngredientFilters {
+  search?: string;
+  category?: IngredientCategoryType;
+  validated?: boolean;
+  userAddedOnly?: boolean;
+  sortBy?: 'name' | 'category' | 'created_at' | 'validated';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * Admin action types for audit logging
+ */
+export type AdminActionType =
+  | 'update_ingredient'
+  | 'update_nutrition'
+  | 'bulk_update_category'
+  | 'bulk_update_validated';
+
+/**
+ * Audit log entry for admin actions
+ */
+export interface AdminAuditLogEntry {
+  id: string;
+  admin_user_id: string;
+  action: AdminActionType;
+  entity_type: 'ingredient' | 'ingredient_nutrition';
+  entity_id: string;
+  changes: Record<string, { old: unknown; new: unknown }>;
+  created_at: string;
+}
+
+/**
+ * Request to update an ingredient (admin)
+ */
+export interface UpdateIngredientRequest {
+  name?: string;
+  category?: IngredientCategoryType;
+  validated?: boolean;
+}
+
+/**
+ * Request to update ingredient nutrition (admin)
+ */
+export interface UpdateIngredientNutritionRequest {
+  serving_size?: number;
+  serving_unit?: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+}
+
+/**
+ * Request for bulk updating ingredients (admin)
+ */
+export interface BulkUpdateIngredientsRequest {
+  ingredient_ids: string[];
+  updates: {
+    category?: IngredientCategoryType;
+    validated?: boolean;
+  };
 }

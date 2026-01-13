@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { IngredientToLog, MealType } from '@/lib/types';
+import type { IngredientToLog, MealType, IngredientCategoryType } from '@/lib/types';
 import MealTypeSelector from './MealTypeSelector';
+import { countsToward800g } from './FruitVegProgressBar';
 
 // Time-based meal type suggestion
 function getTimeBasedMealType(): MealType {
@@ -25,13 +26,23 @@ interface IngredientAmountPickerProps {
   ingredient: IngredientToLog;
   isOpen: boolean;
   onClose: () => void;
-  onLog: (ingredient: IngredientToLog, amount: number, unit: string, mealType: MealType) => Promise<void>;
+  onLog: (
+    ingredient: IngredientToLog,
+    amount: number,
+    unit: string,
+    mealType: MealType,
+    grams?: number,
+    category?: IngredientCategoryType
+  ) => Promise<void>;
 }
 
 export default function IngredientAmountPicker({ ingredient, isOpen, onClose, onLog }: IngredientAmountPickerProps) {
   const [amount, setAmount] = useState(ingredient.default_amount);
   const [mealType, setMealType] = useState<MealType>(getTimeBasedMealType());
   const [logging, setLogging] = useState(false);
+  // 800g Challenge: grams input for fruits/vegetables
+  const isFruitOrVeg = countsToward800g(ingredient.category);
+  const [grams, setGrams] = useState<number>(ingredient.default_grams || 100);
 
   if (!isOpen) return null;
 
@@ -46,7 +57,14 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
   const handleLog = async () => {
     setLogging(true);
     try {
-      await onLog(ingredient, amount, ingredient.default_unit, mealType);
+      await onLog(
+        ingredient,
+        amount,
+        ingredient.default_unit,
+        mealType,
+        isFruitOrVeg ? grams : undefined,
+        ingredient.category
+      );
     } finally {
       setLogging(false);
     }
@@ -89,6 +107,73 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
             +
           </button>
         </div>
+
+        {/* 800g Challenge: Grams Input for Fruits/Vegetables */}
+        {isFruitOrVeg && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{ingredient.category === 'fruit' ? '🍎' : '🥬'}</span>
+              <span className="text-sm font-medium text-green-800">Counts toward 800g goal!</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-green-700">Weight:</label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGrams(Math.max(10, grams - 50))}
+                  className="w-8 h-8 rounded bg-green-100 hover:bg-green-200 text-green-700 font-bold"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  value={grams}
+                  onChange={(e) => setGrams(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-20 text-center border border-green-300 rounded px-2 py-1 text-lg font-bold text-green-800"
+                />
+                <span className="text-green-700 font-medium">g</span>
+                <button
+                  type="button"
+                  onClick={() => setGrams(grams + 50)}
+                  className="w-8 h-8 rounded bg-green-100 hover:bg-green-200 text-green-700 font-bold"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            {/* Quick preset buttons */}
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setGrams(50)}
+                className="text-xs px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded"
+              >
+                50g
+              </button>
+              <button
+                type="button"
+                onClick={() => setGrams(100)}
+                className="text-xs px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded"
+              >
+                100g
+              </button>
+              <button
+                type="button"
+                onClick={() => setGrams(150)}
+                className="text-xs px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded"
+              >
+                150g
+              </button>
+              <button
+                type="button"
+                onClick={() => setGrams(200)}
+                className="text-xs px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded"
+              >
+                200g
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Macro Summary */}
         <div className="bg-gray-50 rounded-lg p-4 mb-4">
