@@ -5,6 +5,8 @@ import Link from 'next/link'
 import type { Ingredient, CoreIngredients } from '@/lib/types'
 import Logo from '@/components/Logo'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 
 interface Props {
@@ -68,23 +70,8 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
   const checkedCount = checkedItems.size
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard">
-            <Logo size="lg" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
-            </Link>
-            <Link href="/history" className="text-gray-600 hover:text-gray-900">
-              My Plans
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Page header */}
@@ -209,6 +196,8 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
           </button>
         </div>
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

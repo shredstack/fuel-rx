@@ -31,6 +31,8 @@ import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownCh
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Logo from '@/components/Logo';
+import Navbar from '@/components/Navbar';
+import MobileTabBar from '@/components/MobileTabBar';
 
 interface Props {
   initialDate: string;
@@ -497,12 +499,6 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     prevCaloriePercentageRef.current = null;
   }, [selectedDate]);
 
-  // Handle logout
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
   // Get time-based suggested meals from today's plan
   const suggestedMealTypes = getTimeBasedMealTypes();
   const suggestedMeals = available.from_todays_plan
@@ -521,29 +517,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   const latestPlanMeals = available.latest_plan_meals || [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard">
-            <Logo size="lg" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/community" className="text-gray-600 hover:text-gray-900">
-              Community
-            </Link>
-            <Link href="/custom-meals" className="text-gray-600 hover:text-gray-900">
-              My Meals
-            </Link>
-            <Link href="/history" className="text-gray-600 hover:text-gray-900">
-              My Plans
-            </Link>
-            <button onClick={handleLogout} className="text-gray-600 hover:text-gray-900">
-              Log out
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         {/* Page Title */}
@@ -958,6 +933,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           }}
         />
       </main>
+
+      <MobileTabBar />
     </div>
   );
 }

@@ -17,6 +17,17 @@ import { MEAL_TYPE_LABELS } from '@/lib/types';
 type MacroType = 'calories' | 'protein' | 'carbs' | 'fat';
 type MealTypeFilter = MealType | 'all';
 
+interface ChartDataPoint {
+  label: string;
+  fullDate: string;
+  total: number;
+  entry_count: number;
+  breakfast: number;
+  lunch: number;
+  dinner: number;
+  snack: number;
+}
+
 interface TrendChartProps {
   dailyData: DailyDataPoint[];
   dailyTargets: Macros;
@@ -83,8 +94,15 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
   };
 
   // Format data for chart - include per-meal-type values for multi-line display
-  const chartData = dailyData.map((day) => {
-    const baseData = {
+  const chartData: ChartDataPoint[] = dailyData.map((day) => {
+    const getMealTypeValue = (mealType: MealType): number => {
+      if (day.byMealType) {
+        return Math.round(day.byMealType[mealType][selectedMacro] * 10) / 10;
+      }
+      return 0;
+    };
+
+    return {
       label: formatDate(day.date, periodType),
       fullDate: new Date(day.date).toLocaleDateString('en-US', {
         month: 'short',
@@ -92,23 +110,10 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
       }),
       total: day[selectedMacro],
       entry_count: day.entry_count,
-    };
-
-    // Add per-meal-type values
-    const mealTypeValues: Record<string, number> = {};
-    if (day.byMealType) {
-      for (const mealType of MEAL_TYPES) {
-        mealTypeValues[mealType] = Math.round(day.byMealType[mealType][selectedMacro] * 10) / 10;
-      }
-    } else {
-      for (const mealType of MEAL_TYPES) {
-        mealTypeValues[mealType] = 0;
-      }
-    }
-
-    return {
-      ...baseData,
-      ...mealTypeValues,
+      breakfast: getMealTypeValue('breakfast'),
+      lunch: getMealTypeValue('lunch'),
+      dinner: getMealTypeValue('dinner'),
+      snack: getMealTypeValue('snack'),
     };
   });
 

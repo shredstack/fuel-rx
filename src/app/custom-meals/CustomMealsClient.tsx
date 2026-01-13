@@ -22,6 +22,8 @@ import NumericInput from '@/components/NumericInput'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 import SavedSingleMealCard from '@/components/SavedSingleMealCard'
 import SavedPartyMealCard from '@/components/SavedPartyMealCard'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   initialMeals: SavedMeal[]
@@ -451,23 +453,11 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">My Meals</h1>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
-            </Link>
-            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
-              Log
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-2xl font-bold text-primary-600 mb-6">My Meals</h1>
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
             {error}
@@ -1087,6 +1077,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
           </div>
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

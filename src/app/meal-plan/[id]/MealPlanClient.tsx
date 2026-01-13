@@ -31,6 +31,8 @@ import { useOnboardingState } from '@/hooks/useOnboardingState'
 import SpotlightTip from '@/components/onboarding/SpotlightTip'
 import { FIRST_PLAN_TOUR_STEPS } from '@/lib/types'
 import Logo from '@/components/Logo'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   mealPlan: MealPlanNormalized & {
@@ -585,26 +587,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard">
-            <Logo size="lg" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
-            </Link>
-            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
-              Log
-            </Link>
-            <Link href="/history" className="text-gray-600 hover:text-gray-900">
-              My Plans
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Plan header */}
@@ -866,6 +850,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           />
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

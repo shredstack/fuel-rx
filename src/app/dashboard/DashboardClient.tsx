@@ -15,6 +15,8 @@ import { useOnboardingState } from '@/hooks/useOnboardingState'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
 import Logo from '@/components/Logo'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   profile: UserProfile | null
@@ -116,12 +118,6 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
     }
   }, [onboardingState, shownMilestones])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-    router.refresh()
-  }
-
   const handleGeneratePlan = async () => {
     setGenerating(true)
     setError(null)
@@ -205,33 +201,8 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Logo size="lg" />
-          <div className="flex items-center gap-4">
-            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
-              Log
-            </Link>
-            <Link href="/community" className="text-gray-600 hover:text-gray-900">
-              Community
-            </Link>
-            <Link href="/custom-meals" className="text-gray-600 hover:text-gray-900">
-              My Meals
-            </Link>
-            <Link href="/history" className="text-gray-600 hover:text-gray-900">
-              My Plans
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              Log out
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome section */}
@@ -684,6 +655,8 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           />
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }
