@@ -6,7 +6,14 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAvailableMealsToLog } from '@/lib/consumption-service';
+import { getAvailableMealsToLogByDateStr } from '@/lib/consumption-service';
+
+// Helper to get today's date string in a consistent format
+function getTodayDateString(): string {
+  // Use UTC to avoid server timezone issues
+  // The client should always pass the date explicitly
+  return new Date().toISOString().split('T')[0];
+}
 
 export async function GET(request: Request) {
   try {
@@ -21,10 +28,10 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    const date = dateParam ? new Date(dateParam) : new Date();
+    // Use the date string directly without converting to Date object
+    const dateStr = searchParams.get('date') || getTodayDateString();
 
-    const available = await getAvailableMealsToLog(user.id, date);
+    const available = await getAvailableMealsToLogByDateStr(user.id, dateStr);
 
     return NextResponse.json(available);
   } catch (error) {
