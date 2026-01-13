@@ -1,6 +1,7 @@
 'use client';
 
-import type { Macros } from '@/lib/types';
+import type { Macros, FruitVegProgress } from '@/lib/types';
+import FruitVegProgressBar from './FruitVegProgressBar';
 
 interface DailyProgressCardProps {
   date: string;
@@ -8,6 +9,7 @@ interface DailyProgressCardProps {
   consumed: Macros;
   percentages: Macros;
   entryCount: number;
+  fruitVeg?: FruitVegProgress;
 }
 
 function ProgressBar({
@@ -54,7 +56,7 @@ function ProgressBar({
   );
 }
 
-export default function DailyProgressCard({ date, targets, consumed, percentages, entryCount }: DailyProgressCardProps) {
+export default function DailyProgressCard({ date, targets, consumed, percentages, entryCount, fruitVeg }: DailyProgressCardProps) {
   // Format date for display
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long',
@@ -96,6 +98,15 @@ export default function DailyProgressCard({ date, targets, consumed, percentages
           {remaining.calories > 0 ? `${Math.round(remaining.calories)} cal remaining` : 'Goal reached!'}
         </p>
       </div>
+
+      {/* Fruit & Vegetable Progress (800g Challenge) */}
+      {fruitVeg && (
+        <FruitVegProgressBar
+          currentGrams={fruitVeg.currentGrams}
+          goalGrams={fruitVeg.goalGrams}
+          goalCelebrated={fruitVeg.goalCelebrated}
+        />
+      )}
 
       {/* Macro Progress */}
       <div className="grid grid-cols-3 gap-4">

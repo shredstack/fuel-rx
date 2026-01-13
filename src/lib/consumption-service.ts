@@ -19,7 +19,13 @@ import type {
   Macros,
   ConsumptionEntryType,
   MealTypeBreakdown,
+  FruitVegProgress,
+  IngredientCategoryType,
 } from '@/lib/types';
+
+// Categories that count toward the 800g goal
+const FRUIT_VEG_CATEGORIES = ['fruit', 'vegetable'];
+const FRUIT_VEG_GOAL_GRAMS = 800;
 
 // Helper to normalize ingredient names for matching
 function normalizeIngredientName(name: string): string {
@@ -211,6 +217,9 @@ export async function logIngredientConsumed(
       carbs: Math.round(request.carbs * 10) / 10,
       fat: Math.round(request.fat * 10) / 10,
       notes: request.notes,
+      // 800g Challenge tracking
+      grams: request.grams,
+      ingredient_category: request.category,
     })
     .select()
     .single();
@@ -223,7 +232,7 @@ export async function logIngredientConsumed(
     protein: request.protein,
     carbs: request.carbs,
     fat: request.fat,
-  });
+  }, request.category, request.grams);
 
   return entry as ConsumptionEntry;
 }
@@ -372,6 +381,29 @@ export async function getDailyConsumptionByDateStr(userId: string, dateStr: stri
     fat: targets.fat > 0 ? Math.round((consumed.fat / targets.fat) * 100) : 0,
   };
 
+  // Calculate fruit/vegetable totals for 800g Challenge
+  const fruitVegGrams = (entries || []).reduce((total, entry) => {
+    if (entry.ingredient_category && FRUIT_VEG_CATEGORIES.includes(entry.ingredient_category.toLowerCase())) {
+      return total + (entry.grams || 0);
+    }
+    return total;
+  }, 0);
+
+  // Check if 800g goal was already celebrated today
+  const { data: celebration } = await supabase
+    .from('daily_fruit_veg_celebration')
+    .select('goal_celebrated')
+    .eq('user_id', userId)
+    .eq('date', dateStr)
+    .single();
+
+  const fruitVeg: FruitVegProgress = {
+    currentGrams: Math.round(fruitVegGrams),
+    goalGrams: FRUIT_VEG_GOAL_GRAMS,
+    percentage: FRUIT_VEG_GOAL_GRAMS > 0 ? Math.round((fruitVegGrams / FRUIT_VEG_GOAL_GRAMS) * 100) : 0,
+    goalCelebrated: celebration?.goal_celebrated || false,
+  };
+
   return {
     date: dateStr,
     targets,
@@ -380,6 +412,7 @@ export async function getDailyConsumptionByDateStr(userId: string, dateStr: stri
     percentages,
     entries: (entries || []) as ConsumptionEntry[],
     entry_count: entries?.length || 0,
+    fruitVeg,
   };
 }
 
@@ -590,6 +623,9 @@ export async function searchIngredients(userId: string, query: string): Promise<
         is_user_added: true, // Frequent ingredients are always user-added
         is_validated: false, // User-added ingredients are not validated by default
         is_pinned: (f as { is_pinned?: boolean }).is_pinned || false,
+        // 800g Challenge tracking
+        category: (f as { category?: string }).category as IngredientCategoryType | undefined,
+        default_grams: (f as { default_grams?: number }).default_grams,
       }))
     );
   }
@@ -632,6 +668,8 @@ export async function searchIngredients(userId: string, query: string): Promise<
             source: 'cache' as const,
             is_user_added: isUserAdded,
             is_validated: isValidated,
+            // 800g Challenge tracking - category comes from the ingredients table via view
+            category: (c as { category?: string }).category as IngredientCategoryType | undefined,
           };
         })
     );
@@ -648,7 +686,9 @@ async function upsertFrequentIngredient(
   ingredientName: string,
   amount: number,
   unit: string,
-  macros: { calories: number; protein: number; carbs: number; fat: number }
+  macros: { calories: number; protein: number; carbs: number; fat: number },
+  category?: string,
+  defaultGrams?: number
 ): Promise<void> {
   const supabase = await createClient();
   const normalizedName = normalizeIngredientName(ingredientName);
@@ -680,6 +720,9 @@ async function upsertFrequentIngredient(
         protein_per_serving: proteinPerServing,
         carbs_per_serving: carbsPerServing,
         fat_per_serving: fatPerServing,
+        // 800g Challenge tracking (only update if provided)
+        ...(category && { category }),
+        ...(defaultGrams && { default_grams: defaultGrams }),
       })
       .eq('id', existing.id);
   } else {
@@ -696,6 +739,9 @@ async function upsertFrequentIngredient(
       fat_per_serving: fatPerServing,
       times_logged: 1,
       last_logged_at: new Date().toISOString(),
+      // 800g Challenge tracking
+      category,
+      default_grams: defaultGrams,
     });
   }
 }
@@ -862,6 +908,9 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     fat_per_serving: fi.fat_per_serving,
     source: 'frequent' as const,
     is_pinned: (fi as { is_pinned?: boolean }).is_pinned || false,
+    // 800g Challenge tracking
+    category: fi.category,
+    default_grams: fi.default_grams,
   }));
 
   // 5. Get pinned ingredients (favorites)
@@ -876,6 +925,9 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
     fat_per_serving: fi.fat_per_serving,
     source: 'frequent' as const,
     is_pinned: true,
+    // 800g Challenge tracking
+    category: fi.category,
+    default_grams: fi.default_grams,
   }));
 
   // 6. Get latest meal plan meals (for the "Meal Plan Meals" section)
@@ -1054,6 +1106,9 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     fat_per_serving: fi.fat_per_serving,
     source: 'frequent' as const,
     is_pinned: (fi as { is_pinned?: boolean }).is_pinned || false,
+    // 800g Challenge tracking
+    category: fi.category,
+    default_grams: fi.default_grams,
   }));
 
   // 5. Get pinned ingredients (favorites)
@@ -1068,6 +1123,9 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     fat_per_serving: fi.fat_per_serving,
     source: 'frequent' as const,
     is_pinned: true,
+    // 800g Challenge tracking
+    category: fi.category,
+    default_grams: fi.default_grams,
   }));
 
   // 6. Get latest meal plan meals (for the "Meal Plan Meals" section)

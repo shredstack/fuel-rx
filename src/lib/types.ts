@@ -1634,6 +1634,10 @@ export interface ConsumptionEntry {
   amount?: number;
   unit?: string;
 
+  // 800g Challenge tracking
+  grams?: number;  // Weight in grams (for fruit/vegetable tracking)
+  ingredient_category?: IngredientCategoryType;  // Category for 800g calculation
+
   // Macro snapshot at time of logging
   calories: number;
   protein: number;
@@ -1663,6 +1667,19 @@ export interface FrequentIngredient {
   last_logged_at: string;
   is_user_added?: boolean;
   ingredient_id?: string;
+  // 800g Challenge tracking
+  category?: IngredientCategoryType;
+  default_grams?: number;
+}
+
+/**
+ * 800g Challenge fruit/vegetable tracking
+ */
+export interface FruitVegProgress {
+  currentGrams: number;
+  goalGrams: number;  // 800 by default
+  percentage: number;
+  goalCelebrated: boolean;
 }
 
 /**
@@ -1676,6 +1693,8 @@ export interface DailyConsumptionSummary {
   percentages: Macros;
   entries: ConsumptionEntry[];
   entry_count: number;
+  // 800g Challenge tracking
+  fruitVeg?: FruitVegProgress;
 }
 
 /**
@@ -1723,6 +1742,9 @@ export interface IngredientToLog {
   is_validated?: boolean;  // true if nutrition data is FuelRx-validated
   is_pinned?: boolean;     // true if user has pinned this ingredient as a favorite
   barcode?: string;
+  // 800g Challenge tracking
+  category?: IngredientCategoryType;
+  default_grams?: number;
 }
 
 /**
@@ -1766,6 +1788,9 @@ export interface LogIngredientRequest {
   fat: number;
   consumed_at?: string;
   notes?: string;
+  // 800g Challenge tracking
+  grams?: number;
+  category?: IngredientCategoryType;
 }
 
 export type LogConsumptionRequest = LogMealRequest | LogIngredientRequest;

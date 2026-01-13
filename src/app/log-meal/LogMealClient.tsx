@@ -16,6 +16,7 @@ import type {
   ConsumptionPeriodType,
   PeriodConsumptionSummary,
   MealType,
+  IngredientCategoryType,
 } from '@/lib/types';
 import DailyProgressCard from '@/components/consumption/DailyProgressCard';
 import MealSourceSection from '@/components/consumption/MealSourceSection';
@@ -85,6 +86,10 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   // Track previous calorie percentage for confetti trigger
   const prevCaloriePercentageRef = useRef<number | null>(null);
   const hasShownConfettiRef = useRef(false);
+
+  // Track previous fruit/veg percentage for 800g confetti trigger
+  const prevFruitVegPercentageRef = useRef<number | null>(null);
+  const hasShownFruitVegConfettiRef = useRef(false);
 
   // On mount, check if server-provided date matches client's local date
   // If not (due to timezone mismatch), correct it to user's local today
@@ -307,7 +312,14 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   };
 
   // Log an ingredient
-  const handleLogIngredient = async (ingredient: IngredientToLog, amount: number, unit: string, mealType: MealType) => {
+  const handleLogIngredient = async (
+    ingredient: IngredientToLog,
+    amount: number,
+    unit: string,
+    mealType: MealType,
+    grams?: number,
+    category?: IngredientCategoryType
+  ) => {
     const totalMacros = {
       calories: Math.round(ingredient.calories_per_serving * amount),
       protein: Math.round(ingredient.protein_per_serving * amount * 10) / 10,
@@ -325,6 +337,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
       meal_type: mealType,
       amount,
       unit,
+      grams,
+      ingredient_category: category,
       ...totalMacros,
       consumed_at: new Date().toISOString(),
       consumed_date: selectedDate,
@@ -332,17 +346,31 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
       updated_at: new Date().toISOString(),
     };
 
-    setSummary((prev) => ({
-      ...prev,
-      consumed: {
-        calories: prev.consumed.calories + totalMacros.calories,
-        protein: prev.consumed.protein + totalMacros.protein,
-        carbs: prev.consumed.carbs + totalMacros.carbs,
-        fat: prev.consumed.fat + totalMacros.fat,
-      },
-      entries: [...prev.entries, optimisticEntry],
-      entry_count: prev.entry_count + 1,
-    }));
+    // Optimistically update fruit/veg progress
+    setSummary((prev) => {
+      const newSummary = {
+        ...prev,
+        consumed: {
+          calories: prev.consumed.calories + totalMacros.calories,
+          protein: prev.consumed.protein + totalMacros.protein,
+          carbs: prev.consumed.carbs + totalMacros.carbs,
+          fat: prev.consumed.fat + totalMacros.fat,
+        },
+        entries: [...prev.entries, optimisticEntry],
+        entry_count: prev.entry_count + 1,
+      };
+
+      // Update fruit/veg progress if applicable
+      if (grams && category && ['fruit', 'vegetable'].includes(category) && prev.fruitVeg) {
+        newSummary.fruitVeg = {
+          ...prev.fruitVeg,
+          currentGrams: prev.fruitVeg.currentGrams + grams,
+          percentage: Math.round(((prev.fruitVeg.currentGrams + grams) / prev.fruitVeg.goalGrams) * 100),
+        };
+      }
+
+      return newSummary;
+    });
 
     setSelectedIngredient(null);
 
@@ -356,6 +384,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           amount,
           unit,
           meal_type: mealType,
+          grams,
+          category,
           ...totalMacros,
           consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
         }),
@@ -367,7 +397,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           ...prev,
           entries: prev.entries.map((e) => (e.id === optimisticEntry.id ? entry : e)),
         }));
-        // Refresh to get updated frequent ingredients
+        // Refresh to get updated frequent ingredients and accurate fruit/veg totals
         await refreshData();
       } else {
         await refreshData();
@@ -497,7 +527,67 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   useEffect(() => {
     hasShownConfettiRef.current = false;
     prevCaloriePercentageRef.current = null;
+    hasShownFruitVegConfettiRef.current = false;
+    prevFruitVegPercentageRef.current = null;
   }, [selectedDate]);
+
+  // Trigger confetti when hitting 800g fruit/veg goal
+  useEffect(() => {
+    if (!summary.fruitVeg) return;
+
+    const currentPercentage = summary.fruitVeg.percentage;
+    const prevPercentage = prevFruitVegPercentageRef.current;
+
+    // Only trigger if:
+    // 1. We have a previous value (not initial load)
+    // 2. We crossed the 100% threshold (was below, now at or above)
+    // 3. We haven't already shown confetti for this date
+    // 4. Server hasn't marked it as already celebrated
+    if (
+      prevPercentage !== null &&
+      prevPercentage < 100 &&
+      currentPercentage >= 100 &&
+      !hasShownFruitVegConfettiRef.current &&
+      !summary.fruitVeg.goalCelebrated
+    ) {
+      hasShownFruitVegConfettiRef.current = true;
+
+      // Fire confetti with green/veggie colors from both sides
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors: ['#22c55e', '#4ade80', '#86efac', '#bbf7d0'],  // Green palette
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors: ['#22c55e', '#4ade80', '#86efac', '#bbf7d0'],
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+      frame();
+
+      // Mark as celebrated on the server
+      fetch('/api/consumption/celebrate-fruit-veg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate }),
+      }).catch(console.error);
+    }
+
+    prevFruitVegPercentageRef.current = currentPercentage;
+  }, [summary.fruitVeg, selectedDate]);
 
   // Get time-based suggested meals from today's plan
   const suggestedMealTypes = getTimeBasedMealTypes();
@@ -572,6 +662,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               consumed={summary.consumed}
               percentages={percentages}
               entryCount={summary.entry_count}
+              fruitVeg={summary.fruitVeg}
             />
 
             {/* Quick Actions: Same as Yesterday */}
@@ -692,9 +783,18 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                           {entriesForType.map((entry) => (
                             <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
                               <div>
-                                <p className="text-sm font-medium text-gray-900">{entry.display_name}</p>
+                                <p className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                                  {entry.display_name}
+                                  {/* 800g Challenge indicator for fruits/vegetables */}
+                                  {entry.ingredient_category === 'fruit' && <span title="Fruit - counts toward 800g">🍎</span>}
+                                  {entry.ingredient_category === 'vegetable' && <span title="Vegetable - counts toward 800g">🥬</span>}
+                                </p>
                                 <p className="text-xs text-gray-500">
                                   {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
+                                  {/* Show grams for fruit/veg items */}
+                                  {entry.grams && (entry.ingredient_category === 'fruit' || entry.ingredient_category === 'vegetable') && (
+                                    <span className="text-green-600 ml-1">| {entry.grams}g</span>
+                                  )}
                                 </p>
                               </div>
                               <button
