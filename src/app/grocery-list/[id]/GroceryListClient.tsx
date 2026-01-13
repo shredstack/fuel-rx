@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { Ingredient, CoreIngredients } from '@/lib/types'
+import Logo from '@/components/Logo'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 
@@ -71,8 +72,8 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard" className="text-2xl font-bold text-primary-600">
-            Coach Hill&apos;s FuelRx
+          <Link href="/dashboard">
+            <Logo size="lg" />
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">

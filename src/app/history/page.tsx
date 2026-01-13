@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import Logo from '@/components/Logo'
 import HistoryClient from './HistoryClient'
 
 export default async function HistoryPage() {
@@ -43,8 +44,8 @@ export default async function HistoryPage() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard" className="text-2xl font-bold text-primary-600">
-            Coach Hill&apos;s FuelRx
+          <Link href="/dashboard">
+            <Logo size="lg" />
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">

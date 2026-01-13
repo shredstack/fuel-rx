@@ -14,6 +14,7 @@ import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
+import Logo from '@/components/Logo'
 
 interface Props {
   profile: UserProfile | null
@@ -208,7 +209,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
+          <Logo size="lg" />
           <div className="flex items-center gap-4">
             <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
               Log
