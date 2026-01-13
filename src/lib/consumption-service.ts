@@ -535,12 +535,24 @@ async function getLatestPlanMeals(
     });
   }
 
+  // Deduplicate by meal_id - when users have preferences like "same lunch all week",
+  // the same meal appears multiple times. We only want to show each unique meal once.
+  const seenMealIds = new Set<string>();
+  const dedupedResults: MealPlanMealToLog[] = [];
+
+  for (const meal of results) {
+    if (!seenMealIds.has(meal.meal_id)) {
+      seenMealIds.add(meal.meal_id);
+      dedupedResults.push(meal);
+    }
+  }
+
   // Sort by meal type order for display
   const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
-  results.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
+  dedupedResults.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
 
-  console.log('[getLatestPlanMeals] final results count:', results.length);
-  return results;
+  console.log('[getLatestPlanMeals] final results count:', dedupedResults.length, '(before dedup:', results.length, ')');
+  return dedupedResults;
 }
 
 /**
