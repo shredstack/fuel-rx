@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+const BUCKET_NAME = 'meal-photos'
+const SIGNED_URL_EXPIRY = 60 * 60 * 24 * 7 // 7 days
+
 export async function GET(request: Request) {
   const supabase = await createClient()
 
@@ -68,17 +71,36 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Failed to fetch feed' }, { status: 500 })
     }
 
-    // Add is_saved field to each post
-    const postsWithSaved = posts?.map(post => ({
-      ...post,
-      is_saved: savedPostIds.has(post.id),
-    })) || []
+    // Generate signed URLs for cooked photos (stored as storage paths)
+    const postsWithSignedUrls = await Promise.all(
+      (posts || []).map(async (post) => {
+        let cookedPhotoUrl = post.cooked_photo_url
+
+        // If cooked_photo_url is a storage path (not a full URL), generate signed URL
+        if (cookedPhotoUrl && !cookedPhotoUrl.startsWith('http')) {
+          const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .createSignedUrl(cookedPhotoUrl, SIGNED_URL_EXPIRY)
+
+          if (signedUrlError) {
+            console.error('Error creating signed URL for cooked photo:', signedUrlError)
+          }
+          cookedPhotoUrl = signedUrlData?.signedUrl || null
+        }
+
+        return {
+          ...post,
+          cooked_photo_url: cookedPhotoUrl,
+          is_saved: savedPostIds.has(post.id),
+        }
+      })
+    )
 
     const totalCount = count || 0
     const hasMore = offset + limit < totalCount
 
     return NextResponse.json({
-      posts: postsWithSaved,
+      posts: postsWithSignedUrls,
       hasMore,
       nextPage: hasMore ? page + 1 : null,
       totalCount,

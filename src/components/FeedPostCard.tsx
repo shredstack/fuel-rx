@@ -152,6 +152,8 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
         return { label: 'Quick Cook', className: 'bg-orange-100 text-orange-800' }
       case 'party_meal':
         return { label: 'Party Plan', className: 'bg-pink-100 text-pink-800' }
+      case 'cooked_meal':
+        return { label: 'Cooked', className: 'bg-teal-100 text-teal-800' }
       default:
         return { label: 'Shared', className: 'bg-gray-100 text-gray-800' }
     }
@@ -216,6 +218,25 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
           {sourceTypeInfo.label}
         </span>
       </div>
+
+      {/* Cooked Photo - displayed prominently for cooked_meal posts */}
+      {post.source_type === 'cooked_meal' && post.cooked_photo_url && (
+        <div className="mb-4">
+          <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden bg-gray-100">
+            <Image
+              src={post.cooked_photo_url}
+              alt={`${post.meal_name} - cooked`}
+              fill
+              className="object-contain"
+            />
+          </div>
+          {post.user_notes && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 italic">&ldquo;{post.user_notes}&rdquo;</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Meal Content */}
       <div

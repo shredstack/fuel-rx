@@ -350,7 +350,7 @@ export function isSavedPartyMeal(meal: SavedMeal): meal is SavedPartyMeal {
 
 // Social Feed Types
 
-export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal' | 'quick_cook' | 'party_meal' | 'liked_meal';
+export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal' | 'quick_cook' | 'party_meal' | 'liked_meal' | 'cooked_meal';
 
 export interface SocialFeedPost {
   id: string;
@@ -371,6 +371,8 @@ export interface SocialFeedPost {
   meal_prep_instructions: string | null;
   meal_type: MealType | null;
   party_data: PartyPrepGuide | null; // For party_meal posts
+  cooked_photo_url: string | null; // For cooked_meal posts
+  user_notes: string | null; // For cooked_meal posts
   created_at: string;
   // Joined fields from queries
   author?: {
@@ -1419,6 +1421,8 @@ export interface MealPlanMealCookingStatus {
   cooking_status: CookingStatus;
   cooked_at: string | null;
   modification_notes: string | null;
+  cooked_photo_url: string | null;
+  share_with_community: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1433,6 +1437,8 @@ export interface SavedMealCookingStatus {
   cooking_status: CookingStatus;
   cooked_at: string | null;
   modification_notes: string | null;
+  cooked_photo_url: string | null;
+  share_with_community: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1445,6 +1451,10 @@ export interface MarkMealCookedRequest {
   modification_notes?: string;
   /** If modifications were made, optionally update prep_instructions on the meal */
   updated_instructions?: string[];
+  /** URL to the photo of the cooked meal (uploaded separately) */
+  cooked_photo_url?: string;
+  /** Whether to share this cooked meal to the community feed (default: true) */
+  share_with_community?: boolean;
 }
 
 /**

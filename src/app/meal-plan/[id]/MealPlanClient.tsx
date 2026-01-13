@@ -104,6 +104,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Cooking status state
   const [cookingStatuses, setCookingStatuses] = useState<Map<string, MealPlanMealCookingStatus>>(new Map())
 
+  // Social feed enabled state
+  const [socialFeedEnabled, setSocialFeedEnabled] = useState(false)
+
   // Onboarding state
   const {
     state: onboardingState,
@@ -193,6 +196,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             cooking_status: status.cooking_status,
             cooked_at: status.cooked_at,
             modification_notes: status.modification_notes,
+            cooked_photo_url: status.cooked_photo_url,
+            share_with_community: status.share_with_community ?? true,
             created_at: status.created_at,
             updated_at: status.updated_at,
           })
@@ -204,6 +209,25 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     }
     loadCookingStatuses()
   }, [supabase, mealPlan.id])
+
+  // Load social feed enabled setting on mount
+  useEffect(() => {
+    const loadSocialFeedEnabled = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        setSocialFeedEnabled(profile.social_feed_enabled || false)
+      }
+    }
+    loadSocialFeedEnabled()
+  }, [supabase])
 
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay) as DayPlanNormalized | undefined
 
@@ -534,7 +558,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     mealId: string,
     status: CookingStatus,
     notes?: string,
-    updatedInstructions?: string[]
+    updatedInstructions?: string[],
+    photoUrl?: string,
+    shareWithCommunity?: boolean
   ) => {
     try {
       const response = await fetch(`/api/meal-plans/${mealPlan.id}/meals/${mealSlotId}/cooking-status`, {
@@ -544,6 +570,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           cooking_status: status,
           modification_notes: notes,
           updated_instructions: updatedInstructions,
+          cooked_photo_url: photoUrl,
+          share_with_community: shareWithCommunity,
         }),
       })
 
@@ -806,9 +834,10 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 onSwap={() => handleOpenSwapModal(mealSlot, selectedDay)}
                 isFirstMealCard={idx === 0}
                 cookingStatus={cookingStatuses.get(mealSlot.id)?.cooking_status || 'not_cooked'}
-                onCookingStatusChange={(status, notes, updatedInstructions) =>
-                  handleCookingStatusChange(mealSlot.id, mealSlot.meal.id, status, notes, updatedInstructions)
+                onCookingStatusChange={(status, notes, updatedInstructions, photoUrl, shareWithCommunity) =>
+                  handleCookingStatusChange(mealSlot.id, mealSlot.meal.id, status, notes, updatedInstructions, photoUrl, shareWithCommunity)
                 }
+                socialFeedEnabled={socialFeedEnabled}
               />
             )
           })}
@@ -872,6 +901,7 @@ function MealCard({
   isFirstMealCard = false,
   cookingStatus,
   onCookingStatusChange,
+  socialFeedEnabled = false,
 }: {
   mealSlot: MealSlot
   isExpanded: boolean
@@ -887,7 +917,8 @@ function MealCard({
   onSwap: () => void
   isFirstMealCard?: boolean
   cookingStatus: CookingStatus
-  onCookingStatusChange: (status: CookingStatus, notes?: string, updatedInstructions?: string[]) => Promise<void>
+  onCookingStatusChange: (status: CookingStatus, notes?: string, updatedInstructions?: string[], photoUrl?: string, shareWithCommunity?: boolean) => Promise<void>
+  socialFeedEnabled?: boolean
 }) {
   const meal = mealSlot.meal
   const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
@@ -949,6 +980,7 @@ function MealCard({
             currentInstructions={meal.instructions}
             onStatusChange={onCookingStatusChange}
             variant="icon"
+            socialFeedEnabled={socialFeedEnabled}
           />
           <span {...(isFirstMealCard ? { 'data-tour': 'swap-button' } : {})}>
             <SwapButton onClick={onSwap} />

@@ -1,15 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import type { CookingStatus } from '@/lib/types'
+import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 
 interface Props {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (status: CookingStatus, notes?: string, updatedInstructions?: string[]) => Promise<void>
+  onSubmit: (
+    status: CookingStatus,
+    notes?: string,
+    updatedInstructions?: string[],
+    photoUrl?: string,
+    shareWithCommunity?: boolean
+  ) => Promise<void>
   currentStatus: CookingStatus
   mealName: string
   currentInstructions?: string[]
+  socialFeedEnabled?: boolean
 }
 
 export default function CookingStatusModal({
@@ -19,12 +28,24 @@ export default function CookingStatusModal({
   currentStatus,
   mealName,
   currentInstructions = [],
+  socialFeedEnabled = false,
 }: Props) {
   const [selectedStatus, setSelectedStatus] = useState<CookingStatus>(currentStatus)
   const [notes, setNotes] = useState('')
   const [showInstructionsEditor, setShowInstructionsEditor] = useState(false)
   const [editedInstructions, setEditedInstructions] = useState<string[]>(currentInstructions)
   const [saving, setSaving] = useState(false)
+
+  // Photo upload state
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Share toggle state
+  const [shareWithCommunity, setShareWithCommunity] = useState(true)
 
   // Reset state when modal opens
   useEffect(() => {
@@ -33,19 +54,125 @@ export default function CookingStatusModal({
       setNotes('')
       setShowInstructionsEditor(false)
       setEditedInstructions(currentInstructions)
+      setPhotoFile(null)
+      setPhotoPreview(null)
+      setPhotoError(null)
+      setCompressionInfo(null)
+      setShareWithCommunity(true)
     }
   }, [isOpen, currentStatus, currentInstructions])
 
   if (!isOpen) return null
 
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setPhotoError(null)
+    setCompressionInfo(null)
+
+    // Validate file type
+    if (!isValidImageType(file)) {
+      setPhotoError('Please select a valid image (JPEG, PNG, or WebP)')
+      return
+    }
+
+    // Check file size (max 10MB before compression)
+    if (file.size > 10 * 1024 * 1024) {
+      setPhotoError('Image is too large. Please select an image under 10MB.')
+      return
+    }
+
+    try {
+      // Compress the image
+      const originalSize = file.size
+      const compressedBlob = await compressImage(file, {
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.7,
+      })
+
+      const compressionPercent = Math.round((1 - compressedBlob.size / originalSize) * 100)
+      setCompressionInfo(
+        `Compressed from ${formatFileSize(originalSize)} to ${formatFileSize(compressedBlob.size)} (${compressionPercent}% smaller)`
+      )
+
+      // Create a File object from the blob for upload
+      const compressedFile = new File([compressedBlob], 'cooked-meal.jpg', {
+        type: 'image/jpeg',
+      })
+      setPhotoFile(compressedFile)
+
+      // Create preview
+      const previewUrl = URL.createObjectURL(compressedBlob)
+      setPhotoPreview(previewUrl)
+    } catch (err) {
+      console.error('Error compressing image:', err)
+      setPhotoError('Failed to process image')
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleRemovePhoto = () => {
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview)
+    }
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    setCompressionInfo(null)
+    setPhotoError(null)
+  }
+
   const handleSubmit = async () => {
     setSaving(true)
     try {
+      let uploadedPhotoUrl: string | undefined
+
+      // Upload photo if present
+      if (photoFile && selectedStatus !== 'not_cooked') {
+        setUploadingPhoto(true)
+        try {
+          const formData = new FormData()
+          formData.append('image', photoFile)
+
+          const response = await fetch('/api/cooked-meal-photos', {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || 'Failed to upload photo')
+          }
+
+          const { storagePath } = await response.json()
+          uploadedPhotoUrl = storagePath
+        } catch (err) {
+          console.error('Error uploading photo:', err)
+          setPhotoError(err instanceof Error ? err.message : 'Failed to upload photo')
+          setUploadingPhoto(false)
+          setSaving(false)
+          return
+        }
+        setUploadingPhoto(false)
+      }
+
       const instructionsToSave =
         selectedStatus === 'cooked_with_modifications' && showInstructionsEditor
           ? editedInstructions
           : undefined
-      await onSubmit(selectedStatus, notes || undefined, instructionsToSave)
+
+      await onSubmit(
+        selectedStatus,
+        notes || undefined,
+        instructionsToSave,
+        uploadedPhotoUrl,
+        selectedStatus !== 'not_cooked' ? shareWithCommunity : undefined
+      )
       onClose()
     } catch (error) {
       console.error('Error saving cooking status:', error)
@@ -67,6 +194,8 @@ export default function CookingStatusModal({
   const handleRemoveInstruction = (index: number) => {
     setEditedInstructions(editedInstructions.filter((_, i) => i !== index))
   }
+
+  const isCooked = selectedStatus !== 'not_cooked'
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -188,8 +317,68 @@ export default function CookingStatusModal({
             </button>
           </div>
 
+          {/* Photo Upload - shown for cooked options */}
+          {isCooked && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Add a Photo (optional)
+              </label>
+              <div className="space-y-3">
+                {photoPreview ? (
+                  <div className="relative">
+                    <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden bg-gray-100">
+                      <Image
+                        src={photoPreview}
+                        alt="Cooked meal preview"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-md hover:bg-gray-100 transition-colors z-10"
+                    >
+                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    {compressionInfo && (
+                      <p className="mt-2 text-xs text-green-600">{compressionInfo}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      onChange={handlePhotoSelect}
+                      className="hidden"
+                      id="cooked-meal-photo-input"
+                    />
+                    <label
+                      htmlFor="cooked-meal-photo-input"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-teal-400 hover:bg-gray-50 transition-colors"
+                    >
+                      <svg className="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-sm text-gray-500">Tap to add a photo</span>
+                      <span className="text-xs text-gray-400 mt-1">JPEG, PNG, or WebP</span>
+                    </label>
+                  </div>
+                )}
+                {photoError && (
+                  <p className="text-sm text-red-600">{photoError}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Notes - shown for both cooked options */}
-          {selectedStatus !== 'not_cooked' && (
+          {isCooked && (
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-2">
                 Notes (optional)
@@ -201,6 +390,25 @@ export default function CookingStatusModal({
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
                 rows={2}
               />
+            </div>
+          )}
+
+          {/* Share with Community Toggle - shown if user has social feed enabled */}
+          {isCooked && socialFeedEnabled && (
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <input
+                type="checkbox"
+                id="share-with-community"
+                checked={shareWithCommunity}
+                onChange={(e) => setShareWithCommunity(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+              />
+              <label htmlFor="share-with-community" className="flex-1 cursor-pointer">
+                <span className="text-sm font-medium text-gray-900">Share with community</span>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Your photo and notes will be visible to other users
+                </p>
+              </label>
             </div>
           )}
 
@@ -271,8 +479,8 @@ export default function CookingStatusModal({
             <button onClick={onClose} className="btn-outline flex-1" disabled={saving}>
               Cancel
             </button>
-            <button onClick={handleSubmit} className="btn-primary flex-1" disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
+            <button onClick={handleSubmit} className="btn-primary flex-1" disabled={saving || uploadingPhoto}>
+              {uploadingPhoto ? 'Uploading...' : saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

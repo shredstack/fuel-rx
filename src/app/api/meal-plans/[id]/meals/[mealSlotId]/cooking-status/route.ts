@@ -47,6 +47,8 @@ export async function POST(
     const cookingStatus = await markMealPlanMealCooked(mealSlotId, user.id, body.cooking_status, {
       modificationNotes: body.modification_notes,
       updatedInstructions: body.updated_instructions,
+      cookedPhotoUrl: body.cooked_photo_url,
+      shareWithCommunity: body.share_with_community,
     });
 
     return NextResponse.json(cookingStatus);
@@ -92,6 +94,8 @@ export async function GET(
         cooking_status: 'not_cooked',
         cooked_at: null,
         modification_notes: null,
+        cooked_photo_url: null,
+        share_with_community: true,
       });
     }
 
