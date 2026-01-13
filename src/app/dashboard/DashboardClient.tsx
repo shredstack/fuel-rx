@@ -1,20 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS, CHILD_PORTION_MULTIPLIER, MILESTONE_MESSAGES } from '@/lib/types'
-import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity, HouseholdServingsPrefs, DayOfWeek, OnboardingMilestone } from '@/lib/types'
-import EditMacrosModal from '@/components/EditMacrosModal'
-import EditPreferencesModal from '@/components/EditPreferencesModal'
-import EditVarietyModal from '@/components/EditVarietyModal'
+import { MILESTONE_MESSAGES } from '@/lib/types'
+import type { UserProfile, OnboardingMilestone } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
-import Logo from '@/components/Logo'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 
@@ -64,12 +60,6 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const [error, setError] = useState<string | null>(null)
   const [progressStage, setProgressStage] = useState<JobStatus | null>(null)
   const [progressMessage, setProgressMessage] = useState<string>('')
-
-  // Modal states
-  const [showMacrosModal, setShowMacrosModal] = useState(false)
-  const [showPreferencesModal, setShowPreferencesModal] = useState(false)
-  const [showVarietyModal, setShowVarietyModal] = useState(false)
-  const [showOnboardingWarning, setShowOnboardingWarning] = useState(false)
 
   // Theme selection state
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
@@ -382,268 +372,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
               <CommunityTeaser onDismiss={() => discoverFeature('community_feed')} />
             </div>
           )}
-
-          {/* Profile summary card */}
-          <div className="card md:col-span-2 lg:col-span-3">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Your Profile
-              </h3>
-              <div className="flex gap-4">
-                <Link
-                  href="/settings"
-                  className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                >
-                  All Settings
-                </Link>
-                <button
-                  onClick={() => setShowOnboardingWarning(true)}
-                  className="text-gray-400 hover:text-gray-600 text-sm"
-                >
-                  Full Setup
-                </button>
-              </div>
-            </div>
-
-            {profile ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-gray-500">Daily Macros</p>
-                    <button
-                      onClick={() => setShowMacrosModal(true)}
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="font-medium">
-                      {profile.target_calories} kcal
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      P: {profile.target_protein}g | C: {profile.target_carbs}g | F: {profile.target_fat}g
-                    </p>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-1 lg:col-span-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-gray-500">Preferences</p>
-                    <button
-                      onClick={() => setShowPreferencesModal(true)}
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-x-6 gap-y-1">
-                    <p className="font-medium">
-                      {profile.dietary_prefs
-                        .map((pref: DietaryPreference) => DIETARY_PREFERENCE_LABELS[pref])
-                        .join(', ')}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {profile.meals_per_day} meals/day
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {profile.prep_time} min prep
-                    </p>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-2 lg:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-gray-500">Meal Variety</p>
-                    <button
-                      onClick={() => setShowVarietyModal(true)}
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => {
-                      const prefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
-                      const isConsistent = prefs[mealType] === 'consistent';
-                      return (
-                        <span
-                          key={mealType}
-                          className={`px-3 py-1 rounded-full text-sm ${
-                            isConsistent
-                              ? 'bg-primary-100 text-primary-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {MEAL_TYPE_LABELS[mealType]}: {isConsistent ? 'Same Daily' : 'Varied'}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="sm:col-span-1 lg:col-span-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-gray-500">Prep Style</p>
-                    <Link
-                      href="/settings/prep"
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Edit
-                    </Link>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="font-medium text-sm">
-                      {PREP_STYLE_LABELS[profile.prep_style as PrepStyle]?.title || 'Mixed/Flexible'}
-                    </p>
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">
-                        B: {MEAL_COMPLEXITY_LABELS[profile.breakfast_complexity as MealComplexity]?.title || 'Minimal'}
-                      </span>
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">
-                        L: {MEAL_COMPLEXITY_LABELS[profile.lunch_complexity as MealComplexity]?.title || 'Minimal'}
-                      </span>
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">
-                        D: {MEAL_COMPLEXITY_LABELS[profile.dinner_complexity as MealComplexity]?.title || 'Full Recipe'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-1 lg:col-span-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-gray-500">Household</p>
-                    <Link
-                      href="/settings/household"
-                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                    >
-                      Edit
-                    </Link>
-                  </div>
-                  {(() => {
-                    const servings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
-                    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
-
-                    // Check if any household members configured
-                    const hasHousehold = DAYS_OF_WEEK.some(day =>
-                      mealTypes.some(meal => servings[day]?.[meal]?.adults > 0 || servings[day]?.[meal]?.children > 0)
-                    );
-
-                    if (!hasHousehold) {
-                      return (
-                        <p className="text-sm text-gray-500">
-                          Just you (the athlete)
-                        </p>
-                      );
-                    }
-
-                    // Calculate total people served across the week
-                    let totalAdults = 0;
-                    let totalChildren = 0;
-                    DAYS_OF_WEEK.forEach(day => {
-                      mealTypes.forEach(meal => {
-                        totalAdults += servings[day]?.[meal]?.adults || 0;
-                        totalChildren += servings[day]?.[meal]?.children || 0;
-                      });
-                    });
-
-                    return (
-                      <div className="text-sm">
-                        <p className="font-medium text-gray-900">
-                          + {totalAdults > 0 ? `${totalAdults} adult meals` : ''}{totalAdults > 0 && totalChildren > 0 ? ', ' : ''}{totalChildren > 0 ? `${totalChildren} child meals` : ''}/week
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          (varies by day)
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            ) : (
-              <p className="text-gray-600">
-                <Link href="/onboarding" className="text-primary-600 hover:underline">
-                  Complete your profile
-                </Link>{' '}
-                to get personalized meal plans.
-              </p>
-            )}
-          </div>
         </div>
-
-        {/* Edit Modals */}
-        {profile && (
-          <>
-            <EditMacrosModal
-              isOpen={showMacrosModal}
-              onClose={() => setShowMacrosModal(false)}
-              currentValues={{
-                target_protein: profile.target_protein,
-                target_carbs: profile.target_carbs,
-                target_fat: profile.target_fat,
-                target_calories: profile.target_calories,
-              }}
-              onSave={(values) => {
-                setProfile({ ...profile, ...values })
-              }}
-            />
-            <EditPreferencesModal
-              isOpen={showPreferencesModal}
-              onClose={() => setShowPreferencesModal(false)}
-              currentValues={{
-                dietary_prefs: profile.dietary_prefs,
-                meals_per_day: profile.meals_per_day,
-                prep_time: profile.prep_time,
-              }}
-              onSave={(values) => {
-                setProfile({ ...profile, ...values })
-              }}
-            />
-            <EditVarietyModal
-              isOpen={showVarietyModal}
-              onClose={() => setShowVarietyModal(false)}
-              currentValues={profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS}
-              onSave={(values) => {
-                setProfile({ ...profile, meal_consistency_prefs: values })
-              }}
-            />
-          </>
-        )}
-
-        {/* Onboarding Warning Modal */}
-        {showOnboardingWarning && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                Start Full Setup?
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Going through the full onboarding setup will require you to re-enter all your settings from scratch.
-              </p>
-              <p className="text-gray-600 mb-6">
-                If you only need to change specific settings, you can use the{' '}
-                <Link href="/settings" className="text-primary-600 hover:underline font-medium">
-                  All Settings
-                </Link>{' '}
-                page instead.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowOnboardingWarning(false)}
-                  className="btn-outline flex-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => router.push('/onboarding')}
-                  className="btn-primary flex-1"
-                >
-                  Continue to Setup
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Milestone Toast */}
         {showMilestoneToast && (

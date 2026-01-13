@@ -28,6 +28,7 @@ import { SwapButton, SwapModal } from '@/components/meal'
 import CookingStatusButton from '@/components/meal/CookingStatusButton'
 import CookingStatusBadge from '@/components/meal/CookingStatusBadge'
 import { ShareMealPlanModal } from '@/components/ShareMealPlanModal'
+import { MacroInput } from '@/components/ui'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import SpotlightTip from '@/components/onboarding/SpotlightTip'
 import { FIRST_PLAN_TOUR_STEPS } from '@/lib/types'
@@ -1335,20 +1336,20 @@ function IngredientRow({
   onDislike: () => void
 }) {
   const [editValues, setEditValues] = useState({
-    calories: (ingredient.calories ?? 0).toString(),
-    protein: (ingredient.protein ?? 0).toString(),
-    carbs: (ingredient.carbs ?? 0).toString(),
-    fat: (ingredient.fat ?? 0).toString(),
+    calories: ingredient.calories ?? 0,
+    protein: ingredient.protein ?? 0,
+    carbs: ingredient.carbs ?? 0,
+    fat: ingredient.fat ?? 0,
   })
 
   // IngredientWithNutrition always has nutrition data
   const hasNutritionData = true
 
   const handleSave = async () => {
-    const newCalories = parseFloat(editValues.calories) || 0
-    const newProtein = parseFloat(editValues.protein) || 0
-    const newCarbs = parseFloat(editValues.carbs) || 0
-    const newFat = parseFloat(editValues.fat) || 0
+    const newCalories = editValues.calories
+    const newProtein = editValues.protein
+    const newCarbs = editValues.carbs
+    const newFat = editValues.fat
 
     // Save to user overrides API
     try {
@@ -1392,46 +1393,30 @@ function IngredientRow({
           {ingredient.amount} {ingredient.unit} {ingredient.name}
         </div>
         <div className="grid grid-cols-4 gap-2 mb-2">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Calories</label>
-            <input
-              type="number"
-              value={editValues.calories}
-              onChange={(e) => setEditValues({ ...editValues, calories: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-              step="0.1"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Protein</label>
-            <input
-              type="number"
-              value={editValues.protein}
-              onChange={(e) => setEditValues({ ...editValues, protein: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-              step="0.1"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Carbs</label>
-            <input
-              type="number"
-              value={editValues.carbs}
-              onChange={(e) => setEditValues({ ...editValues, carbs: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-              step="0.1"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Fat</label>
-            <input
-              type="number"
-              value={editValues.fat}
-              onChange={(e) => setEditValues({ ...editValues, fat: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-              step="0.1"
-            />
-          </div>
+          <MacroInput
+            macroType="calories"
+            value={editValues.calories}
+            onChange={(val) => setEditValues({ ...editValues, calories: val })}
+            size="sm"
+          />
+          <MacroInput
+            macroType="protein"
+            value={editValues.protein}
+            onChange={(val) => setEditValues({ ...editValues, protein: val })}
+            size="sm"
+          />
+          <MacroInput
+            macroType="carbs"
+            value={editValues.carbs}
+            onChange={(val) => setEditValues({ ...editValues, carbs: val })}
+            size="sm"
+          />
+          <MacroInput
+            macroType="fat"
+            value={editValues.fat}
+            onChange={(val) => setEditValues({ ...editValues, fat: val })}
+            size="sm"
+          />
         </div>
         <div className="flex gap-2">
           <button

@@ -18,7 +18,7 @@ import {
   isSavedQuickCookMeal,
   isSavedPartyMeal,
 } from '@/lib/types'
-import NumericInput from '@/components/NumericInput'
+import { MacroInput } from '@/components/ui'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 import SavedSingleMealCard from '@/components/SavedSingleMealCard'
 import SavedPartyMealCard from '@/components/SavedPartyMealCard'
@@ -591,59 +591,39 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                     </p>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-orange-50 rounded-lg p-4">
-                        <label className="flex items-center gap-2 text-sm font-medium text-orange-800 mb-2">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-                          </svg>
-                          Calories *
-                        </label>
-                        <NumericInput
+                        <MacroInput
+                          macroType="calories"
                           value={quickMacros.calories}
                           onChange={(val) => setQuickMacros({ ...quickMacros, calories: val })}
-                          min={0}
-                          className="input text-lg font-semibold"
+                          label="Calories *"
+                          size="lg"
                         />
                       </div>
                       <div className="bg-blue-50 rounded-lg p-4">
-                        <label className="flex items-center gap-2 text-sm font-medium text-blue-800 mb-2">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                          </svg>
-                          Protein (g)
-                        </label>
-                        <NumericInput
+                        <MacroInput
+                          macroType="protein"
                           value={quickMacros.protein}
                           onChange={(val) => setQuickMacros({ ...quickMacros, protein: val })}
-                          min={0}
-                          className="input text-lg font-semibold"
+                          label="Protein (g)"
+                          size="lg"
                         />
                       </div>
                       <div className="bg-amber-50 rounded-lg p-4">
-                        <label className="flex items-center gap-2 text-sm font-medium text-amber-800 mb-2">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          Carbs (g)
-                        </label>
-                        <NumericInput
+                        <MacroInput
+                          macroType="carbs"
                           value={quickMacros.carbs}
                           onChange={(val) => setQuickMacros({ ...quickMacros, carbs: val })}
-                          min={0}
-                          className="input text-lg font-semibold"
+                          label="Carbs (g)"
+                          size="lg"
                         />
                       </div>
                       <div className="bg-purple-50 rounded-lg p-4">
-                        <label className="flex items-center gap-2 text-sm font-medium text-purple-800 mb-2">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                          </svg>
-                          Fat (g)
-                        </label>
-                        <NumericInput
+                        <MacroInput
+                          macroType="fat"
                           value={quickMacros.fat}
                           onChange={(val) => setQuickMacros({ ...quickMacros, fat: val })}
-                          min={0}
-                          className="input text-lg font-semibold"
+                          label="Fat (g)"
+                          size="lg"
                         />
                       </div>
                     </div>
@@ -734,47 +714,39 @@ export default function CustomMealsClient({ initialMeals }: Props) {
 
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <div className="bg-orange-50 rounded-lg p-3">
-                                  <label className="flex items-center gap-1.5 text-xs font-medium text-orange-700 mb-1">
-                                    Calories
-                                  </label>
-                                  <NumericInput
+                                  <MacroInput
+                                    macroType="calories"
                                     value={ingredient.calories}
                                     onChange={(val) => updateIngredient(index, 'calories', val)}
-                                    min={0}
-                                    className="input text-sm font-medium"
+                                    label="Calories"
+                                    size="sm"
                                   />
                                 </div>
                                 <div className="bg-blue-50 rounded-lg p-3">
-                                  <label className="flex items-center gap-1.5 text-xs font-medium text-blue-700 mb-1">
-                                    Protein
-                                  </label>
-                                  <NumericInput
+                                  <MacroInput
+                                    macroType="protein"
                                     value={ingredient.protein}
                                     onChange={(val) => updateIngredient(index, 'protein', val)}
-                                    min={0}
-                                    className="input text-sm font-medium"
+                                    label="Protein"
+                                    size="sm"
                                   />
                                 </div>
                                 <div className="bg-amber-50 rounded-lg p-3">
-                                  <label className="flex items-center gap-1.5 text-xs font-medium text-amber-700 mb-1">
-                                    Carbs
-                                  </label>
-                                  <NumericInput
+                                  <MacroInput
+                                    macroType="carbs"
                                     value={ingredient.carbs}
                                     onChange={(val) => updateIngredient(index, 'carbs', val)}
-                                    min={0}
-                                    className="input text-sm font-medium"
+                                    label="Carbs"
+                                    size="sm"
                                   />
                                 </div>
                                 <div className="bg-purple-50 rounded-lg p-3">
-                                  <label className="flex items-center gap-1.5 text-xs font-medium text-purple-700 mb-1">
-                                    Fat
-                                  </label>
-                                  <NumericInput
+                                  <MacroInput
+                                    macroType="fat"
                                     value={ingredient.fat}
                                     onChange={(val) => updateIngredient(index, 'fat', val)}
-                                    min={0}
-                                    className="input text-sm font-medium"
+                                    label="Fat"
+                                    size="sm"
                                   />
                                 </div>
                               </div>
