@@ -10,15 +10,45 @@ interface DailyProgressCardProps {
   entryCount: number;
 }
 
-function ProgressBar({ value, max, percentage, color }: { value: number; max: number; percentage: number; color: string }) {
+function ProgressBar({
+  value,
+  max,
+  percentage,
+  color,
+  rewardOnGoal = false,
+}: {
+  value: number;
+  max: number;
+  percentage: number;
+  color: string;
+  rewardOnGoal?: boolean;
+}) {
   const cappedPercentage = Math.min(percentage, 100);
-  const isOver = percentage > 100;
+  const goalReached = percentage >= 100;
+
+  // For athlete calorie tracking: red until goal hit, then rainbow to reward fueling up
+  // For other macros: normal color, red if over
+  const useRainbow = rewardOnGoal && goalReached;
+  let barColor: string;
+  if (rewardOnGoal && !goalReached) {
+    barColor = 'bg-red-400';
+  } else if (!rewardOnGoal && percentage > 100) {
+    barColor = 'bg-red-500';
+  } else {
+    barColor = color;
+  }
 
   return (
     <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
       <div
-        className={`h-2.5 rounded-full transition-all duration-300 ${isOver ? 'bg-red-500' : color}`}
-        style={{ width: `${cappedPercentage}%` }}
+        className={`h-2.5 rounded-full transition-all duration-300 ${useRainbow ? 'animate-rainbow' : barColor}`}
+        style={{
+          width: `${cappedPercentage}%`,
+          ...(useRainbow && {
+            background: 'linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ef4444)',
+            backgroundSize: '200% 100%',
+          }),
+        }}
       />
     </div>
   );
@@ -60,6 +90,7 @@ export default function DailyProgressCard({ date, targets, consumed, percentages
           max={targets.calories}
           percentage={percentages.calories}
           color="bg-primary-500"
+          rewardOnGoal
         />
         <p className="text-sm text-gray-500 mt-1">
           {remaining.calories > 0 ? `${Math.round(remaining.calories)} cal remaining` : 'Goal reached!'}

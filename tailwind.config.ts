@@ -11,6 +11,15 @@ const config: Config = {
       padding: {
         'safe': 'env(safe-area-inset-bottom)',
       },
+      animation: {
+        rainbow: 'rainbow 2s linear infinite',
+      },
+      keyframes: {
+        rainbow: {
+          '0%': { backgroundPosition: '0% 50%' },
+          '100%': { backgroundPosition: '200% 50%' },
+        },
+      },
       colors: {
         primary: {
           50: '#f0fdfa',
