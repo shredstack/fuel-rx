@@ -208,7 +208,7 @@ const prepTaskSchema = {
       description: 'Category for batch prep: sunday_batch (prep Sunday), day_of_quick (<10 min fresh), day_of_cooking (longer fresh cooking)',
     },
   },
-  required: ['id', 'description', 'detailed_steps', 'estimated_minutes', 'meal_ids', 'completed'],
+  required: ['id', 'description', 'equipment_needed', 'ingredients_to_prep', 'detailed_steps', 'estimated_minutes', 'meal_ids', 'completed'],
 };
 
 const prepSessionSchema = {
