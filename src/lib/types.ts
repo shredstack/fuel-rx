@@ -1606,6 +1606,7 @@ export interface LogMealRequest {
   type: 'meal_plan' | 'custom_meal' | 'quick_cook';
   source_id: string;
   meal_id?: string; // Fallback meal ID for when meal_plan_meals record is deleted
+  meal_type?: MealType; // Override the meal's default type
   consumed_at?: string;
   notes?: string;
 }
@@ -1618,6 +1619,7 @@ export interface LogIngredientRequest {
   ingredient_name: string;
   amount: number;
   unit: string;
+  meal_type: MealType; // What meal this ingredient was part of
   calories: number;
   protein: number;
   carbs: number;
@@ -1644,6 +1646,24 @@ export interface DailyDataPoint {
   carbs: number;
   fat: number;
   entry_count: number;
+  // Per-meal-type breakdown for filtering
+  byMealType?: {
+    breakfast: Macros;
+    lunch: Macros;
+    dinner: Macros;
+    snack: Macros;
+  };
+}
+
+/**
+ * Macro totals broken down by meal type
+ */
+export interface MealTypeBreakdown {
+  breakfast: Macros;
+  lunch: Macros;
+  dinner: Macros;
+  snack: Macros;
+  unassigned: Macros; // For legacy entries without meal_type
 }
 
 /**
@@ -1661,6 +1681,7 @@ export interface PeriodConsumptionSummary {
   percentages: Macros; // (consumed / targets) * 100
   dailyData: DailyDataPoint[]; // For line chart
   entry_count: number;
+  byMealType: MealTypeBreakdown; // Breakdown by meal type
 }
 
 // ============================================

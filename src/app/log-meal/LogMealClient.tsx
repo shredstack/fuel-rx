@@ -27,6 +27,9 @@ import MealPlanMealsSection from '@/components/consumption/MealPlanMealsSection'
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TrendChart from '@/components/consumption/TrendChart';
+import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
+import MealTypeSelector from '@/components/consumption/MealTypeSelector';
+import { MEAL_TYPE_LABELS } from '@/lib/types';
 
 interface Props {
   initialDate: string;
@@ -71,6 +74,10 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   const [showIngredientSearch, setShowIngredientSearch] = useState(false);
   const [showMealPhotoModal, setShowMealPhotoModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+
+  // Meal type selection state for logging
+  const [pendingLogMeal, setPendingLogMeal] = useState<MealToLog | null>(null);
+  const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
 
   // Track previous calorie percentage for confetti trigger
   const prevCaloriePercentageRef = useRef<number | null>(null);
@@ -174,15 +181,31 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     setLoading(false);
   };
 
-  // Log a meal (optimistic update)
+  // Start meal logging - show meal type selector first
   const handleLogMeal = async (meal: MealToLog) => {
+    // Set pending meal and default to meal's original type
+    setPendingLogMeal(meal);
+    setPendingMealType(meal.meal_type || getTimeBasedMealTypes()[0]);
+  };
+
+  // Actually log the meal after type confirmation
+  const confirmLogMeal = async () => {
+    if (!pendingLogMeal || !pendingMealType) return;
+
+    const meal = pendingLogMeal;
+    const mealType = pendingMealType;
+
+    // Clear pending state
+    setPendingLogMeal(null);
+    setPendingMealType(null);
+
     // Optimistic update
     const optimisticEntry: ConsumptionEntry = {
       id: `temp-${Date.now()}`,
       user_id: '',
       entry_type: meal.source,
       display_name: meal.name,
-      meal_type: meal.meal_type,
+      meal_type: mealType,
       calories: meal.calories,
       protein: meal.protein,
       carbs: meal.carbs,
@@ -210,9 +233,10 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
 
     try {
       // Build request payload, including meal_id for meal_plan type as fallback
-      const payload: { type: string; source_id: string; meal_id?: string; consumed_at: string } = {
+      const payload: { type: string; source_id: string; meal_id?: string; meal_type: MealType; consumed_at: string } = {
         type: meal.source,
         source_id: meal.source_id,
+        meal_type: mealType,
         consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
       };
       // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
@@ -280,7 +304,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   };
 
   // Log an ingredient
-  const handleLogIngredient = async (ingredient: IngredientToLog, amount: number, unit: string) => {
+  const handleLogIngredient = async (ingredient: IngredientToLog, amount: number, unit: string, mealType: MealType) => {
     const totalMacros = {
       calories: Math.round(ingredient.calories_per_serving * amount),
       protein: Math.round(ingredient.protein_per_serving * amount * 10) / 10,
@@ -295,6 +319,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
       entry_type: 'ingredient',
       ingredient_name: ingredient.name,
       display_name: ingredient.name,
+      meal_type: mealType,
       amount,
       unit,
       ...totalMacros,
@@ -327,6 +352,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           ingredient_name: ingredient.name,
           amount,
           unit,
+          meal_type: mealType,
           ...totalMacros,
           consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
         }),
@@ -544,11 +570,19 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
         {selectedPeriod !== 'daily' && periodSummary && (
           <>
             <PeriodProgressCard summary={periodSummary} dailyTargets={summary.targets} />
-            <TrendChart
-              dailyData={periodSummary.dailyData}
-              dailyTargets={summary.targets}
-              periodType={periodSummary.periodType}
-            />
+            <div className="mt-4">
+              <TrendChart
+                dailyData={periodSummary.dailyData}
+                dailyTargets={summary.targets}
+                periodType={periodSummary.periodType}
+              />
+            </div>
+            <div className="mt-4">
+              <MealTypeBreakdownChart
+                breakdown={periodSummary.byMealType}
+                totalConsumed={periodSummary.consumed}
+              />
+            </div>
           </>
         )}
 
@@ -637,7 +671,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               />
             </div>
 
-            {/* Logged Today Section - MOVED UP for visibility */}
+            {/* Logged Today Section - Grouped by meal type */}
             <div className="mt-6 pt-6 border-t border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <span className="text-green-500">
@@ -651,49 +685,137 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                 </span>
               </h3>
               {summary.entries.length > 0 ? (
-                <div className="card divide-y divide-gray-100">
-                  {summary.entries.map((entry) => (
-                    <div key={entry.id} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">{entry.display_name}</p>
-                        <p className="text-sm text-gray-500">
-                          {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
-                        </p>
+                <div className="space-y-4">
+                  {/* Group entries by meal type */}
+                  {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((mealType) => {
+                    const entriesForType = summary.entries.filter((e) => e.meal_type === mealType);
+                    if (entriesForType.length === 0) return null;
+
+                    const typeTotals = entriesForType.reduce(
+                      (acc, e) => ({
+                        calories: acc.calories + e.calories,
+                        protein: acc.protein + e.protein,
+                        carbs: acc.carbs + e.carbs,
+                        fat: acc.fat + e.fat,
+                      }),
+                      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+                    );
+
+                    return (
+                      <div key={mealType} className="card">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
+                          <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                            <span className="text-primary-500">{MEAL_TYPE_LABELS[mealType]}</span>
+                            <span className="text-xs text-gray-400">({entriesForType.length})</span>
+                          </h4>
+                          <span className="text-xs text-gray-500">
+                            {typeTotals.calories} cal
+                          </span>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                          {entriesForType.map((entry) => (
+                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{entry.display_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const meal = [
+                                    ...available.from_todays_plan,
+                                    ...available.from_week_plan,
+                                    ...available.custom_meals,
+                                    ...available.quick_cook_meals,
+                                    ...(available.latest_plan_meals || []),
+                                  ].find((m) => m.logged_entry_id === entry.id);
+                                  if (meal) {
+                                    handleUndoLog(entry.id, meal);
+                                  } else {
+                                    handleUndoLog(entry.id, {
+                                      id: entry.id,
+                                      source: entry.entry_type,
+                                      source_id: entry.id,
+                                      name: entry.display_name,
+                                      calories: entry.calories,
+                                      protein: entry.protein,
+                                      carbs: entry.carbs,
+                                      fat: entry.fat,
+                                      is_logged: true,
+                                      logged_entry_id: entry.id,
+                                    });
+                                  }
+                                }}
+                                className="text-xs text-red-600 hover:text-red-700"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          // Find the matching meal to pass to undo
-                          const meal = [
-                            ...available.from_todays_plan,
-                            ...available.from_week_plan,
-                            ...available.custom_meals,
-                            ...available.quick_cook_meals,
-                            ...(available.latest_plan_meals || []),
-                          ].find((m) => m.logged_entry_id === entry.id);
-                          if (meal) {
-                            handleUndoLog(entry.id, meal);
-                          } else {
-                            // For ingredients, just delete directly
-                            handleUndoLog(entry.id, {
-                              id: entry.id,
-                              source: entry.entry_type,
-                              source_id: entry.id,
-                              name: entry.display_name,
-                              calories: entry.calories,
-                              protein: entry.protein,
-                              carbs: entry.carbs,
-                              fat: entry.fat,
-                              is_logged: true,
-                              logged_entry_id: entry.id,
-                            });
-                          }
-                        }}
-                        className="text-sm text-red-600 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
+
+                  {/* Unassigned entries (legacy data without meal_type) */}
+                  {(() => {
+                    const unassignedEntries = summary.entries.filter((e) => !e.meal_type);
+                    if (unassignedEntries.length === 0) return null;
+
+                    return (
+                      <div className="card">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
+                          <h4 className="font-medium text-gray-500 flex items-center gap-2">
+                            <span>Other</span>
+                            <span className="text-xs text-gray-400">({unassignedEntries.length})</span>
+                          </h4>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                          {unassignedEntries.map((entry) => (
+                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{entry.display_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const meal = [
+                                    ...available.from_todays_plan,
+                                    ...available.from_week_plan,
+                                    ...available.custom_meals,
+                                    ...available.quick_cook_meals,
+                                    ...(available.latest_plan_meals || []),
+                                  ].find((m) => m.logged_entry_id === entry.id);
+                                  if (meal) {
+                                    handleUndoLog(entry.id, meal);
+                                  } else {
+                                    handleUndoLog(entry.id, {
+                                      id: entry.id,
+                                      source: entry.entry_type,
+                                      source_id: entry.id,
+                                      name: entry.display_name,
+                                      calories: entry.calories,
+                                      protein: entry.protein,
+                                      carbs: entry.carbs,
+                                      fat: entry.fat,
+                                      is_logged: true,
+                                      logged_entry_id: entry.id,
+                                    });
+                                  }
+                                }}
+                                className="text-xs text-red-600 hover:text-red-700"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-4 text-gray-400">
@@ -742,6 +864,50 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                 </div>
               )}
           </>
+        )}
+
+        {/* Meal Type Confirmation Modal */}
+        {pendingLogMeal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Log &ldquo;{pendingLogMeal.name}&rdquo;
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {pendingLogMeal.calories} cal | {pendingLogMeal.protein}g P | {pendingLogMeal.carbs}g C | {pendingLogMeal.fat}g F
+              </p>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Log as:
+                </label>
+                <MealTypeSelector
+                  value={pendingMealType}
+                  onChange={setPendingMealType}
+                  suggestedTypes={getTimeBasedMealTypes()}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setPendingLogMeal(null);
+                    setPendingMealType(null);
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmLogMeal}
+                  disabled={!pendingMealType}
+                  className="flex-1 px-4 py-2 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
+                >
+                  Log
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Ingredient Amount Picker Modal */}

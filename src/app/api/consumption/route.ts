@@ -35,10 +35,11 @@ export async function POST(request: Request) {
         !ingredientRequest.ingredient_name ||
         ingredientRequest.amount === undefined ||
         !ingredientRequest.unit ||
+        !ingredientRequest.meal_type ||
         ingredientRequest.calories === undefined
       ) {
         return NextResponse.json(
-          { error: 'Ingredient logging requires: ingredient_name, amount, unit, calories, protein, carbs, fat' },
+          { error: 'Ingredient logging requires: ingredient_name, amount, unit, meal_type, calories, protein, carbs, fat' },
           { status: 400 }
         );
       }

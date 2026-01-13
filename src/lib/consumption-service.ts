@@ -18,6 +18,7 @@ import type {
   MealType,
   Macros,
   ConsumptionEntryType,
+  MealTypeBreakdown,
 } from '@/lib/types';
 
 // Helper to normalize ingredient names for matching
@@ -153,6 +154,7 @@ export async function logMealConsumed(
   const consumedDate = consumedAt.split('T')[0];
 
   // Create consumption entry with macro snapshot
+  // Use request.meal_type override if provided, otherwise use source meal's type
   const { data: entry, error: insertError } = await supabase
     .from('meal_consumption_log')
     .insert({
@@ -163,7 +165,7 @@ export async function logMealConsumed(
       consumed_at: consumedAt,
       consumed_date: consumedDate,
       display_name: mealData.name,
-      meal_type: mealData.meal_type,
+      meal_type: request.meal_type || mealData.meal_type,
       calories: Math.round(mealData.calories),
       protein: Math.round(mealData.protein * 10) / 10,
       carbs: Math.round(mealData.carbs * 10) / 10,
@@ -201,6 +203,7 @@ export async function logIngredientConsumed(
       consumed_at: consumedAt,
       consumed_date: consumedDate,
       display_name: request.ingredient_name,
+      meal_type: request.meal_type,
       amount: request.amount,
       unit: request.unit,
       calories: Math.round(request.calories),
@@ -1098,7 +1101,7 @@ function getMonthBounds(year: number, month: number): { start: Date; end: Date }
 
 /**
  * Get consumption data for a date range.
- * Returns daily data points for charting.
+ * Returns daily data points for charting and meal type breakdown.
  */
 export async function getConsumptionRange(
   userId: string,
@@ -1109,15 +1112,16 @@ export async function getConsumptionRange(
   totals: Macros;
   entryCount: number;
   daysWithData: number;
+  byMealType: MealTypeBreakdown;
 }> {
   const supabase = await createClient();
   const startStr = startDate.toISOString().split('T')[0];
   const endStr = endDate.toISOString().split('T')[0];
 
-  // Get all entries in date range
+  // Get all entries in date range (including meal_type for breakdown)
   const { data: entries, error } = await supabase
     .from('meal_consumption_log')
-    .select('consumed_date, calories, protein, carbs, fat')
+    .select('consumed_date, meal_type, calories, protein, carbs, fat')
     .eq('user_id', userId)
     .gte('consumed_date', startStr)
     .lte('consumed_date', endStr)
@@ -1125,22 +1129,76 @@ export async function getConsumptionRange(
 
   if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
 
+  // Type for per-day data including meal type breakdown
+  type DailyAccumulator = {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    count: number;
+    byMealType: {
+      breakfast: Macros;
+      lunch: Macros;
+      dinner: Macros;
+      snack: Macros;
+    };
+  };
+
+  const emptyMealTypeBreakdown = () => ({
+    breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+  });
+
   // Group entries by date
-  const dailyMap = new Map<
-    string,
-    { calories: number; protein: number; carbs: number; fat: number; count: number }
-  >();
+  const dailyMap = new Map<string, DailyAccumulator>();
+
+  // Initialize period-level meal type breakdown
+  const byMealType: MealTypeBreakdown = {
+    breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    unassigned: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+  };
 
   for (const entry of entries || []) {
     const date = entry.consumed_date;
-    const existing = dailyMap.get(date) || { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 };
-    dailyMap.set(date, {
-      calories: existing.calories + entry.calories,
-      protein: existing.protein + entry.protein,
-      carbs: existing.carbs + entry.carbs,
-      fat: existing.fat + entry.fat,
-      count: existing.count + 1,
-    });
+    const existing = dailyMap.get(date) || {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      count: 0,
+      byMealType: emptyMealTypeBreakdown(),
+    };
+
+    // Update daily totals
+    existing.calories += entry.calories;
+    existing.protein += entry.protein;
+    existing.carbs += entry.carbs;
+    existing.fat += entry.fat;
+    existing.count += 1;
+
+    // Update per-day meal type breakdown (only for known meal types)
+    const mealTypeKey = entry.meal_type as MealType | null;
+    if (mealTypeKey && mealTypeKey in existing.byMealType) {
+      const dayBucket = existing.byMealType[mealTypeKey as keyof typeof existing.byMealType];
+      dayBucket.calories += entry.calories;
+      dayBucket.protein += entry.protein;
+      dayBucket.carbs += entry.carbs;
+      dayBucket.fat += entry.fat;
+    }
+
+    dailyMap.set(date, existing);
+
+    // Aggregate period-level by meal type
+    const periodBucket = mealTypeKey ? byMealType[mealTypeKey] : byMealType.unassigned;
+    periodBucket.calories += entry.calories;
+    periodBucket.protein += entry.protein;
+    periodBucket.carbs += entry.carbs;
+    periodBucket.fat += entry.fat;
   }
 
   // Generate all dates in range (even if no data)
@@ -1149,6 +1207,16 @@ export async function getConsumptionRange(
   while (current <= endDate) {
     const dateStr = current.toISOString().split('T')[0];
     const dayData = dailyMap.get(dateStr);
+    const emptyBreakdown = emptyMealTypeBreakdown();
+
+    // Round meal type values for this day
+    const dayMealTypeBreakdown = dayData?.byMealType || emptyBreakdown;
+    for (const key of Object.keys(dayMealTypeBreakdown) as (keyof typeof dayMealTypeBreakdown)[]) {
+      dayMealTypeBreakdown[key].protein = Math.round(dayMealTypeBreakdown[key].protein * 10) / 10;
+      dayMealTypeBreakdown[key].carbs = Math.round(dayMealTypeBreakdown[key].carbs * 10) / 10;
+      dayMealTypeBreakdown[key].fat = Math.round(dayMealTypeBreakdown[key].fat * 10) / 10;
+    }
+
     dailyData.push({
       date: dateStr,
       calories: dayData?.calories || 0,
@@ -1156,6 +1224,7 @@ export async function getConsumptionRange(
       carbs: Math.round((dayData?.carbs || 0) * 10) / 10,
       fat: Math.round((dayData?.fat || 0) * 10) / 10,
       entry_count: dayData?.count || 0,
+      byMealType: dayMealTypeBreakdown,
     });
     current.setDate(current.getDate() + 1);
   }
@@ -1179,7 +1248,14 @@ export async function getConsumptionRange(
     if (day.entry_count > 0) daysWithData++;
   }
 
-  return { dailyData, totals, entryCount, daysWithData };
+  // Round meal type breakdown values
+  for (const key of Object.keys(byMealType) as (keyof MealTypeBreakdown)[]) {
+    byMealType[key].protein = Math.round(byMealType[key].protein * 10) / 10;
+    byMealType[key].carbs = Math.round(byMealType[key].carbs * 10) / 10;
+    byMealType[key].fat = Math.round(byMealType[key].fat * 10) / 10;
+  }
+
+  return { dailyData, totals, entryCount, daysWithData, byMealType };
 }
 
 /**
@@ -1203,7 +1279,7 @@ export async function getWeeklyConsumption(
   const weekStart = getWeekStart(date);
   const weekEnd = getWeekEnd(weekStart);
 
-  const { dailyData, totals, entryCount, daysWithData } = await getConsumptionRange(
+  const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRange(
     userId,
     weekStart,
     weekEnd
@@ -1255,6 +1331,7 @@ export async function getWeeklyConsumption(
     percentages,
     dailyData,
     entry_count: entryCount,
+    byMealType,
   };
 }
 
@@ -1280,7 +1357,7 @@ export async function getMonthlyConsumption(
   const { start: monthStart, end: monthEnd } = getMonthBounds(year, month);
   const dayCount = monthEnd.getDate(); // Number of days in month
 
-  const { dailyData, totals, entryCount, daysWithData } = await getConsumptionRange(
+  const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRange(
     userId,
     monthStart,
     monthEnd
@@ -1334,5 +1411,6 @@ export async function getMonthlyConsumption(
     percentages,
     dailyData,
     entry_count: entryCount,
+    byMealType,
   };
 }
