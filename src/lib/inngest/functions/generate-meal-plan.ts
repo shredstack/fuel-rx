@@ -413,33 +413,50 @@ export const generateMealPlanFunction = inngest.createFunction(
               let mealId = savedMealsByKey.get(mealKey);
 
               if (!mealId) {
-                // Create new meal
-                const { data: newMeal, error: mealError } = await supabase
+                // Check if meal already exists for this user (same deduplication as production code)
+                const { data: existingMeal } = await supabase
                   .from('meals')
-                  .insert({
-                    name: meal.name,
-                    name_normalized: normalizeForMatching(meal.name),
-                    meal_type: meal.type,
-                    ingredients: meal.ingredients,
-                    instructions: meal.instructions,
-                    calories: meal.macros.calories,
-                    protein: meal.macros.protein,
-                    carbs: meal.macros.carbs,
-                    fat: meal.macros.fat,
-                    prep_time_minutes: meal.prep_time_minutes,
-                    source_type: 'ai_generated',
-                    source_user_id: userId,
-                    source_meal_plan_id: savedPlan.id,
-                    is_user_created: false,
-                    is_nutrition_edited_by_user: false,
-                  })
-                  .select('id')
+                  .select('id, times_used')
+                  .eq('source_user_id', userId)
+                  .eq('name_normalized', normalizeForMatching(meal.name))
                   .single();
 
-                if (mealError || !newMeal) {
-                  throw new Error(`Failed to save fixture meal: ${mealError?.message}`);
+                if (existingMeal) {
+                  mealId = existingMeal.id;
+                  // Increment usage count
+                  await supabase
+                    .from('meals')
+                    .update({ times_used: (existingMeal.times_used || 1) + 1 })
+                    .eq('id', mealId);
+                } else {
+                  // Create new meal
+                  const { data: newMeal, error: mealError } = await supabase
+                    .from('meals')
+                    .insert({
+                      name: meal.name,
+                      name_normalized: normalizeForMatching(meal.name),
+                      meal_type: meal.type,
+                      ingredients: meal.ingredients,
+                      instructions: meal.instructions,
+                      calories: meal.macros.calories,
+                      protein: meal.macros.protein,
+                      carbs: meal.macros.carbs,
+                      fat: meal.macros.fat,
+                      prep_time_minutes: meal.prep_time_minutes,
+                      source_type: 'ai_generated',
+                      source_user_id: userId,
+                      source_meal_plan_id: savedPlan.id,
+                      is_user_created: false,
+                      is_nutrition_edited_by_user: false,
+                    })
+                    .select('id')
+                    .single();
+
+                  if (mealError || !newMeal) {
+                    throw new Error(`Failed to save fixture meal: ${mealError?.message}`);
+                  }
+                  mealId = newMeal.id;
                 }
-                mealId = newMeal.id;
                 savedMealsByKey.set(mealKey, mealId!);
               }
 

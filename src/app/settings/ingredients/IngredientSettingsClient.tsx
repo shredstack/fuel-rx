@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { IngredientPreferenceWithDetails, IngredientCategoryType, IngredientRecord } from '@/lib/types'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   initialPreferences: IngredientPreferenceWithDetails[]
@@ -220,17 +222,18 @@ export default function IngredientSettingsClient({ initialPreferences }: Props) 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Ingredient Preferences</h1>
-          <Link href="/settings" className="text-gray-600 hover:text-gray-900">
-            Back to Settings
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center gap-4 mb-6">
+          <Link href="/settings" className="text-gray-600 hover:text-gray-900">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <h1 className="text-2xl font-bold text-primary-600">Ingredient Preferences</h1>
+        </div>
         {/* Info Card */}
         <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
           <div className="flex gap-3">
@@ -434,6 +437,8 @@ export default function IngredientSettingsClient({ initialPreferences }: Props) 
           </div>
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

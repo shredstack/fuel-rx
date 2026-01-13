@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import BasicInfoEditor from '@/components/BasicInfoEditor'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   initialSettings: {
@@ -54,17 +56,19 @@ export default function ProfileSettingsClient({ initialSettings }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Profile Settings</h1>
-          <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-            Back to Dashboard
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center gap-4 mb-6">
+          <Link href="/settings" className="text-gray-600 hover:text-gray-900">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <h1 className="text-2xl font-bold text-primary-600">Profile Settings</h1>
+        </div>
+
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
             {error}
@@ -97,6 +101,8 @@ export default function ProfileSettingsClient({ initialSettings }: Props) {
           )}
         </div>
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

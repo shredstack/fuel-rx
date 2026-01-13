@@ -153,7 +153,10 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
   // Handle cooking status change
   const handleCookingStatusChange = async (
     status: CookingStatus,
-    notes?: string
+    notes?: string,
+    updatedInstructions?: string[],
+    photoUrl?: string,
+    shareWithCommunity?: boolean
   ) => {
     try {
       const response = await fetch(`/api/saved-meals/${meal.id}/cooking-status`, {
@@ -162,6 +165,9 @@ export default function SavedPartyMealCard({ meal, onDelete, onUpdate }: Props) 
         body: JSON.stringify({
           cooking_status: status,
           modification_notes: notes,
+          updated_instructions: updatedInstructions,
+          cooked_photo_url: photoUrl,
+          share_with_community: shareWithCommunity,
         }),
       })
 

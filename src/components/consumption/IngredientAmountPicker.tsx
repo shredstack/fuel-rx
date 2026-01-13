@@ -1,17 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import type { IngredientToLog } from '@/lib/types';
+import type { IngredientToLog, MealType } from '@/lib/types';
+import MealTypeSelector from './MealTypeSelector';
+
+// Time-based meal type suggestion
+function getTimeBasedMealType(): MealType {
+  const hour = new Date().getHours();
+  if (hour < 10) return 'breakfast';
+  if (hour < 14) return 'lunch';
+  if (hour < 18) return 'snack';
+  return 'dinner';
+}
+
+function getTimeBasedMealTypes(): MealType[] {
+  const hour = new Date().getHours();
+  if (hour < 10) return ['breakfast'];
+  if (hour < 14) return ['lunch', 'snack'];
+  if (hour < 18) return ['snack'];
+  return ['dinner', 'snack'];
+}
 
 interface IngredientAmountPickerProps {
   ingredient: IngredientToLog;
   isOpen: boolean;
   onClose: () => void;
-  onLog: (ingredient: IngredientToLog, amount: number, unit: string) => Promise<void>;
+  onLog: (ingredient: IngredientToLog, amount: number, unit: string, mealType: MealType) => Promise<void>;
 }
 
 export default function IngredientAmountPicker({ ingredient, isOpen, onClose, onLog }: IngredientAmountPickerProps) {
   const [amount, setAmount] = useState(ingredient.default_amount);
+  const [mealType, setMealType] = useState<MealType>(getTimeBasedMealType());
   const [logging, setLogging] = useState(false);
 
   if (!isOpen) return null;
@@ -27,7 +46,7 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
   const handleLog = async () => {
     setLogging(true);
     try {
-      await onLog(ingredient, amount, ingredient.default_unit);
+      await onLog(ingredient, amount, ingredient.default_unit, mealType);
     } finally {
       setLogging(false);
     }
@@ -72,7 +91,7 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
         </div>
 
         {/* Macro Summary */}
-        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+        <div className="bg-gray-50 rounded-lg p-4 mb-4">
           <div className="grid grid-cols-4 gap-2 text-center">
             <div>
               <p className="text-lg font-bold text-gray-900">{macros.calories}</p>
@@ -91,6 +110,19 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
               <p className="text-xs text-gray-500">fat</p>
             </div>
           </div>
+        </div>
+
+        {/* Meal Type Selector */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Log as:
+          </label>
+          <MealTypeSelector
+            value={mealType}
+            onChange={setMealType}
+            suggestedTypes={getTimeBasedMealTypes()}
+            compact
+          />
         </div>
 
         {/* Actions */}

@@ -8,6 +8,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      padding: {
+        'safe': 'env(safe-area-inset-bottom)',
+      },
       colors: {
         primary: {
           50: '#f0fdfa',

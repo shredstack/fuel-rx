@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import FeedPostCard from '@/components/FeedPostCard'
 import type { SocialUser, SocialFeedPost } from '@/lib/types'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   userId: string
@@ -103,12 +105,8 @@ export default function UserProfileClient({ userId, currentUserId }: Props) {
 
   if (loadingProfile) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="h-8 bg-gray-200 rounded w-1/4 animate-pulse" />
-          </div>
-        </header>
+      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+        <Navbar />
         <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="card animate-pulse">
             <div className="flex items-center gap-4 mb-6">
@@ -120,21 +118,15 @@ export default function UserProfileClient({ userId, currentUserId }: Props) {
             </div>
           </div>
         </main>
+        <MobileTabBar />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-primary-600">User Profile</h1>
-            <Link href="/community" className="text-gray-600 hover:text-gray-900">
-              Back to Feed
-            </Link>
-          </div>
-        </header>
+      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+        <Navbar />
         <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="card text-center py-12">
             <svg
@@ -156,6 +148,7 @@ export default function UserProfileClient({ userId, currentUserId }: Props) {
             </Link>
           </div>
         </main>
+        <MobileTabBar />
       </div>
     )
   }
@@ -163,22 +156,11 @@ export default function UserProfileClient({ userId, currentUserId }: Props) {
   const displayName = profile?.display_name || profile?.name || 'Anonymous'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">{displayName}</h1>
-          <div className="flex items-center gap-4">
-            <Link href="/community" className="text-gray-600 hover:text-gray-900">
-              Feed
-            </Link>
-            <Link href="/community/users" className="text-gray-600 hover:text-gray-900">
-              Browse Users
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-2xl font-bold text-primary-600 mb-6">{displayName}</h1>
         {/* Profile Card */}
         <div className="card mb-6">
           <div className="flex items-center justify-between">
@@ -243,6 +225,8 @@ export default function UserProfileClient({ userId, currentUserId }: Props) {
           </div>
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

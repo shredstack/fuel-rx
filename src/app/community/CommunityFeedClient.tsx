@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import FeedPostCard from '@/components/FeedPostCard'
 import type { SocialFeedPost } from '@/lib/types'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   socialEnabled: boolean
@@ -96,15 +98,8 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
 
   if (!socialEnabled) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-primary-600">Community Feed</h1>
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Back to Dashboard
-            </Link>
-          </div>
-        </header>
+      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+        <Navbar />
 
         <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
           <div className="card">
@@ -133,25 +128,15 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
             </Link>
           </div>
         </main>
+
+        <MobileTabBar />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Community Feed</h1>
-          <div className="flex items-center gap-4">
-            <Link href="/community/users" className="text-gray-600 hover:text-gray-900">
-              Browse Users
-            </Link>
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filter Tabs */}
@@ -256,6 +241,8 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
           </>
         )}
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

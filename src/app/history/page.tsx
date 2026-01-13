@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import HistoryClient from './HistoryClient'
+import Navbar from '@/components/Navbar'
+import MobileTabBar from '@/components/MobileTabBar'
 
 export default async function HistoryPage() {
   const supabase = await createClient()
@@ -39,26 +40,8 @@ export default async function HistoryPage() {
   }))
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/dashboard" className="text-2xl font-bold text-primary-600">
-            Coach Hill&apos;s FuelRx
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-              Dashboard
-            </Link>
-            <Link href="/log-meal" className="text-gray-600 hover:text-gray-900">
-              Log
-            </Link>
-            <Link href="/custom-meals" className="text-gray-600 hover:text-gray-900">
-              My Meals
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <Navbar />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
@@ -67,6 +50,8 @@ export default async function HistoryPage() {
 
         <HistoryClient mealPlans={mealPlansWithThemes} />
       </main>
+
+      <MobileTabBar />
     </div>
   )
 }

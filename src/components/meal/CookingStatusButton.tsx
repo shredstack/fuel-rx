@@ -9,9 +9,16 @@ interface Props {
   status: CookingStatus
   mealName: string
   currentInstructions?: string[]
-  onStatusChange: (status: CookingStatus, notes?: string, updatedInstructions?: string[]) => Promise<void>
+  onStatusChange: (
+    status: CookingStatus,
+    notes?: string,
+    updatedInstructions?: string[],
+    photoUrl?: string,
+    shareWithCommunity?: boolean
+  ) => Promise<void>
   variant?: 'button' | 'icon'
   className?: string
+  socialFeedEnabled?: boolean
 }
 
 export default function CookingStatusButton({
@@ -21,6 +28,7 @@ export default function CookingStatusButton({
   onStatusChange,
   variant = 'button',
   className = '',
+  socialFeedEnabled = false,
 }: Props) {
   const [showModal, setShowModal] = useState(false)
 
@@ -29,9 +37,11 @@ export default function CookingStatusButton({
   const handleSubmit = async (
     newStatus: CookingStatus,
     notes?: string,
-    updatedInstructions?: string[]
+    updatedInstructions?: string[],
+    photoUrl?: string,
+    shareWithCommunity?: boolean
   ) => {
-    await onStatusChange(newStatus, notes, updatedInstructions)
+    await onStatusChange(newStatus, notes, updatedInstructions, photoUrl, shareWithCommunity)
   }
 
   // Icon-only variant (for compact displays)
@@ -77,6 +87,7 @@ export default function CookingStatusButton({
           currentStatus={status}
           mealName={mealName}
           currentInstructions={currentInstructions}
+          socialFeedEnabled={socialFeedEnabled}
         />
       </>
     )
@@ -129,6 +140,7 @@ export default function CookingStatusButton({
         currentStatus={status}
         mealName={mealName}
         currentInstructions={currentInstructions}
+        socialFeedEnabled={socialFeedEnabled}
       />
     </>
   )

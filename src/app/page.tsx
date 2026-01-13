@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Logo from '@/components/Logo'
 
 export default function Home() {
   return (
@@ -6,7 +7,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 className="text-xl sm:text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
+          <Logo size="lg" />
           <div className="flex items-center gap-3 sm:gap-4">
             <Link href="/login" className="text-gray-600 hover:text-gray-900 whitespace-nowrap">
               Log in
@@ -78,7 +79,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-gray-900 text-gray-400 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-primary-400 font-semibold mb-2">Coach Hill&apos;s FuelRx</p>
+          <Logo size="sm" className="justify-center mb-2" />
           <p className="text-sm">Built for the CrossFit Draper community</p>
         </div>
       </footer>

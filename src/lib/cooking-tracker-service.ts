@@ -15,6 +15,7 @@ import type {
 /**
  * Mark a meal in a meal plan as cooked.
  * Also updates global cooking stats on the meal itself.
+ * Optionally shares to the community feed.
  */
 export async function markMealPlanMealCooked(
   mealPlanMealId: string,
@@ -23,6 +24,8 @@ export async function markMealPlanMealCooked(
   options?: {
     modificationNotes?: string;
     updatedInstructions?: string[];
+    cookedPhotoUrl?: string;
+    shareWithCommunity?: boolean;
   }
 ): Promise<MealPlanMealCookingStatus> {
   const supabase = await createClient();
@@ -49,6 +52,7 @@ export async function markMealPlanMealCooked(
   }
 
   const cookedAt = status !== 'not_cooked' ? new Date().toISOString() : null;
+  const shareWithCommunity = options?.shareWithCommunity ?? true;
 
   // Upsert cooking status
   const { data: cookingStatus, error: upsertError } = await supabase
@@ -59,6 +63,8 @@ export async function markMealPlanMealCooked(
         cooking_status: status,
         cooked_at: cookedAt,
         modification_notes: options?.modificationNotes || null,
+        cooked_photo_url: options?.cookedPhotoUrl || null,
+        share_with_community: shareWithCommunity,
       },
       {
         onConflict: 'meal_plan_meal_id',
@@ -96,6 +102,14 @@ export async function markMealPlanMealCooked(
         // Don't throw - the cooking status was saved successfully
       }
     }
+
+    // Share to community feed if enabled
+    if (shareWithCommunity) {
+      await shareToCommunityfeed(supabase, userId, mealSlot.meal_id, {
+        cookedPhotoUrl: options?.cookedPhotoUrl,
+        userNotes: options?.modificationNotes,
+      });
+    }
   }
 
   return cookingStatus as MealPlanMealCookingStatus;
@@ -104,6 +118,7 @@ export async function markMealPlanMealCooked(
 /**
  * Mark a saved meal (quick cook/party plan) as cooked.
  * Also updates global cooking stats on the meal itself.
+ * Optionally shares to the community feed.
  */
 export async function markSavedMealCooked(
   mealId: string,
@@ -112,6 +127,8 @@ export async function markSavedMealCooked(
   options?: {
     modificationNotes?: string;
     updatedInstructions?: string[];
+    cookedPhotoUrl?: string;
+    shareWithCommunity?: boolean;
   }
 ): Promise<SavedMealCookingStatus> {
   const supabase = await createClient();
@@ -132,6 +149,7 @@ export async function markSavedMealCooked(
   }
 
   const cookedAt = status !== 'not_cooked' ? new Date().toISOString() : null;
+  const shareWithCommunity = options?.shareWithCommunity ?? true;
 
   // Upsert cooking status
   const { data: cookingStatus, error: upsertError } = await supabase
@@ -143,6 +161,8 @@ export async function markSavedMealCooked(
         cooking_status: status,
         cooked_at: cookedAt,
         modification_notes: options?.modificationNotes || null,
+        cooked_photo_url: options?.cookedPhotoUrl || null,
+        share_with_community: shareWithCommunity,
       },
       {
         onConflict: 'user_id,meal_id',
@@ -177,6 +197,14 @@ export async function markSavedMealCooked(
       if (updateError) {
         console.error('Error updating meal instructions:', updateError);
       }
+    }
+
+    // Share to community feed if enabled
+    if (shareWithCommunity) {
+      await shareToCommunityfeed(supabase, userId, mealId, {
+        cookedPhotoUrl: options?.cookedPhotoUrl,
+        userNotes: options?.modificationNotes,
+      });
     }
   }
 
@@ -240,6 +268,8 @@ export async function getMealPlanCookingStatuses(
       cooking_status: status.cooking_status,
       cooked_at: status.cooked_at,
       modification_notes: status.modification_notes,
+      cooked_photo_url: status.cooked_photo_url,
+      share_with_community: status.share_with_community,
       created_at: status.created_at,
       updated_at: status.updated_at,
     });
@@ -363,5 +393,83 @@ export async function resetSavedMealCookingStatus(mealId: string, userId: string
 
   if (error) {
     throw new Error(`Failed to reset cooking status: ${error.message}`);
+  }
+}
+
+/**
+ * Helper to convert minutes to prep time string
+ */
+function minutesToPrepTime(minutes: number | null): string | null {
+  if (!minutes) return null;
+  if (minutes <= 15) return '15_or_less';
+  if (minutes <= 30) return '15_to_30';
+  if (minutes <= 45) return '30_to_45';
+  if (minutes <= 60) return '45_to_60';
+  return '60_plus';
+}
+
+/**
+ * Share a cooked meal to the community feed.
+ * Only creates a post if the user has social_feed_enabled.
+ */
+async function shareToCommunityfeed(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  mealId: string,
+  options: {
+    cookedPhotoUrl?: string;
+    userNotes?: string;
+  }
+): Promise<void> {
+  try {
+    // Check if user has social feed enabled
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('social_feed_enabled')
+      .eq('id', userId)
+      .single();
+
+    if (!profile?.social_feed_enabled) {
+      return; // User hasn't enabled community sharing
+    }
+
+    // Get meal details
+    const { data: meal, error: mealError } = await supabase
+      .from('meals')
+      .select('*')
+      .eq('id', mealId)
+      .single();
+
+    if (mealError || !meal) {
+      console.error('Error fetching meal for community sharing:', mealError);
+      return;
+    }
+
+    // Create social feed post
+    const { error: postError } = await supabase.from('social_feed_posts').insert({
+      user_id: userId,
+      source_type: 'cooked_meal',
+      source_meals_table_id: mealId,
+      meal_name: meal.name,
+      calories: Math.round(meal.calories || 0),
+      protein: Math.round(meal.protein || 0),
+      carbs: Math.round(meal.carbs || 0),
+      fat: Math.round(meal.fat || 0),
+      image_url: meal.image_url,
+      prep_time: minutesToPrepTime(meal.prep_time_minutes),
+      ingredients: meal.ingredients,
+      instructions: meal.instructions,
+      meal_type: meal.meal_type,
+      cooked_photo_url: options.cookedPhotoUrl || null,
+      user_notes: options.userNotes || null,
+    });
+
+    // Ignore duplicate errors (23505) - meal already shared
+    if (postError && postError.code !== '23505') {
+      console.error('Error sharing cooked meal to community feed:', postError);
+    }
+  } catch (error) {
+    console.error('Error in shareToCommunityfeed:', error);
+    // Don't throw - sharing is optional
   }
 }
