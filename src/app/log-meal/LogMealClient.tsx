@@ -311,6 +311,36 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
     }
   };
 
+  // Move a logged entry to a different meal type
+  const handleMoveMealType = async (entryId: string, newMealType: MealType) => {
+    // Find the entry
+    const entry = summary.entries.find((e) => e.id === entryId);
+    if (!entry || entry.meal_type === newMealType) return;
+
+    // Optimistic update
+    setSummary((prev) => ({
+      ...prev,
+      entries: prev.entries.map((e) =>
+        e.id === entryId ? { ...e, meal_type: newMealType } : e
+      ),
+    }));
+
+    try {
+      const response = await fetch(`/api/consumption/${entryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meal_type: newMealType }),
+      });
+
+      if (!response.ok) {
+        await refreshData();
+      }
+    } catch (error) {
+      console.error('Error moving entry:', error);
+      await refreshData();
+    }
+  };
+
   // Log an ingredient
   const handleLogIngredient = async (
     ingredient: IngredientToLog,
@@ -754,7 +784,7 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
               {summary.entries.length > 0 ? (
                 <div className="space-y-4">
                   {/* Group entries by meal type */}
-                  {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((mealType) => {
+                  {(['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'] as MealType[]).map((mealType) => {
                     const entriesForType = summary.entries.filter((e) => e.meal_type === mealType);
                     if (entriesForType.length === 0) return null;
 
@@ -781,8 +811,8 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                         </div>
                         <div className="divide-y divide-gray-50">
                           {entriesForType.map((entry) => (
-                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
-                              <div>
+                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-gray-900 flex items-center gap-1">
                                   {entry.display_name}
                                   {/* 800g Challenge indicator for fruits/vegetables */}
@@ -797,36 +827,58 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                                   )}
                                 </p>
                               </div>
-                              <button
-                                onClick={() => {
-                                  const meal = [
-                                    ...available.from_todays_plan,
-                                    ...available.from_week_plan,
-                                    ...available.custom_meals,
-                                    ...available.quick_cook_meals,
-                                    ...(available.latest_plan_meals || []),
-                                  ].find((m) => m.logged_entry_id === entry.id);
-                                  if (meal) {
-                                    handleUndoLog(entry.id, meal);
-                                  } else {
-                                    handleUndoLog(entry.id, {
-                                      id: entry.id,
-                                      source: entry.entry_type,
-                                      source_id: entry.id,
-                                      name: entry.display_name,
-                                      calories: entry.calories,
-                                      protein: entry.protein,
-                                      carbs: entry.carbs,
-                                      fat: entry.fat,
-                                      is_logged: true,
-                                      logged_entry_id: entry.id,
-                                    });
-                                  }
-                                }}
-                                className="text-xs text-red-600 hover:text-red-700"
-                              >
-                                Remove
-                              </button>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {/* Move to different meal type dropdown */}
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      handleMoveMealType(entry.id, e.target.value as MealType);
+                                    }
+                                  }}
+                                  className="text-xs text-gray-600 bg-gray-100 border-0 rounded px-2 py-1 cursor-pointer hover:bg-gray-200 focus:ring-1 focus:ring-primary-500"
+                                  title="Move to different meal"
+                                >
+                                  <option value="">Move to...</option>
+                                  {(['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'] as MealType[])
+                                    .filter((mt) => mt !== mealType)
+                                    .map((mt) => (
+                                      <option key={mt} value={mt}>
+                                        {MEAL_TYPE_LABELS[mt]}
+                                      </option>
+                                    ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    const meal = [
+                                      ...available.from_todays_plan,
+                                      ...available.from_week_plan,
+                                      ...available.custom_meals,
+                                      ...available.quick_cook_meals,
+                                      ...(available.latest_plan_meals || []),
+                                    ].find((m) => m.logged_entry_id === entry.id);
+                                    if (meal) {
+                                      handleUndoLog(entry.id, meal);
+                                    } else {
+                                      handleUndoLog(entry.id, {
+                                        id: entry.id,
+                                        source: entry.entry_type,
+                                        source_id: entry.id,
+                                        name: entry.display_name,
+                                        calories: entry.calories,
+                                        protein: entry.protein,
+                                        carbs: entry.carbs,
+                                        fat: entry.fat,
+                                        is_logged: true,
+                                        logged_entry_id: entry.id,
+                                      });
+                                    }
+                                  }}
+                                  className="text-xs text-red-600 hover:text-red-700"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -849,43 +901,63 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
                         </div>
                         <div className="divide-y divide-gray-50">
                           {unassignedEntries.map((entry) => (
-                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
-                              <div>
+                            <div key={entry.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-gray-900">{entry.display_name}</p>
                                 <p className="text-xs text-gray-500">
                                   {entry.calories} cal | {entry.protein}g P | {entry.carbs}g C | {entry.fat}g F
                                 </p>
                               </div>
-                              <button
-                                onClick={() => {
-                                  const meal = [
-                                    ...available.from_todays_plan,
-                                    ...available.from_week_plan,
-                                    ...available.custom_meals,
-                                    ...available.quick_cook_meals,
-                                    ...(available.latest_plan_meals || []),
-                                  ].find((m) => m.logged_entry_id === entry.id);
-                                  if (meal) {
-                                    handleUndoLog(entry.id, meal);
-                                  } else {
-                                    handleUndoLog(entry.id, {
-                                      id: entry.id,
-                                      source: entry.entry_type,
-                                      source_id: entry.id,
-                                      name: entry.display_name,
-                                      calories: entry.calories,
-                                      protein: entry.protein,
-                                      carbs: entry.carbs,
-                                      fat: entry.fat,
-                                      is_logged: true,
-                                      logged_entry_id: entry.id,
-                                    });
-                                  }
-                                }}
-                                className="text-xs text-red-600 hover:text-red-700"
-                              >
-                                Remove
-                              </button>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {/* Assign meal type dropdown */}
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      handleMoveMealType(entry.id, e.target.value as MealType);
+                                    }
+                                  }}
+                                  className="text-xs text-gray-600 bg-gray-100 border-0 rounded px-2 py-1 cursor-pointer hover:bg-gray-200 focus:ring-1 focus:ring-primary-500"
+                                  title="Assign to meal type"
+                                >
+                                  <option value="">Assign to...</option>
+                                  {(['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'] as MealType[]).map((mt) => (
+                                    <option key={mt} value={mt}>
+                                      {MEAL_TYPE_LABELS[mt]}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    const meal = [
+                                      ...available.from_todays_plan,
+                                      ...available.from_week_plan,
+                                      ...available.custom_meals,
+                                      ...available.quick_cook_meals,
+                                      ...(available.latest_plan_meals || []),
+                                    ].find((m) => m.logged_entry_id === entry.id);
+                                    if (meal) {
+                                      handleUndoLog(entry.id, meal);
+                                    } else {
+                                      handleUndoLog(entry.id, {
+                                        id: entry.id,
+                                        source: entry.entry_type,
+                                        source_id: entry.id,
+                                        name: entry.display_name,
+                                        calories: entry.calories,
+                                        protein: entry.protein,
+                                        carbs: entry.carbs,
+                                        fat: entry.fat,
+                                        is_logged: true,
+                                        logged_entry_id: entry.id,
+                                      });
+                                    }
+                                  }}
+                                  className="text-xs text-red-600 hover:text-red-700"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
