@@ -113,7 +113,11 @@ export async function callLLMWithToolUse<T>(options: {
   let maxTokens = requestedMaxTokens || 16000;
 
   // Apply test mode configuration if enabled
-  if (process.env.MEAL_PLAN_TEST_MODE && testConfig.mode !== 'production') {
+  // Admin/utility operations bypass test mode restrictions
+  const adminPromptTypes = ['usda_ingredient_matching', 'meal_photo_analysis'];
+  const isAdminOperation = adminPromptTypes.includes(promptType);
+
+  if (process.env.MEAL_PLAN_TEST_MODE && testConfig.mode !== 'production' && !isAdminOperation) {
     // Fixture mode should never reach here - all LLM calls should be bypassed
     if (testConfig.mode === 'fixture') {
       throw new Error(`[TEST MODE] Fixture mode should not make LLM calls. Called with promptType: ${promptType}`);

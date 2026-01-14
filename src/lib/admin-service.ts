@@ -87,11 +87,39 @@ export async function searchIngredients(
     category,
     validated,
     userAddedOnly,
+    usdaMatchStatus,
     sortBy = 'name',
     sortOrder = 'asc',
     page = 1,
     pageSize = 20,
   } = filters
+
+  // If filtering by USDA match status, we need to first get ingredient IDs that match
+  let ingredientIdsWithStatus: string[] | null = null
+  if (usdaMatchStatus) {
+    const { data: nutritionRecords, error: nutritionError } = await supabase
+      .from('ingredient_nutrition')
+      .select('ingredient_id')
+      .eq('usda_match_status', usdaMatchStatus)
+
+    if (nutritionError) {
+      throw new Error(`Failed to filter by USDA status: ${nutritionError.message}`)
+    }
+
+    // Get unique ingredient IDs
+    ingredientIdsWithStatus = [...new Set(nutritionRecords?.map(r => r.ingredient_id) || [])]
+
+    // If no ingredients match the status, return empty result
+    if (ingredientIdsWithStatus.length === 0) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        pageSize,
+        hasMore: false,
+      }
+    }
+  }
 
   // Build query for count - exclude soft-deleted ingredients
   let countQuery = supabase
@@ -104,6 +132,12 @@ export async function searchIngredients(
     .from('ingredients')
     .select('*')
     .is('deleted_at', null)
+
+  // Apply USDA status filter (ingredient ID list)
+  if (ingredientIdsWithStatus) {
+    countQuery = countQuery.in('id', ingredientIdsWithStatus)
+    dataQuery = dataQuery.in('id', ingredientIdsWithStatus)
+  }
 
   // Apply filters to both queries
   if (search) {

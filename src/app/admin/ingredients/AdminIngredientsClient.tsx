@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import type {
   AdminIngredient,
@@ -10,6 +10,171 @@ import type {
 } from '@/lib/types'
 import Navbar from '@/components/Navbar'
 import EditIngredientModal from '@/components/admin/EditIngredientModal'
+
+// USDA Job Status Banner Component
+function USDAJobStatusBanner({
+  jobId,
+  initialMessage,
+  onDismiss,
+  onComplete,
+}: {
+  jobId: string
+  initialMessage?: string
+  onDismiss: () => void
+  onComplete: () => void
+}) {
+  const [mounted, setMounted] = useState(false)
+  const [status, setStatus] = useState<{
+    status: string
+    processed_count: number
+    matched_count: number
+    no_match_count: number
+    error_count: number
+    total_count: number
+  } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Use ref for onComplete to avoid stale closure issues without triggering re-renders
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    let hasCalledComplete = false
+
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch(`/api/admin/usda/backfill?jobId=${jobId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setStatus(data)
+
+          // Stop polling when job is done
+          if (data.status === 'completed' || data.status === 'failed') {
+            if (interval) {
+              clearInterval(interval)
+              interval = null
+            }
+            // Only call onComplete once
+            if (data.status === 'completed' && !hasCalledComplete) {
+              hasCalledComplete = true
+              onCompleteRef.current()
+            }
+          }
+        } else if (response.status === 404) {
+          // Job not found - might be a temp ID or table doesn't exist
+          // Just show that it's running without detailed status
+          setStatus({
+            status: 'running',
+            processed_count: 0,
+            matched_count: 0,
+            no_match_count: 0,
+            error_count: 0,
+            total_count: 0,
+          })
+        } else {
+          setError('Failed to fetch job status')
+        }
+      } catch {
+        setError('Failed to fetch job status')
+      }
+    }
+
+    // Initial fetch
+    fetchStatus()
+
+    // Poll every 3 seconds
+    interval = setInterval(fetchStatus, 3000)
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [jobId])
+
+  // Don't render until mounted to prevent hydration mismatch
+  if (!mounted) {
+    return null
+  }
+
+  const isRunning = status?.status === 'running' || status?.status === 'pending'
+  const isCompleted = status?.status === 'completed'
+  const isFailed = status?.status === 'failed'
+
+  const bgColor = isCompleted
+    ? 'bg-green-50 border-green-200'
+    : isFailed
+      ? 'bg-red-50 border-red-200'
+      : 'bg-blue-50 border-blue-200'
+
+  const textColor = isCompleted
+    ? 'text-green-800'
+    : isFailed
+      ? 'text-red-800'
+      : 'text-blue-800'
+
+  const subTextColor = isCompleted
+    ? 'text-green-600'
+    : isFailed
+      ? 'text-red-600'
+      : 'text-blue-600'
+
+  return (
+    <div className={`${bgColor} border rounded-lg p-4 mb-4`}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`font-medium ${textColor}`}>
+              {isRunning && 'USDA Matching In Progress'}
+              {isCompleted && 'USDA Matching Complete'}
+              {isFailed && 'USDA Matching Failed'}
+              {!status && 'Starting USDA Matching...'}
+            </span>
+            {isRunning && (
+              <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
+          </div>
+
+          {status ? (
+            <div className={`text-sm ${subTextColor} mt-1`}>
+              <span>
+                Processed: {status.processed_count}/{status.total_count}
+              </span>
+              {status.processed_count > 0 && (
+                <span className="ml-3">
+                  Matched: {status.matched_count} | No match: {status.no_match_count}
+                  {status.error_count > 0 && ` | Errors: ${status.error_count}`}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className={`text-sm ${subTextColor} mt-1`}>
+              {initialMessage || 'Initializing...'}
+            </p>
+          )}
+
+          {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
+        </div>
+
+        <button
+          onClick={onDismiss}
+          className={`${subTextColor} hover:opacity-70`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   initialIngredients: AdminIngredient[]
@@ -39,7 +204,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-800',
 }
 
-type StatusFilter = 'all' | 'validated' | 'unvalidated' | 'user-added'
+type StatusFilter = 'all' | 'validated' | 'unvalidated' | 'user-added' | 'needs-review'
 type SortField = 'name' | 'category' | 'created_at' | 'validated'
 
 export default function AdminIngredientsClient({
@@ -90,6 +255,7 @@ export default function AdminIngredientsClient({
     if (statusFilter === 'validated') params.set('validated', 'true')
     if (statusFilter === 'unvalidated') params.set('validated', 'false')
     if (statusFilter === 'user-added') params.set('userAddedOnly', 'true')
+    if (statusFilter === 'needs-review') params.set('usdaMatchStatus', 'needs_review')
     params.set('sortBy', sortBy)
     params.set('sortOrder', sortOrder)
     params.set('page', page.toString())
@@ -241,6 +407,53 @@ export default function AdminIngredientsClient({
     }
   }
 
+  // Handle bulk USDA match
+  const [usdaMatchStatus, setUsdaMatchStatus] = useState<{
+    loading: boolean;
+    jobId?: string;
+    message?: string;
+  }>({ loading: false });
+
+  const handleBulkUSDAMatch = async () => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    if (!confirm(`Run USDA matching for all nutrition records of ${count} selected ingredient${count > 1 ? 's' : ''}? This will update their nutrition values from USDA data.`)) {
+      return
+    }
+
+    setUsdaMatchStatus({ loading: true });
+
+    try {
+      const response = await fetch('/api/admin/usda/bulk-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredientIds: Array.from(selectedIds),
+          includeAlreadyMatched: true,  // Re-match even if already matched
+        }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setUsdaMatchStatus({
+          loading: false,
+          jobId: result.jobId,
+          message: result.message,
+        });
+        setSelectedIds(new Set())
+      } else {
+        setUsdaMatchStatus({ loading: false });
+        alert(`Failed to start USDA matching: ${result.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to start USDA matching:', error)
+      setUsdaMatchStatus({ loading: false });
+      alert('Failed to start USDA matching')
+    }
+  }
+
   // Handle bulk delete
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
@@ -341,8 +554,8 @@ export default function AdminIngredientsClient({
             </select>
 
             {/* Status Filter */}
-            <div className="flex gap-2">
-              {(['all', 'validated', 'unvalidated', 'user-added'] as const).map(status => (
+            <div className="flex gap-2 flex-wrap">
+              {(['all', 'validated', 'unvalidated', 'user-added', 'needs-review'] as const).map(status => (
                 <button
                   key={status}
                   onClick={() => {
@@ -351,14 +564,19 @@ export default function AdminIngredientsClient({
                   }}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     statusFilter === status
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? status === 'needs-review'
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-primary-600 text-white'
+                      : status === 'needs-review'
+                        ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {status === 'all' && 'All'}
                   {status === 'validated' && 'Validated'}
                   {status === 'unvalidated' && 'Unvalidated'}
                   {status === 'user-added' && 'User Added'}
+                  {status === 'needs-review' && 'Needs Review'}
                 </button>
               ))}
             </div>
@@ -393,6 +611,16 @@ export default function AdminIngredientsClient({
             </div>
           </div>
         </div>
+
+        {/* USDA Job Status Banner */}
+        {usdaMatchStatus.jobId && (
+          <USDAJobStatusBanner
+            jobId={usdaMatchStatus.jobId}
+            initialMessage={usdaMatchStatus.message}
+            onDismiss={() => setUsdaMatchStatus({ loading: false })}
+            onComplete={() => fetchIngredients()}
+          />
+        )}
 
         {/* Bulk Actions Bar */}
         {selectedIds.size > 0 && (
@@ -441,6 +669,13 @@ export default function AdminIngredientsClient({
               className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
             >
               Delete
+            </button>
+            <button
+              onClick={handleBulkUSDAMatch}
+              disabled={bulkLoading || usdaMatchStatus.loading}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {usdaMatchStatus.loading ? 'Starting...' : 'Run USDA Match'}
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}

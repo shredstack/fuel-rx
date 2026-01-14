@@ -26,6 +26,7 @@ export async function GET(request: Request) {
       ? searchParams.get('validated') === 'true'
       : undefined,
     userAddedOnly: searchParams.get('userAddedOnly') === 'true',
+    usdaMatchStatus: (searchParams.get('usdaMatchStatus') as AdminIngredientFilters['usdaMatchStatus']) || undefined,
     sortBy: (searchParams.get('sortBy') as AdminIngredientFilters['sortBy']) || 'name',
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
     page: parseInt(searchParams.get('page') || '1', 10),

@@ -32,6 +32,13 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   barcode_scan: { label: 'Barcode Scan', color: 'bg-purple-100 text-purple-800' },
 }
 
+const USDA_STATUS_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  pending: { label: 'Not Matched', color: 'text-gray-400', icon: '○' },
+  matched: { label: 'USDA Matched', color: 'text-green-600', icon: '✓' },
+  no_match: { label: 'No Match', color: 'text-yellow-600', icon: '!' },
+  manual_override: { label: 'Manual', color: 'text-blue-600', icon: '✎' },
+}
+
 export default function EditIngredientModal({ ingredient, onClose, onSave }: Props) {
   // Form state
   const [name, setName] = useState(ingredient.name)
@@ -52,6 +59,9 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
 
   // Track deleted nutrition IDs (for UI removal before save)
   const [deletedNutritionIds, setDeletedNutritionIds] = useState<Set<string>>(new Set())
+
+  // USDA matching state
+  const [matchingNutritionId, setMatchingNutritionId] = useState<string | null>(null)
 
   // Fetch nutrition data
   useEffect(() => {
@@ -84,6 +94,104 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
         [field]: value,
       },
     }))
+  }
+
+  // Handle USDA matching for a nutrition record
+  const handleMatchUSDA = async (nutritionId: string) => {
+    setMatchingNutritionId(nutritionId)
+
+    try {
+      // First, get Claude's suggested match
+      const matchResponse = await fetch('/api/admin/usda/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nutritionId }),
+      })
+
+      if (!matchResponse.ok) {
+        const error = await matchResponse.json()
+        alert(`Failed to match: ${error.error || 'Unknown error'}`)
+        return
+      }
+
+      const matchResult = await matchResponse.json()
+
+      if (matchResult.matchResult.status === 'no_match') {
+        alert(`No USDA match found: ${matchResult.matchResult.errorMessage || 'No suitable match'}`)
+        // Update local state to show no_match status
+        setNutrition(prev =>
+          prev.map(n =>
+            n.id === nutritionId
+              ? { ...n, usda_match_status: 'no_match' }
+              : n
+          )
+        )
+        return
+      }
+
+      if (matchResult.matchResult.status === 'matched' && matchResult.matchResult.bestMatch) {
+        const bestMatch = matchResult.matchResult.bestMatch
+        const confidence = Math.round(bestMatch.confidence * 100)
+        const currentServing = matchResult.currentNutrition
+
+        // Check if the serving unit can be converted
+        const weightUnits = ['g', 'gram', 'grams', 'oz', 'ounce', 'ounces', 'lb', 'pound', 'pounds', 'kg']
+        const canConvert = weightUnits.includes(currentServing.servingUnit.toLowerCase())
+
+        // Ask user to confirm
+        const conversionNote = canConvert
+          ? `\nWill calculate nutrition for ${currentServing.servingSize} ${currentServing.servingUnit} from USDA 100g data.`
+          : `\n⚠️ Cannot auto-convert "${currentServing.servingUnit}" to grams. USDA data will be saved but macros won't be updated automatically.`
+
+        const confirmed = confirm(
+          `USDA Match Found (${confidence}% confidence):\n\n` +
+          `"${bestMatch.description}"\n\n` +
+          `USDA Nutrition per 100g:\n` +
+          `• Calories: ${bestMatch.nutritionPer100g.calories}\n` +
+          `• Protein: ${bestMatch.nutritionPer100g.protein}g\n` +
+          `• Carbs: ${bestMatch.nutritionPer100g.carbs}g\n` +
+          `• Fat: ${bestMatch.nutritionPer100g.fat}g\n\n` +
+          `Current serving: ${currentServing.servingSize} ${currentServing.servingUnit}` +
+          conversionNote + `\n\n` +
+          `Reason: ${bestMatch.reasoning}\n\n` +
+          `Apply this match?`
+        )
+
+        if (confirmed) {
+          // Apply the match
+          const applyResponse = await fetch('/api/admin/usda/match', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nutritionId,
+              fdcId: bestMatch.fdcId,
+              confidence: bestMatch.confidence,
+              reasoning: bestMatch.reasoning,
+              updateNutrition: true,
+            }),
+          })
+
+          if (applyResponse.ok) {
+            const result = await applyResponse.json()
+            // Refresh nutrition data
+            const refreshResponse = await fetch(`/api/admin/ingredients/${ingredient.id}`)
+            if (refreshResponse.ok) {
+              const data: AdminIngredient = await refreshResponse.json()
+              setNutrition(data.nutrition || [])
+            }
+            alert(result.message || 'USDA match applied successfully!')
+          } else {
+            const error = await applyResponse.json()
+            alert(`Failed to apply match: ${error.error || 'Unknown error'}`)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to match USDA:', err)
+      alert('Failed to match USDA')
+    } finally {
+      setMatchingNutritionId(null)
+    }
   }
 
   // Handle nutrition record deletion
@@ -323,7 +431,7 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
                       key={nut.id}
                       className="border border-gray-200 rounded-lg p-4 space-y-3"
                     >
-                      {/* Serving info, source badge, and delete button */}
+                      {/* Serving info, source badge, USDA status, and actions */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <input
@@ -348,6 +456,7 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
                           />
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Source badge */}
                           <span
                             className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                               SOURCE_LABELS[nut.source]?.color || 'bg-gray-100 text-gray-800'
@@ -355,6 +464,29 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
                           >
                             {SOURCE_LABELS[nut.source]?.label || nut.source}
                           </span>
+                          {/* USDA status indicator */}
+                          {nut.usda_match_status && nut.usda_match_status !== 'pending' && (
+                            <span
+                              className={`text-xs ${USDA_STATUS_LABELS[nut.usda_match_status]?.color || 'text-gray-400'}`}
+                              title={nut.usda_match_reasoning || ''}
+                            >
+                              {USDA_STATUS_LABELS[nut.usda_match_status]?.icon}{' '}
+                              {nut.usda_match_confidence && `${Math.round(nut.usda_match_confidence * 100)}%`}
+                            </span>
+                          )}
+                          {/* Match to USDA button - show for LLM estimated items */}
+                          {nut.source === 'llm_estimated' && (!nut.usda_match_status || nut.usda_match_status === 'pending') && (
+                            <button
+                              type="button"
+                              onClick={() => handleMatchUSDA(nut.id)}
+                              disabled={matchingNutritionId === nut.id}
+                              className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded disabled:opacity-50"
+                              title="Find matching USDA entry using AI"
+                            >
+                              {matchingNutritionId === nut.id ? 'Matching...' : 'Match USDA'}
+                            </button>
+                          )}
+                          {/* Delete button */}
                           <button
                             type="button"
                             onClick={() => handleDeleteNutrition(nut.id, `${nut.serving_size} ${nut.serving_unit}`)}
