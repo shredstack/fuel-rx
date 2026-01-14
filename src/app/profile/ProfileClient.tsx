@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 import ProfileHeader from '@/components/profile/ProfileHeader'
 import NutritionGoalsCard from '@/components/profile/NutritionGoalsCard'
+import WinsCard from '@/components/profile/WinsCard'
 import type {
   UserProfile,
   IngredientPreferenceWithDetails,
@@ -118,6 +119,9 @@ export default function ProfileClient({
 
       {/* Content */}
       <div className="px-4 -mt-4 space-y-6">
+        {/* Wins/Stats - Celebrate achievements */}
+        <WinsCard />
+
         {/* Nutrition Goals - Inline editable */}
         <NutritionGoalsCard profile={profile} />
 
