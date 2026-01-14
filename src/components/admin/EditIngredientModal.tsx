@@ -6,6 +6,7 @@ import type {
   IngredientCategoryType,
   IngredientNutrition,
 } from '@/lib/types'
+import MacroInput from '@/components/ui/MacroInput'
 
 interface Props {
   ingredient: AdminIngredient
@@ -369,77 +370,30 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
 
                       {/* Macros */}
                       <div className="grid grid-cols-4 gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Calories
-                          </label>
-                          <input
-                            type="number"
-                            value={editedNutrition[nut.id]?.calories ?? nut.calories}
-                            onChange={e =>
-                              handleNutritionChange(
-                                nut.id,
-                                'calories',
-                                parseInt(e.target.value) || 0
-                              )
-                            }
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Protein (g)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editedNutrition[nut.id]?.protein ?? nut.protein}
-                            onChange={e =>
-                              handleNutritionChange(
-                                nut.id,
-                                'protein',
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Carbs (g)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editedNutrition[nut.id]?.carbs ?? nut.carbs}
-                            onChange={e =>
-                              handleNutritionChange(
-                                nut.id,
-                                'carbs',
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Fat (g)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editedNutrition[nut.id]?.fat ?? nut.fat}
-                            onChange={e =>
-                              handleNutritionChange(
-                                nut.id,
-                                'fat',
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                        </div>
+                        <MacroInput
+                          macroType="calories"
+                          value={editedNutrition[nut.id]?.calories ?? nut.calories}
+                          onChange={val => handleNutritionChange(nut.id, 'calories', val)}
+                          size="sm"
+                        />
+                        <MacroInput
+                          macroType="protein"
+                          value={editedNutrition[nut.id]?.protein ?? nut.protein}
+                          onChange={val => handleNutritionChange(nut.id, 'protein', val)}
+                          size="sm"
+                        />
+                        <MacroInput
+                          macroType="carbs"
+                          value={editedNutrition[nut.id]?.carbs ?? nut.carbs}
+                          onChange={val => handleNutritionChange(nut.id, 'carbs', val)}
+                          size="sm"
+                        />
+                        <MacroInput
+                          macroType="fat"
+                          value={editedNutrition[nut.id]?.fat ?? nut.fat}
+                          onChange={val => handleNutritionChange(nut.id, 'fat', val)}
+                          size="sm"
+                        />
                       </div>
                     </div>
                   ))

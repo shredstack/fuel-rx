@@ -65,6 +65,9 @@ export default function AdminIngredientsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
 
+  // Track if filters have ever changed from initial state
+  const [hasNavigated, setHasNavigated] = useState(false)
+
   // Modal state
   const [editingIngredient, setEditingIngredient] = useState<AdminIngredient | null>(null)
 
@@ -107,18 +110,23 @@ export default function AdminIngredientsClient({
   }, [debouncedSearch, category, statusFilter, sortBy, sortOrder, page])
 
   useEffect(() => {
-    // Skip initial fetch since we have SSR data
-    if (
-      debouncedSearch ||
-      category ||
-      statusFilter !== 'all' ||
-      sortBy !== 'name' ||
-      sortOrder !== 'asc' ||
-      page !== 1
-    ) {
+    // Skip initial fetch since we have SSR data, but always fetch after any navigation
+    const isInitialState =
+      !debouncedSearch &&
+      !category &&
+      statusFilter === 'all' &&
+      sortBy === 'name' &&
+      sortOrder === 'asc' &&
+      page === 1
+
+    if (!isInitialState) {
+      setHasNavigated(true)
+      fetchIngredients()
+    } else if (hasNavigated) {
+      // User navigated back to initial state, still need to fetch
       fetchIngredients()
     }
-  }, [debouncedSearch, category, statusFilter, sortBy, sortOrder, page, fetchIngredients])
+  }, [debouncedSearch, category, statusFilter, sortBy, sortOrder, page, fetchIngredients, hasNavigated])
 
   // Handle select all
   const handleSelectAll = () => {
