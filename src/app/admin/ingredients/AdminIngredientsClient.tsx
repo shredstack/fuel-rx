@@ -209,6 +209,72 @@ export default function AdminIngredientsClient({
     setEditingIngredient(null)
   }
 
+  // Handle single ingredient delete
+  const handleDeleteIngredient = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/ingredients/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        setIngredients(prev => prev.filter(ing => ing.id !== id))
+        setTotal(prev => prev - 1)
+      } else {
+        const error = await response.json()
+        alert(`Failed to delete: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to delete ingredient:', error)
+      alert('Failed to delete ingredient')
+    }
+  }
+
+  // Handle bulk delete
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    if (!confirm(`Are you sure you want to delete ${count} ingredient${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
+      return
+    }
+
+    setBulkLoading(true)
+
+    try {
+      const response = await fetch('/api/admin/ingredients/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredient_ids: Array.from(selectedIds),
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        // Remove deleted ingredients from local state
+        setIngredients(prev => prev.filter(ing => !selectedIds.has(ing.id)))
+        setTotal(prev => prev - result.deleted_count)
+        setSelectedIds(new Set())
+
+        if (result.failed_ids && result.failed_ids.length > 0) {
+          alert(`Deleted ${result.deleted_count} ingredients. Failed to delete ${result.failed_ids.length} ingredients.`)
+        }
+      } else {
+        const error = await response.json()
+        alert(`Failed to delete: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to bulk delete:', error)
+      alert('Failed to bulk delete ingredients')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   // Pagination
   const totalPages = Math.ceil(total / pageSize)
 
@@ -362,6 +428,13 @@ export default function AdminIngredientsClient({
               Unvalidate
             </button>
             <button
+              onClick={handleBulkDelete}
+              disabled={bulkLoading}
+              className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 disabled:opacity-50"
+            >
+              Delete
+            </button>
+            <button
               onClick={() => setSelectedIds(new Set())}
               className="ml-auto text-primary-600 hover:text-primary-800 text-sm"
             >
@@ -485,12 +558,20 @@ export default function AdminIngredientsClient({
                         {formatDate(ingredient.created_at)}
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => setEditingIngredient(ingredient)}
-                          className="text-primary-600 hover:text-primary-800 text-sm font-medium"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingIngredient(ingredient)}
+                            className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteIngredient(ingredient.id, ingredient.name)}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

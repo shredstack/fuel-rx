@@ -49,6 +49,9 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
   // Track edited nutrition
   const [editedNutrition, setEditedNutrition] = useState<Record<string, Partial<IngredientNutrition>>>({})
 
+  // Track deleted nutrition IDs (for UI removal before save)
+  const [deletedNutritionIds, setDeletedNutritionIds] = useState<Set<string>>(new Set())
+
   // Fetch nutrition data
   useEffect(() => {
     const fetchNutrition = async () => {
@@ -80,6 +83,37 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
         [field]: value,
       },
     }))
+  }
+
+  // Handle nutrition record deletion
+  const handleDeleteNutrition = async (nutritionId: string, servingInfo: string) => {
+    if (!confirm(`Are you sure you want to delete the nutrition record for "${servingInfo}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/ingredients/${nutritionId}/nutrition`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        // Remove from local state immediately
+        setNutrition(prev => prev.filter(n => n.id !== nutritionId))
+        setDeletedNutritionIds(prev => new Set([...prev, nutritionId]))
+        // Remove from edited nutrition if it was being edited
+        setEditedNutrition(prev => {
+          const updated = { ...prev }
+          delete updated[nutritionId]
+          return updated
+        })
+      } else {
+        const error = await response.json()
+        alert(`Failed to delete: ${error.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      console.error('Failed to delete nutrition record:', err)
+      alert('Failed to delete nutrition record')
+    }
   }
 
   // Save changes
@@ -288,7 +322,7 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
                       key={nut.id}
                       className="border border-gray-200 rounded-lg p-4 space-y-3"
                     >
-                      {/* Serving info and source badge */}
+                      {/* Serving info, source badge, and delete button */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <input
@@ -312,13 +346,25 @@ export default function EditIngredientModal({ ingredient, onClose, onSave }: Pro
                             className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
                           />
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            SOURCE_LABELS[nut.source]?.color || 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {SOURCE_LABELS[nut.source]?.label || nut.source}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              SOURCE_LABELS[nut.source]?.color || 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {SOURCE_LABELS[nut.source]?.label || nut.source}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNutrition(nut.id, `${nut.serving_size} ${nut.serving_unit}`)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                            title="Delete this nutrition record"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Macros */}

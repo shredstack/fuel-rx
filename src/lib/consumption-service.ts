@@ -609,24 +609,51 @@ export async function searchIngredients(userId: string, query: string): Promise<
     .ilike('ingredient_name_normalized', `%${normalizedQuery}%`)
     .limit(5);
 
-  if (frequent) {
+  if (frequent && frequent.length > 0) {
+    // Look up current categories from the ingredients table
+    // This ensures we use the admin-updated category, not the cached one
+    // Also filter out soft-deleted ingredients
+    const frequentNames = frequent.map((f) => f.ingredient_name_normalized);
+    const { data: currentIngredients } = await supabase
+      .from('ingredients')
+      .select('name_normalized, category')
+      .in('name_normalized', frequentNames)
+      .is('deleted_at', null);
+
+    // Build a map of normalized name -> current category
+    const categoryMap = new Map<string, string | null>();
+    if (currentIngredients) {
+      for (const ing of currentIngredients) {
+        categoryMap.set(ing.name_normalized, ing.category);
+      }
+    }
+
     results.push(
-      ...frequent.map((f) => ({
-        name: f.ingredient_name,
-        default_amount: f.default_amount,
-        default_unit: f.default_unit,
-        calories_per_serving: f.calories_per_serving,
-        protein_per_serving: f.protein_per_serving,
-        carbs_per_serving: f.carbs_per_serving,
-        fat_per_serving: f.fat_per_serving,
-        source: 'frequent' as const,
-        is_user_added: true, // Frequent ingredients are always user-added
-        is_validated: false, // User-added ingredients are not validated by default
-        is_pinned: (f as { is_pinned?: boolean }).is_pinned || false,
-        // 800g Challenge tracking
-        category: (f as { category?: string }).category as IngredientCategoryType | undefined,
-        default_grams: (f as { default_grams?: number }).default_grams,
-      }))
+      ...frequent.map((f) => {
+        // Use the current category from ingredients table if available,
+        // otherwise fall back to the cached category in frequent ingredients
+        const currentCategory = categoryMap.get(f.ingredient_name_normalized);
+        const category = currentCategory !== undefined
+          ? currentCategory
+          : (f as { category?: string }).category;
+
+        return {
+          name: f.ingredient_name,
+          default_amount: f.default_amount,
+          default_unit: f.default_unit,
+          calories_per_serving: f.calories_per_serving,
+          protein_per_serving: f.protein_per_serving,
+          carbs_per_serving: f.carbs_per_serving,
+          fat_per_serving: f.fat_per_serving,
+          source: 'frequent' as const,
+          is_user_added: true, // Frequent ingredients are always user-added
+          is_validated: false, // User-added ingredients are not validated by default
+          is_pinned: (f as { is_pinned?: boolean }).is_pinned || false,
+          // 800g Challenge tracking - use current category from ingredients table
+          category: category as IngredientCategoryType | undefined,
+          default_grams: (f as { default_grams?: number }).default_grams,
+        };
+      })
     );
   }
 
@@ -653,9 +680,9 @@ export async function searchIngredients(userId: string, query: string): Promise<
 
           // Determine validation status:
           // - System ingredients (not user_added) are considered validated
-          // - User-added ingredients check the validated column
+          // - User-added ingredients check the ingredient_validated column from the view
           const isUserAdded = c.is_user_added === true;
-          const isValidated = !isUserAdded || c.validated === true;
+          const isValidated = !isUserAdded || c.ingredient_validated === true;
 
           return {
             name: c.ingredient_name,
