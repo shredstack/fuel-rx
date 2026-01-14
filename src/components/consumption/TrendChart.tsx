@@ -46,11 +46,14 @@ const MACRO_CONFIG: Record<MacroType, { label: string; color: string; unit: stri
 const MEAL_TYPES: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'];
 
 function formatDate(dateStr: string, periodType: 'weekly' | 'monthly'): string {
-  const date = new Date(dateStr);
+  // Parse date components directly to avoid timezone issues
+  // dateStr is in YYYY-MM-DD format
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
   if (periodType === 'weekly') {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
-  return date.getDate().toString();
+  return day.toString();
 }
 
 export default function TrendChart({ dailyData, dailyTargets, periodType }: TrendChartProps) {
@@ -97,9 +100,13 @@ export default function TrendChart({ dailyData, dailyTargets, periodType }: Tren
       return 0;
     };
 
+    // Parse date components directly to avoid timezone issues
+    const [year, month, dayNum] = day.date.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, dayNum);
+
     return {
       label: formatDate(day.date, periodType),
-      fullDate: new Date(day.date).toLocaleDateString('en-US', {
+      fullDate: dateObj.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
       }),
