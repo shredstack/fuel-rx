@@ -1301,7 +1301,8 @@ export type FeatureDiscoveryId =
   | 'theme_preferences'
   | 'ingredient_preferences'
   | 'household_servings'
-  | 'meal_history';
+  | 'meal_history'
+  | 'meal_logging';
 
 export interface UserOnboardingState {
   id: string;
@@ -1506,6 +1507,13 @@ export const FEATURE_DISCOVERY_CONTENT: Record<FeatureDiscoveryId, FeatureConten
     cta: 'View History',
     icon: '📚',
     href: '/history',
+  },
+  meal_logging: {
+    title: 'Log Your Meals',
+    description: 'Track what you eat to hit your 800g fruit & veggie goal. Celebrate wins along the way!',
+    cta: 'Start Logging',
+    icon: '📝',
+    href: '/log-meal',
   },
 };
 
