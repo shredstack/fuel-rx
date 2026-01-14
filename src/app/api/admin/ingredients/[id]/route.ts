@@ -4,6 +4,7 @@ import {
   requireAdmin,
   getIngredientWithNutrition,
   updateIngredient,
+  deleteIngredient,
 } from '@/lib/admin-service'
 import type { UpdateIngredientRequest } from '@/lib/types'
 
@@ -98,6 +99,35 @@ export async function PUT(
     return NextResponse.json(updated)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update'
+    const status = message === 'Ingredient not found' ? 404 : 500
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+// DELETE - Delete an ingredient and its related data
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const supabase = await createClient()
+
+  let adminUserId: string
+  try {
+    const result = await requireAdmin(supabase)
+    adminUserId = result.userId
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized'
+    const status = message === 'Forbidden: Admin access required' ? 403 : 401
+    return NextResponse.json({ error: message }, { status })
+  }
+
+  const { id } = await params
+
+  try {
+    await deleteIngredient(supabase, id, adminUserId)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete'
     const status = message === 'Ingredient not found' ? 404 : 500
     return NextResponse.json({ error: message }, { status })
   }

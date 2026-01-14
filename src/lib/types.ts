@@ -2083,7 +2083,10 @@ export type AdminActionType =
   | 'update_ingredient'
   | 'update_nutrition'
   | 'bulk_update_category'
-  | 'bulk_update_validated';
+  | 'bulk_update_validated'
+  | 'delete_ingredient'
+  | 'bulk_delete_ingredients'
+  | 'delete_nutrition';
 
 /**
  * Audit log entry for admin actions

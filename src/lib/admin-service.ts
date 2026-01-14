@@ -93,15 +93,17 @@ export async function searchIngredients(
     pageSize = 20,
   } = filters
 
-  // Build query for count
+  // Build query for count - exclude soft-deleted ingredients
   let countQuery = supabase
     .from('ingredients')
     .select('id', { count: 'exact', head: true })
+    .is('deleted_at', null)
 
-  // Build query for data
+  // Build query for data - exclude soft-deleted ingredients
   let dataQuery = supabase
     .from('ingredients')
     .select('*')
+    .is('deleted_at', null)
 
   // Apply filters to both queries
   if (search) {
@@ -412,4 +414,180 @@ export async function bulkUpdateIngredients(
       )
     }
   }
+}
+
+/**
+ * Soft delete a single ingredient (sets deleted_at timestamp)
+ * This prevents the ingredient from being auto-recreated by the caching system
+ */
+export async function deleteIngredient(
+  supabase: SupabaseClient,
+  ingredientId: string,
+  adminUserId: string
+): Promise<void> {
+  // Get current values for audit log
+  const { data: current, error: currentError } = await supabase
+    .from('ingredients')
+    .select('*')
+    .eq('id', ingredientId)
+    .single()
+
+  if (currentError || !current) {
+    throw new Error('Ingredient not found')
+  }
+
+  // Soft delete: set deleted_at timestamp instead of hard deleting
+  const { error: deleteError } = await supabase
+    .from('ingredients')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', ingredientId)
+
+  if (deleteError) {
+    throw new Error(`Failed to delete ingredient: ${deleteError.message}`)
+  }
+
+  // Log the action with full ingredient data for audit trail
+  await logAdminAction(
+    supabase,
+    adminUserId,
+    'delete_ingredient',
+    'ingredient',
+    ingredientId,
+    {
+      deleted: {
+        old: {
+          id: current.id,
+          name: current.name,
+          category: current.category,
+          validated: current.validated,
+          is_user_added: current.is_user_added,
+        },
+        new: { deleted_at: new Date().toISOString() },
+      },
+    }
+  )
+}
+
+/**
+ * Bulk soft delete multiple ingredients
+ */
+export async function bulkDeleteIngredients(
+  supabase: SupabaseClient,
+  ingredientIds: string[],
+  adminUserId: string
+): Promise<{ deleted: number; failed: string[] }> {
+  if (ingredientIds.length === 0) {
+    return { deleted: 0, failed: [] }
+  }
+
+  // Get current values for audit log
+  const { data: currentIngredients, error: currentError } = await supabase
+    .from('ingredients')
+    .select('*')
+    .in('id', ingredientIds)
+
+  if (currentError) {
+    throw new Error(`Failed to fetch ingredients: ${currentError.message}`)
+  }
+
+  const failed: string[] = []
+  let deleted = 0
+  const deletedAt = new Date().toISOString()
+
+  for (const ingredient of currentIngredients || []) {
+    try {
+      // Soft delete: set deleted_at timestamp
+      const { error: deleteError } = await supabase
+        .from('ingredients')
+        .update({ deleted_at: deletedAt })
+        .eq('id', ingredient.id)
+
+      if (deleteError) {
+        failed.push(ingredient.id)
+        continue
+      }
+
+      // Log the deletion
+      await logAdminAction(
+        supabase,
+        adminUserId,
+        'bulk_delete_ingredients',
+        'ingredient',
+        ingredient.id,
+        {
+          deleted: {
+            old: {
+              id: ingredient.id,
+              name: ingredient.name,
+              category: ingredient.category,
+              validated: ingredient.validated,
+              is_user_added: ingredient.is_user_added,
+            },
+            new: { deleted_at: deletedAt },
+          },
+        }
+      )
+
+      deleted++
+    } catch {
+      failed.push(ingredient.id)
+    }
+  }
+
+  return { deleted, failed }
+}
+
+/**
+ * Delete a single nutrition record
+ */
+export async function deleteNutritionRecord(
+  supabase: SupabaseClient,
+  nutritionId: string,
+  adminUserId: string
+): Promise<void> {
+  // Get current values for audit log
+  const { data: current, error: currentError } = await supabase
+    .from('ingredient_nutrition')
+    .select('*')
+    .eq('id', nutritionId)
+    .single()
+
+  if (currentError || !current) {
+    throw new Error('Nutrition record not found')
+  }
+
+  // Delete the nutrition record
+  const { error: deleteError } = await supabase
+    .from('ingredient_nutrition')
+    .delete()
+    .eq('id', nutritionId)
+
+  if (deleteError) {
+    throw new Error(`Failed to delete nutrition record: ${deleteError.message}`)
+  }
+
+  // Log the action with full nutrition data for audit trail
+  await logAdminAction(
+    supabase,
+    adminUserId,
+    'delete_nutrition',
+    'ingredient_nutrition',
+    nutritionId,
+    {
+      deleted: {
+        old: {
+          id: current.id,
+          ingredient_id: current.ingredient_id,
+          serving_size: current.serving_size,
+          serving_unit: current.serving_unit,
+          calories: current.calories,
+          protein: current.protein,
+          carbs: current.carbs,
+          fat: current.fat,
+          source: current.source,
+        },
+        new: null,
+      },
+    }
+  )
 }

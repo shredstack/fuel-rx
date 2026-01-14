@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin, updateIngredientNutrition } from '@/lib/admin-service'
+import { requireAdmin, updateIngredientNutrition, deleteNutritionRecord } from '@/lib/admin-service'
 import type { UpdateIngredientNutritionRequest } from '@/lib/types'
 
 // PUT - Update nutrition data for an ingredient
@@ -58,6 +58,36 @@ export async function PUT(
     return NextResponse.json(updated)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update'
+    const status = message === 'Nutrition record not found' ? 404 : 500
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+// DELETE - Delete a nutrition record
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const supabase = await createClient()
+
+  let adminUserId: string
+  try {
+    const result = await requireAdmin(supabase)
+    adminUserId = result.userId
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized'
+    const status = message === 'Forbidden: Admin access required' ? 403 : 401
+    return NextResponse.json({ error: message }, { status })
+  }
+
+  // Note: The 'id' here is the nutrition_id, not ingredient_id
+  const { id: nutritionId } = await params
+
+  try {
+    await deleteNutritionRecord(supabase, nutritionId, adminUserId)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete'
     const status = message === 'Nutrition record not found' ? 404 : 500
     return NextResponse.json({ error: message }, { status })
   }

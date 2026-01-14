@@ -60,6 +60,10 @@ export async function fetchCachedNutrition(ingredientNames: string[]): Promise<M
 /**
  * Get or create an ingredient in the ingredients dimension table
  * Returns the ingredient ID
+ *
+ * IMPORTANT: This function respects soft deletes. If an ingredient was
+ * deleted by an admin (deleted_at is set), it will NOT be recreated.
+ * This prevents admin-deleted duplicates from reappearing.
  */
 async function getOrCreateIngredient(
   supabase: ReturnType<typeof createServiceRoleClient>,
@@ -68,18 +72,32 @@ async function getOrCreateIngredient(
 ): Promise<string | null> {
   const normalizedName = name.toLowerCase().trim();
 
-  // Try to find existing ingredient
+  // Try to find existing NON-DELETED ingredient
   const { data: existing } = await supabase
     .from('ingredients')
     .select('id')
     .eq('name_normalized', normalizedName)
+    .is('deleted_at', null)
     .single();
 
   if (existing) {
     return existing.id;
   }
 
-  // Create new ingredient
+  // Check if there's a soft-deleted version - don't recreate if so
+  const { data: deleted } = await supabase
+    .from('ingredients')
+    .select('id')
+    .eq('name_normalized', normalizedName)
+    .not('deleted_at', 'is', null)
+    .single();
+
+  if (deleted) {
+    // This ingredient was deleted by an admin - don't recreate it
+    return null;
+  }
+
+  // Create new ingredient (only if it's truly new)
   const { data: created, error } = await supabase
     .from('ingredients')
     .insert({
@@ -97,6 +115,7 @@ async function getOrCreateIngredient(
         .from('ingredients')
         .select('id')
         .eq('name_normalized', normalizedName)
+        .is('deleted_at', null)
         .single();
       return retry?.id || null;
     }
