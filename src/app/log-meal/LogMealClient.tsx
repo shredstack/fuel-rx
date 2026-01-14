@@ -30,6 +30,7 @@ import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TrendChart from '@/components/consumption/TrendChart';
 import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
+import ProduceExtractorModal from '@/components/consumption/ProduceExtractorModal';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Logo from '@/components/Logo';
 import Navbar from '@/components/Navbar';
@@ -82,6 +83,12 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
   // Meal type selection state for logging
   const [pendingLogMeal, setPendingLogMeal] = useState<MealToLog | null>(null);
   const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
+
+  // Produce extraction modal state (for 800g tracking after meal log)
+  const [showProduceModal, setShowProduceModal] = useState(false);
+  const [pendingProduceMealId, setPendingProduceMealId] = useState<string | null>(null);
+  const [pendingProduceMealName, setPendingProduceMealName] = useState<string>('');
+  const [pendingProduceMealType, setPendingProduceMealType] = useState<MealType | null>(null);
 
   // Track previous calorie percentage for confetti trigger
   const prevCaloriePercentageRef = useRef<number | null>(null);
@@ -266,6 +273,28 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
           entries: prev.entries.map((e) => (e.id === optimisticEntry.id ? entry : e)),
         }));
         updateMealLoggedStatus(meal.id, meal.source, true, entry.id, entry.consumed_at);
+
+        // Check if this meal has a meal_id (meaning it has ingredients we can extract)
+        // Trigger produce extraction modal for 800g tracking
+        const mealIdForProduce = entry.meal_id || ('meal_id' in meal ? (meal as MealPlanMealToLog).meal_id : null);
+        if (mealIdForProduce) {
+          // Check if meal has produce before showing modal
+          try {
+            const checkResponse = await fetch(`/api/consumption/extract-produce?meal_id=${mealIdForProduce}`);
+            if (checkResponse.ok) {
+              const checkData = await checkResponse.json();
+              if (checkData.hasProduce) {
+                setPendingProduceMealId(mealIdForProduce);
+                setPendingProduceMealName(meal.name);
+                setPendingProduceMealType(mealType);
+                setShowProduceModal(true);
+              }
+            }
+          } catch (e) {
+            // Silently fail - don't block the main logging flow
+            console.error('Error checking for produce:', e);
+          }
+        }
       } else {
         // Revert on error
         await refreshData();
@@ -1104,6 +1133,45 @@ export default function LogMealClient({ initialDate, initialSummary, initialAvai
             refreshData();
           }}
         />
+
+        {/* Produce Extractor Modal (for 800g tracking after meal log) */}
+        {showProduceModal && pendingProduceMealId && pendingProduceMealType && (
+          <ProduceExtractorModal
+            isOpen={showProduceModal}
+            onClose={() => {
+              setShowProduceModal(false);
+              setPendingProduceMealId(null);
+              setPendingProduceMealName('');
+              setPendingProduceMealType(null);
+            }}
+            mealId={pendingProduceMealId}
+            mealName={pendingProduceMealName}
+            mealType={pendingProduceMealType}
+            selectedDate={selectedDate}
+            onIngredientsLogged={(entries) => {
+              // Add the new produce entries to the summary
+              if (entries.length > 0) {
+                const totalGrams = entries.reduce((sum, e) => sum + (e.grams || 0), 0);
+                setSummary((prev) => {
+                  const currentFruitVegGrams = prev.fruitVeg?.currentGrams || 0;
+                  const goalGrams = prev.fruitVeg?.goalGrams || 800;
+                  return {
+                    ...prev,
+                    entries: [...prev.entries, ...entries],
+                    entry_count: prev.entry_count + entries.length,
+                    fruitVeg: prev.fruitVeg ? {
+                      ...prev.fruitVeg,
+                      currentGrams: currentFruitVegGrams + totalGrams,
+                      percentage: Math.round(((currentFruitVegGrams + totalGrams) / goalGrams) * 100),
+                    } : undefined,
+                  };
+                });
+              }
+              // Refresh to get accurate totals
+              refreshData();
+            }}
+          />
+        )}
       </main>
 
       <MobileTabBar />
