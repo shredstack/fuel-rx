@@ -848,6 +848,15 @@ export interface IngredientNutrition {
   barcode?: string;
   confidence_score?: number;
   validated?: boolean;
+  // USDA matching fields
+  usda_match_status?: 'pending' | 'matched' | 'no_match' | 'manual_override';
+  usda_matched_at?: string;
+  usda_match_confidence?: number;
+  usda_match_reasoning?: string;
+  usda_calories_per_100g?: number;
+  usda_protein_per_100g?: number;
+  usda_carbs_per_100g?: number;
+  usda_fat_per_100g?: number;
   created_at: string;
   updated_at: string;
 }
@@ -1301,7 +1310,8 @@ export type FeatureDiscoveryId =
   | 'theme_preferences'
   | 'ingredient_preferences'
   | 'household_servings'
-  | 'meal_history';
+  | 'meal_history'
+  | 'meal_logging';
 
 export interface UserOnboardingState {
   id: string;
@@ -1506,6 +1516,13 @@ export const FEATURE_DISCOVERY_CONTENT: Record<FeatureDiscoveryId, FeatureConten
     cta: 'View History',
     icon: '📚',
     href: '/history',
+  },
+  meal_logging: {
+    title: 'Log Your Meals',
+    description: 'Track what you eat to hit your 800g fruit & veggie goal. Celebrate wins along the way!',
+    cta: 'Start Logging',
+    icon: '📝',
+    href: '/log-meal',
   },
 };
 
@@ -2070,6 +2087,7 @@ export interface AdminIngredientFilters {
   category?: IngredientCategoryType;
   validated?: boolean;
   userAddedOnly?: boolean;
+  usdaMatchStatus?: 'needs_review' | 'matched' | 'no_match' | 'pending';
   sortBy?: 'name' | 'category' | 'created_at' | 'validated';
   sortOrder?: 'asc' | 'desc';
   page?: number;

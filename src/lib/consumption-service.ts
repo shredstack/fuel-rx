@@ -238,6 +238,58 @@ export async function logIngredientConsumed(
 }
 
 /**
+ * Log multiple produce ingredients as consumption entries for 800g tracking.
+ * Used by the ProduceExtractorModal after logging a meal.
+ * Creates separate entries for each fruit/vegetable with only gram data (no macros).
+ */
+export async function logProduceIngredients(
+  userId: string,
+  ingredients: Array<{
+    name: string;
+    category: 'fruit' | 'vegetable';
+    grams: number;
+  }>,
+  mealType: MealType,
+  consumedAt: string
+): Promise<ConsumptionEntry[]> {
+  if (ingredients.length === 0) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const consumedDate = consumedAt.split('T')[0];
+
+  // Build array of entries to insert
+  const entries = ingredients.map((ing) => ({
+    user_id: userId,
+    entry_type: 'ingredient' as ConsumptionEntryType,
+    ingredient_name: ing.name,
+    consumed_at: consumedAt,
+    consumed_date: consumedDate,
+    display_name: `${ing.name} (800g)`,
+    meal_type: mealType,
+    // 800g tracking only - no macro data
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    grams: ing.grams,
+    ingredient_category: ing.category,
+  }));
+
+  const { data, error } = await supabase
+    .from('meal_consumption_log')
+    .insert(entries)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to log produce ingredients: ${error.message}`);
+  }
+
+  return (data || []) as ConsumptionEntry[];
+}
+
+/**
  * Remove a consumption log entry.
  */
 export async function removeConsumptionEntry(entryId: string, userId: string): Promise<void> {

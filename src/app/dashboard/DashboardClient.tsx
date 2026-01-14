@@ -10,6 +10,7 @@ import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
+import MealLoggingTeaser from '@/components/onboarding/MealLoggingTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
@@ -24,6 +25,7 @@ interface Props {
     title: string | null
     theme?: { display_name: string; emoji: string | null } | null
   } | null
+  hasLoggedFood: boolean
 }
 
 function getMealPlanTitle(plan: Props['recentPlan']): string {
@@ -52,7 +54,7 @@ const PROGRESS_STAGES = {
 
 type JobStatus = keyof typeof PROGRESS_STAGES
 
-export default function DashboardClient({ profile: initialProfile, recentPlan }: Props) {
+export default function DashboardClient({ profile: initialProfile, recentPlan, hasLoggedFood }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [profile, setProfile] = useState(initialProfile)
@@ -76,14 +78,21 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
     const now = Date.now()
     const recentThreshold = 10000 // 10 seconds
 
-    // first_plan_completed shows regardless of timing (user may have been away during generation)
+    // first_plan_completed only shows if it happened recently (within 30 seconds)
+    // This prevents showing the toast to long-time users on every page load
     if (
       onboardingState.first_plan_completed &&
+      onboardingState.first_plan_completed_at &&
       !shownMilestones.has('first_plan_completed')
     ) {
-      setShowMilestoneToast('first_plan_completed')
-      setShownMilestones(prev => new Set([...prev, 'first_plan_completed']))
-      return
+      const completedAt = new Date(onboardingState.first_plan_completed_at).getTime()
+      const timeSinceCompletion = now - completedAt
+      // Only show if completed within the last 30 seconds
+      if (timeSinceCompletion < 30000) {
+        setShowMilestoneToast('first_plan_completed')
+        setShownMilestones(prev => new Set([...prev, 'first_plan_completed']))
+        return
+      }
     }
 
     // Other milestones only show if they happened recently
@@ -366,10 +375,17 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           {/* Quick Cook card */}
           <QuickCookCard />
 
-          {/* Community teaser - shown after first plan completed and community not yet discovered */}
-          {onboardingState?.first_plan_completed && !isFeatureDiscovered('community_feed') && (
+          {/* Community teaser - shown to users who haven't joined and haven't dismissed */}
+          {onboardingState && !isFeatureDiscovered('community_feed') && !profile?.social_feed_enabled && (
             <div className="md:col-span-2 lg:col-span-3">
               <CommunityTeaser onDismiss={() => discoverFeature('community_feed')} />
+            </div>
+          )}
+
+          {/* Meal logging teaser - shown to users who haven't logged any food yet */}
+          {onboardingState && !isFeatureDiscovered('meal_logging') && !hasLoggedFood && (
+            <div className="md:col-span-2 lg:col-span-3">
+              <MealLoggingTeaser onDismiss={() => discoverFeature('meal_logging')} />
             </div>
           )}
         </div>

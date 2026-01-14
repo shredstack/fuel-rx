@@ -58,6 +58,15 @@ export default async function DashboardPage() {
     }
   }
 
+  // Check if user has ever logged any food (for meal logging teaser)
+  const { count: consumptionCount } = await supabase
+    .from('meal_consumption_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .limit(1)
+
+  const hasLoggedFood = (consumptionCount ?? 0) > 0
+
   // Get test mode from environment (only visible in development)
   const testMode = process.env.MEAL_PLAN_TEST_MODE || null
 
@@ -67,6 +76,7 @@ export default async function DashboardPage() {
       <DashboardClient
         profile={profile}
         recentPlan={recentPlanWithTheme}
+        hasLoggedFood={hasLoggedFood}
       />
     </>
   )
