@@ -253,6 +253,31 @@ export async function removeConsumptionEntry(entryId: string, userId: string): P
 }
 
 /**
+ * Update the meal type of a consumption log entry.
+ * Used to move a logged meal from one meal type to another (e.g., lunch to dinner).
+ */
+export async function updateConsumptionEntryMealType(
+  entryId: string,
+  userId: string,
+  newMealType: MealType
+): Promise<ConsumptionEntry> {
+  const supabase = await createClient();
+
+  const { data: entry, error } = await supabase
+    .from('meal_consumption_log')
+    .update({ meal_type: newMealType })
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to update meal type: ${error.message}`);
+  if (!entry) throw new Error('Entry not found');
+
+  return entry as ConsumptionEntry;
+}
+
+/**
  * Get daily consumption summary with progress toward targets.
  */
 export async function getDailyConsumption(userId: string, date: Date): Promise<DailyConsumptionSummary> {
@@ -507,8 +532,9 @@ async function getLatestPlanMeals(
     return [];
   }
 
-  // Filter out party_meal source_type in JavaScript (more reliable than PostgREST filter on joined table)
+  // Filter out party_meal source_type and null meals in JavaScript (more reliable than PostgREST filter on joined table)
   const filteredPlanMeals = planMeals.filter((pm) => {
+    if (!pm.meals) return false; // Skip if meal was deleted
     const meal = pm.meals as unknown as { source_type?: string };
     return meal.source_type !== 'party_meal';
   });
@@ -830,6 +856,9 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
 
     if (planMeals) {
       for (const pm of planMeals) {
+        // Skip if meal was deleted
+        if (!pm.meals) continue;
+
         const meal = pm.meals as unknown as {
           name: string;
           meal_type: MealType;
@@ -1028,6 +1057,9 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
 
     if (planMeals) {
       for (const pm of planMeals) {
+        // Skip if meal was deleted
+        if (!pm.meals) continue;
+
         const meal = pm.meals as unknown as {
           name: string;
           meal_type: MealType;
