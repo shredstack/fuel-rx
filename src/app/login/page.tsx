@@ -10,6 +10,7 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -18,6 +19,11 @@ function LoginForm() {
     const errorParam = searchParams.get('error')
     if (errorParam) {
       setError(errorParam)
+    }
+
+    const verified = searchParams.get('verified')
+    if (verified === 'true') {
+      setSuccess('Your email has been verified! You can now sign in.')
     }
   }, [searchParams])
 
@@ -65,6 +71,11 @@ function LoginForm() {
 
         <div className="card">
           <form onSubmit={handleLogin} className="space-y-6">
+            {success && (
+              <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm">
+                {success}
+              </div>
+            )}
             {error && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
                 {error}

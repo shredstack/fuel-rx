@@ -554,8 +554,6 @@ async function getLatestPlanMeals(
     .order('created_at', { ascending: false })
     .limit(1);
 
-  console.log('[getLatestPlanMeals] userPlans count:', userPlans?.length, 'error:', plansError?.message);
-
   if (!userPlans || userPlans.length === 0) {
     return [];
   }
@@ -578,20 +576,16 @@ async function getLatestPlanMeals(
     `)
     .in('meal_plan_id', planIds);
 
-  console.log('[getLatestPlanMeals] planMeals count:', planMeals?.length, 'error:', mealsError?.message);
-
   if (!planMeals || planMeals.length === 0) {
     return [];
   }
 
-  // Filter out party_meal source_type and null meals in JavaScript (more reliable than PostgREST filter on joined table)
+  // Filter out party_meal source_type and null meals (deleted or RLS blocked)
   const filteredPlanMeals = planMeals.filter((pm) => {
-    if (!pm.meals) return false; // Skip if meal was deleted
+    if (!pm.meals) return false;
     const meal = pm.meals as unknown as { source_type?: string };
     return meal.source_type !== 'party_meal';
   });
-
-  console.log('[getLatestPlanMeals] after party_meal filter:', filteredPlanMeals.length);
 
   const dayLabels: Record<string, string> = {
     monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed',
@@ -665,7 +659,6 @@ async function getLatestPlanMeals(
   const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
   dedupedResults.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
 
-  console.log('[getLatestPlanMeals] final results count:', dedupedResults.length, '(before dedup:', results.length, ')');
   return dedupedResults;
 }
 

@@ -1,9 +1,5 @@
 # FuelRx App Store Metadata
 
-Use this content when submitting to App Store Connect.
-
----
-
 ## Basic Information
 
 **App Name:** FuelRx

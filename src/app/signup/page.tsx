@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import Logo from '@/components/Logo'
 
 export default function SignupPage() {
@@ -12,7 +11,6 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const supabase = createClient()
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,23 +28,30 @@ export default function SignupPage() {
 
     setLoading(true)
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
+    try {
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      })
 
-    if (error) {
-      setError(error.message)
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to create account')
+        setLoading(false)
+        return
+      }
+
+      // Show success message - user needs to verify email before signing in
+      setSuccess(true)
+    } catch {
+      setError('An unexpected error occurred')
+    } finally {
       setLoading(false)
-      return
     }
-
-    // Show success message - user needs to verify email before signing in
-    setSuccess(true)
-    setLoading(false)
   }
 
   if (success) {
