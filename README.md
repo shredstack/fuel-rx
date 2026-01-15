@@ -369,6 +369,7 @@ ipconfig getifaddr en0
 Then set the environment variable and sync:
 ```bash
 CAPACITOR_SERVER_URL=http://<ip_address>:3000 npx cap sync ios
+# Example: CAPACITOR_SERVER_URL=http://192.168.86.249:3000 npx cap sync ios
 ```
 
 Now, start your Next.js dev server and point Capacitor to it.
