@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePlatform } from '@/hooks/usePlatform';
 
 interface Props {
   userName: string | null;
@@ -14,11 +15,17 @@ interface Props {
  */
 export default function WelcomeCelebration({ userName }: Props) {
   const router = useRouter();
+  const { isNative } = usePlatform();
 
   useEffect(() => {
-    // Immediately redirect to dashboard where they can see progress
-    router.replace('/dashboard');
-  }, [router]);
+    // Use window.location for native apps to ensure a full page reload
+    // This ensures the dashboard properly reads the updated onboarding state
+    if (isNative) {
+      window.location.href = '/dashboard';
+    } else {
+      router.replace('/dashboard');
+    }
+  }, [router, isNative]);
 
   // Show brief loading state while redirecting
   return (

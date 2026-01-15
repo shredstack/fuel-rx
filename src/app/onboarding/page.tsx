@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { OnboardingData } from '@/lib/types'
+import { useKeyboard } from '@/hooks/useKeyboard'
+import { usePlatform } from '@/hooks/usePlatform'
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DEFAULT_SELECTED_MEAL_TYPES } from '@/lib/types'
 import HouseholdServingsEditor from '@/components/HouseholdServingsEditor'
 import MacrosEditor from '@/components/MacrosEditor'
@@ -26,6 +28,9 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<Step>('basics')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { isKeyboardVisible, keyboardHeight } = useKeyboard()
+  const { isNative } = usePlatform()
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<OnboardingData>({
     name: '',
@@ -53,6 +58,18 @@ export default function OnboardingPage() {
     const calories = (formData.target_protein * 4) + (formData.target_carbs * 4) + (formData.target_fat * 9)
     setFormData(prev => ({ ...prev, target_calories: calories }))
   }, [formData.target_protein, formData.target_carbs, formData.target_fat])
+
+  // Scroll focused input into view when keyboard opens on native
+  useEffect(() => {
+    if (isKeyboardVisible && isNative) {
+      const activeElement = document.activeElement
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        setTimeout(() => {
+          activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 100)
+      }
+    }
+  }, [isKeyboardVisible, isNative])
 
   const handleNext = () => {
     const stepIndex = STEPS.indexOf(currentStep)
@@ -117,12 +134,18 @@ export default function OnboardingPage() {
       return
     }
 
-    // Mark profile_completed milestone
-    await fetch('/api/onboarding/state', {
+    // Mark profile_completed milestone - must complete before navigating
+    const stateResponse = await fetch('/api/onboarding/state', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile_completed: true }),
     })
+
+    if (!stateResponse.ok) {
+      setError('Failed to save onboarding state. Please try again.')
+      setLoading(false)
+      return
+    }
 
     // Start first meal plan generation
     const generateResponse = await fetch('/api/generate-meal-plan', {
@@ -140,40 +163,50 @@ export default function OnboardingPage() {
       })
     }
 
-    // Redirect to welcome celebration (which immediately redirects to dashboard)
-    router.push('/welcome-celebration')
+    // Use window.location for native apps to ensure a full page reload
+    // This prevents race conditions with the dashboard's onboarding check
+    if (isNative) {
+      window.location.href = '/welcome-celebration'
+    } else {
+      router.push('/welcome-celebration')
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+    <div
+      className="min-h-screen bg-gray-50 py-12 px-4 safe-area-top safe-area-bottom"
+      style={isNative && isKeyboardVisible ? { paddingBottom: keyboardHeight } : undefined}
+    >
+      <div className="max-w-2xl mx-auto" ref={contentRef}>
         <div className="text-center mb-8">
           <Logo size="xl" className="justify-center" />
           <h2 className="mt-4 text-xl text-gray-700">Let&apos;s set up your profile</h2>
         </div>
 
-        {/* Progress indicator */}
-        <div className="flex justify-center mb-8">
-          {STEPS.map((step, index) => (
-            <div key={step} className="flex items-center">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
-                  STEPS.indexOf(currentStep) >= index
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                }`}
-              >
-                {index + 1}
-              </div>
-              {index < STEPS.length - 1 && (
+        {/* Progress indicator - compact on mobile, scrollable if needed */}
+        <div className="mb-8 overflow-x-auto pb-2 -mx-4 px-4">
+          <div className="flex justify-center min-w-fit">
+            {STEPS.map((step, index) => (
+              <div key={step} className="flex items-center">
                 <div
-                  className={`w-16 h-1 ${
-                    STEPS.indexOf(currentStep) > index ? 'bg-primary-600' : 'bg-gray-200'
+                  className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-medium text-sm sm:text-base flex-shrink-0 ${
+                    STEPS.indexOf(currentStep) >= index
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-200 text-gray-500'
                   }`}
-                />
-              )}
-            </div>
-          ))}
+                >
+                  {index + 1}
+                </div>
+                {index < STEPS.length - 1 && (
+                  <div
+                    className={`w-6 sm:w-12 h-1 flex-shrink-0 ${
+                      STEPS.indexOf(currentStep) > index ? 'bg-primary-600' : 'bg-gray-200'
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="card">

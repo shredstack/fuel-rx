@@ -27,7 +27,29 @@ export function CookingAssistantDrawer({
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Handle iOS keyboard visibility
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      // Calculate keyboard height by comparing viewport height to window height
+      const keyboardH = window.innerHeight - viewport.height;
+      setKeyboardHeight(keyboardH > 0 ? keyboardH : 0);
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    viewport.addEventListener('scroll', handleResize);
+
+    return () => {
+      viewport.removeEventListener('resize', handleResize);
+      viewport.removeEventListener('scroll', handleResize);
+    };
+  }, []);
 
   // Initialize session on mount
   const initializeSession = useCallback(async () => {
@@ -150,7 +172,13 @@ export function CookingAssistantDrawer({
 
       {/* Drawer */}
       <div
-        className="fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl z-50 flex flex-col max-h-[85vh] md:right-0 md:left-auto md:w-[420px] md:h-screen md:rounded-none md:inset-y-0"
+        ref={drawerRef}
+        className="fixed inset-x-0 bg-white rounded-t-3xl shadow-2xl z-50 flex flex-col md:right-0 md:left-auto md:w-[420px] md:h-screen md:rounded-none md:inset-y-0 md:bottom-0"
+        style={{
+          bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0px',
+          maxHeight: keyboardHeight > 0 ? `calc(100vh - ${keyboardHeight}px)` : '85vh',
+          transition: 'bottom 0.1s ease-out, max-height 0.1s ease-out',
+        }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
