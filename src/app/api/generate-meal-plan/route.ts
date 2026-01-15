@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
 
 // Theme selection can be:
@@ -13,10 +13,38 @@ interface GenerateMealPlanRequest {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
+  const serviceClient = createServiceRoleClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Check subscription status and rate limit
+  const { data: subscription } = await serviceClient
+    .from('user_subscriptions')
+    .select('is_subscribed, has_meal_plan_generation, is_override, free_plans_used, free_plan_limit')
+    .eq('user_id', user.id)
+    .single();
+
+  // Check if user can generate meal plans:
+  // 1. Has override (friends/testers) - unlimited access
+  // 2. Has Pro subscription (has_meal_plan_generation = true) - unlimited access
+  // 3. Is free user with remaining free plans
+  const isOverride = subscription?.is_override ?? false;
+  const hasMealPlanGeneration = subscription?.has_meal_plan_generation ?? false;
+  const freePlansUsed = subscription?.free_plans_used ?? 0;
+  const freePlanLimit = subscription?.free_plan_limit ?? 3;
+
+  const canGenerate = isOverride || hasMealPlanGeneration || freePlansUsed < freePlanLimit;
+
+  if (!canGenerate) {
+    return Response.json({
+      error: 'FREE_PLAN_LIMIT_REACHED',
+      message: 'You have used all your free meal plans. Upgrade to Pro to continue generating meal plans.',
+      freePlansUsed,
+      freePlanLimit,
+    }, { status: 402 }); // 402 Payment Required
   }
 
   // Parse request body for theme selection

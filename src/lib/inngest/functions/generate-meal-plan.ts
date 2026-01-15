@@ -834,7 +834,28 @@ export const generateMealPlanFunction = inngest.createFunction(
           .is('first_plan_completed', false);
       });
 
-      // Step 9: Send email notification (non-blocking - failure doesn't affect success)
+      // Step 9: Increment free_plans_used counter for free tier users only
+      await step.run('increment-free-plan-counter', async () => {
+        const supabase = createServiceRoleClient();
+        const { data: subscription } = await supabase
+          .from('user_subscriptions')
+          .select('is_override, has_meal_plan_generation, free_plans_used')
+          .eq('user_id', userId)
+          .single();
+
+        // Only increment for free tier users (not override, not Pro subscribers)
+        const isOverride = subscription?.is_override ?? false;
+        const hasMealPlanGeneration = subscription?.has_meal_plan_generation ?? false;
+
+        if (!isOverride && !hasMealPlanGeneration) {
+          await supabase
+            .from('user_subscriptions')
+            .update({ free_plans_used: (subscription?.free_plans_used ?? 0) + 1 })
+            .eq('user_id', userId);
+        }
+      });
+
+      // Step 10: Send email notification (non-blocking - failure doesn't affect success)
       await step.run('send-email-notification', async () => {
         try {
           await sendMealPlanReadyEmail({

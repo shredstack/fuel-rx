@@ -24,6 +24,8 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.0",
     "@capacitor/status-bar": "^8.0.0",
+    "@revenuecat/purchases-capacitor": "^12.0.4",
+    "@revenuecat/purchases-capacitor-ui": "^12.0.4",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.39.0",
     "@zxing/browser": "^0.1.5",

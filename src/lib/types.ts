@@ -2150,3 +2150,71 @@ export interface BulkUpdateIngredientsRequest {
     validated?: boolean;
   };
 }
+
+// ============================================================================
+// Subscription Types
+// ============================================================================
+
+/**
+ * Subscription tier options
+ * - basic_yearly: $5.99/year - AI features but NO meal plan generation
+ * - pro_monthly: $3.99/month - All features including meal plan generation
+ * - pro_yearly: $39.99/year - All features including meal plan generation
+ */
+export type SubscriptionTier = 'basic_yearly' | 'pro_monthly' | 'pro_yearly';
+
+/**
+ * Subscription status from RevenueCat
+ */
+export type SubscriptionStatus =
+  | 'active'
+  | 'cancelled'
+  | 'expired'
+  | 'grace_period'
+  | 'billing_retry';
+
+/**
+ * User subscription record from database
+ */
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  revenuecat_customer_id: string | null;
+  is_subscribed: boolean;
+  subscription_tier: SubscriptionTier | null;
+  subscription_status: SubscriptionStatus | null;
+  has_ai_features: boolean;
+  has_meal_plan_generation: boolean;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  original_purchase_date: string | null;
+  free_plans_used: number;
+  free_plan_limit: number;
+  is_override: boolean;
+  override_reason: string | null;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Subscription status response from API
+ */
+export interface SubscriptionStatusResponse {
+  isSubscribed: boolean;
+  subscriptionTier: SubscriptionTier | null;
+  subscriptionStatus: SubscriptionStatus | null;
+  currentPeriodEnd: string | null;
+  // Feature access
+  hasAiFeatures: boolean;
+  hasMealPlanGeneration: boolean;
+  // Free tier tracking (only relevant for meal plan generation)
+  freePlansUsed: number;
+  freePlanLimit: number;
+  freePlansRemaining: number;
+  // Computed permission
+  canGeneratePlan: boolean;
+  canUseAiFeatures: boolean;
+  // Override status
+  isOverride: boolean;
+}
