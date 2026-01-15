@@ -11,12 +11,13 @@ const config: CapacitorConfig = {
   appName: 'FuelRx',
   webDir: 'out',
 
-  server: {
-    // Point to your Vercel deployment - the app loads from remote server
-    url: serverUrl,
-    // Allow cleartext for development only
-    cleartext: !isProduction,
-  },
+  // Uncomment server block to load from remote URL instead of bundled app
+  // server: {
+  //   // Point to your Vercel deployment - the app loads from remote server
+  //   url: serverUrl,
+  //   // Allow cleartext for development only
+  //   cleartext: !isProduction,
+  // },
 
   ios: {
     contentInset: 'automatic',

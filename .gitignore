@@ -52,3 +52,6 @@ claude_instruction_docs/*
 
 # iOS - Swift Package Manager
 ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
+# iOS - Xcode user-specific settings
+xcuserdata/
