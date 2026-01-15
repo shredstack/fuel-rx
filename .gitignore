@@ -49,3 +49,6 @@ Thumbs.db
 
 # Directory for claude code instructions
 claude_instruction_docs/*
+
+# iOS - Swift Package Manager
+ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/

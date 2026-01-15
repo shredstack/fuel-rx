@@ -2,76 +2,59 @@
 
 **"Your week of food, figured out."**
 
-FuelRx is a convenience app that takes the mental load out of eating well. We help CrossFit athletes answer one question each week: *"What should I buy and cook to fuel my training?"* — with AI-generated plans refined by a community of real athletes sharing what actually works.
+FuelRx is a planning-first convenience app that takes the mental load out of eating well. We help CrossFit athletes answer one question each week: *"What should I buy and cook to fuel my training?"* — with AI-generated plans refined by a community of real athletes sharing what actually works.
 
-We are not a tracking app. We don't ask users to log meals, count calories daily, or maintain streaks. Instead, we deliver a complete system — meal plan, grocery list, and prep game plan — so athletes can stop thinking about food and start performing.
+Then, if you want to track, we make it stupidly easy. No manual entry, no searching databases — just confirm what you already planned to eat.
 
 ---
 
 # 📑 Table of Contents
 
 <!-- TOC_START -->
-- [FuelRx](#fuelrx)
-- [📑 Table of Contents](#-table-of-contents)
-- [Core Philosophy](#core-philosophy)
-- [The Core Loop](#the-core-loop)
-- [The Pitch](#the-pitch)
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-  - [Frontend](#frontend)
-  - [Backend](#backend)
-  - [AI/ML](#aiml)
-  - [Hosting \& Deployment](#hosting--deployment)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Environment Variables](#environment-variables)
-  - [Installation](#installation)
-  - [Database Setup](#database-setup)
-  - [Inngest Production Setup](#inngest-production-setup)
-  - [Ingest Developer Setup](#ingest-developer-setup)
-  - [Email Notification System](#email-notification-system)
-    - [Setup](#setup)
-    - [How It Works](#how-it-works)
-    - [Testing Locally](#testing-locally)
-- [Developer Tips](#developer-tips)
-- [Project Structure](#project-structure)
-- [Deployment](#deployment)
-  - [Deploy to Vercel](#deploy-to-vercel)
-- [Features](#features-1)
-  - [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
-  - [Quick Meals](#quick-meals)
-  - [Logging](#logging)
-    - [Barcode Scanning](#barcode-scanning)
-    - [Snap a Picture](#snap-a-picture)
-- [Feature Roadmap](#feature-roadmap)
-  - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
-  - [⚡ Convenience Features](#-convenience-features)
-  - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
-  - [👥 Community Features](#-community-features)
-  - [Priority Order (Suggested)](#priority-order-suggested)
-- [What We're NOT Building](#what-were-not-building)
-- [Success Metrics](#success-metrics)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+- [Frontend](#frontend)
+- [Backend](#backend)
+- [AI/ML](#aiml)
+- [Hosting & Deployment](#hosting-deployment)
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Installation](#installation)
+- [Database Setup](#database-setup)
+- [Inngest Production Setup](#inngest-production-setup)
+- [Ingest Developer Setup](#ingest-developer-setup)
+- [Email Notification System](#email-notification-system)
+  - [Setup](#setup)
+  - [How It Works](#how-it-works)
+  - [Testing Locally](#testing-locally)
+- [Deploy to Vercel](#deploy-to-vercel)
+- [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
+- [Quick Meals](#quick-meals)
+- [Logging](#logging)
+  - [Barcode Scanning](#barcode-scanning)
+  - [Snap a Picture](#snap-a-picture)
+- [🔧 Meal Plan Quality Improvements](#meal-plan-quality-improvements)
+- [⚡ Convenience Features](#convenience-features)
+- [📸 Photo Capture ("Snap a Meal")](#photo-capture-snap-a-meal)
+- [✅ Frictionless Tracking (Optional)](#frictionless-tracking-optional)
+- [👥 Community Features](#community-features)
+- [Priority Order (Suggested)](#priority-order-suggested)
 <!-- TOC_END -->
 
 ---
 
 # Core Philosophy
 
+- **Plan first, track second** — Weekly planning is the foundation; tracking is optional convenience
 - **Convenience over compliance** — Make healthy eating the path of least resistance
-- **Plan once, eat all week** — Minimize daily decisions
+- **No manual entry hell** — FuelRx already knows what you planned; one tap to confirm you ate it
 - **Community as cookbook** — Other athletes' real meals make your planning easier
-- **No tracking guilt** — Generate, shop, eat, repeat
+- **Guilt-free defaults** — Generate, shop, eat. Track only if it helps you.
 
 ---
 
 # The Core Loop
 
 ```
-Generate Plan → Shop → Prep → Eat → Repeat
+Generate Plan → Shop → Prep → Eat → [Optional: One-Tap Track] → Repeat
 ```
 
 Every feature should make this loop faster, easier, or more enjoyable.
@@ -80,7 +63,9 @@ Every feature should make this loop faster, easier, or more enjoyable.
 
 # The Pitch
 
-> FuelRx gives CrossFit athletes a meal plan, a grocery list, and a prep game plan — powered by AI and refined by a community of athletes who eat like you. Stop thinking about food. Start performing.
+> FuelRx gives CrossFit athletes a meal plan, a grocery list, and a prep game plan — powered by AI and refined by a community of athletes who eat like you.
+>
+> If you want to track your macros, we already know what you planned to eat. One tap confirms it. No manual entry, no friction, no guilt.
 
 ---
 
@@ -512,6 +497,33 @@ After analysis, users review the AI-generated results and can edit meal names, a
 
 ---
 
+## ✅ Frictionless Tracking (Optional)
+
+**One-Tap Logging**
+- FuelRx already knows what you planned to eat
+- Meal card shows: "Did you eat this? ✓"
+- One tap = logged with accurate macros
+- No searching, no manual entry, no friction
+
+**Smart Adjustments**
+- "Ate this but only 75% of it" → Adjust portions
+- "Swapped chicken for salmon" → Update protein source
+- Still one tap, just with minor tweaks
+
+**Historical Trends**
+- Natural side effect of one-tap logging
+- See weekly/monthly macro adherence
+- "You hit your protein target 6/7 days this week"
+- Charts show trends, not daily guilt
+
+**MyFitnessPal Migration**
+- One-time import of historical data
+- Brings over past macro trends so you don't lose history
+- Discontinue MFP entirely, track in FuelRx going forward
+- Framing: "Stop manually logging. FuelRx already knows your meals."
+
+---
+
 ## 👥 Community Features
 
 **Guiding Principle**: Community as a smart recipe database, not a social network. Users benefit from collective wisdom without social pressure.
@@ -555,35 +567,48 @@ After analysis, users review the AI-generated results and can edit meal names, a
 
 ## Priority Order (Suggested)
 
-| Phase | Features | Impact |
-|-------|----------|--------|
-| 1 | Extended meal memory, Ingredient-efficient generation | Fix current pain points |
-| 2 | Meal Prep Mode | Major differentiator |
-| 3 | Quick Swap, Ingredient Substitution | Daily convenience |
-| 4 | Snap a Meal (photo capture) | Frictionless meal saving |
-| 5 | Browse by Problem, One-tap plan integration | Community becomes useful |
-| 6 | Costco Mode, Grocery export | Shopping convenience |
-| 7 | Passive quality signals, Taste Twins | Smart recommendations |
+| Phase | Features | Impact | Rationale |
+|-------|----------|--------|-----------|
+| 1 | Extended meal memory, Ingredient-efficient generation | Fix current pain points | Quality must be solid before adding features |
+| 2 | One-tap tracking, MFP migration | Reduce friction vs. competitors | Keep users from needing two apps |
+| 3 | Meal Prep Mode | Major differentiator | CrossFit athletes batch cook on Sundays |
+| 4 | Quick Swap, Ingredient Substitution | Daily convenience | Life happens, plans change |
+| 5 | Snap a Meal (photo capture) | Frictionless meal saving | Build library passively |
+| 6 | Browse by Problem, One-tap plan integration | Community becomes useful | Network effects kick in |
+| 7 | Costco Mode, Grocery export | Shopping convenience | Final polish on the core loop |
+| 8 | Passive quality signals, Taste Twins | Smart recommendations | Data-driven improvements |
 
 ---
 
 # What We're NOT Building
 
-- Daily logging or check-ins
-- Streak tracking or gamification
-- Calorie counting interface
-- Social feeds requiring engagement
-- Anything requiring daily app opens (this app is meant to be opened maybe once per week to help athletes plan their meals)
+**We avoid features that create guilt, friction, or daily obligation:**
+
+- **Mandatory daily logging** — Tracking is optional convenience, not required
+- **Streak tracking or gamification** — No guilt for missing days
+- **Manual calorie counting** — If it's not one-tap easy, we don't do it
+- **Social feeds requiring engagement** — Community without pressure
+- **Manual ingredient searches** — FuelRx already knows what's in your meals
+- **Daily app opens as requirement** — Open weekly to plan, optionally daily to track
+
+**The test**: Does this feature make the "Generate → Shop → Prep → Eat → Repeat" loop easier? If no, we don't build it.
 
 ---
 
 # Success Metrics
 
-- **Weekly active generation** — Users creating meal plans
+**Planning metrics (primary):**
+- **Weekly active plan generation** — Users creating meal plans
 - **Grocery list exports** — Plans converting to shopping
 - **Swap rate** — Lower = better meal quality
 - **Community meal additions** — Plans enriched by community
 - **Time to plan** — Getting faster over time
+
+**Tracking metrics (secondary, only for users who opt in):**
+- **One-tap log rate** — % of planned meals confirmed with single tap
+- **Manual entry rate** — Should be near zero (if high, we failed at convenience)
+- **Tracking adherence** — Users who start tracking and keep doing it
+- **MFP churn** — Users who discontinue MFP after migrating to FuelRx
 
 ---
 

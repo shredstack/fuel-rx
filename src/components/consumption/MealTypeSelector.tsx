@@ -10,7 +10,7 @@ interface MealTypeSelectorProps {
   compact?: boolean;
 }
 
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_TYPES: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'];
 
 export default function MealTypeSelector({
   value,
@@ -19,7 +19,7 @@ export default function MealTypeSelector({
   compact = false,
 }: MealTypeSelectorProps) {
   return (
-    <div className={`flex ${compact ? 'gap-1' : 'gap-2'}`}>
+    <div className={`flex flex-wrap ${compact ? 'gap-1' : 'gap-2'}`}>
       {MEAL_TYPES.map((type) => {
         const isSelected = value === type;
         const isSuggested = suggestedTypes.includes(type);

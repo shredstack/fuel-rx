@@ -34,10 +34,13 @@ supabase migration new <description>
 ```
 This will create a file in the migrations directory which can then be filled out with the SQL for the migration.
 
-Then to run the new migrations locally, you can use this:
+Then to apply the new migrations locally, you can use this:
 ```bash
 supabase migration up
 ```
 
-
+Never push migrations to production! So don't use the `--linked` flag! For example, never run the following:
+```bash
+supabase db push --linked
+```
 
