@@ -468,23 +468,23 @@ export default function CustomMealsClient({ initialMeals }: Props) {
         )}
 
         {/* Tab Navigation */}
-        <div className="bg-white rounded-lg shadow-sm mb-6">
-          <nav className="flex border-b border-gray-200">
+        <div className="bg-white rounded-lg shadow-sm mb-6 overflow-hidden">
+          <nav className="flex overflow-x-auto scrollbar-hide border-b border-gray-200 -mb-px">
             <button
               onClick={() => setActiveTab('my-recipes')}
-              className={`flex-1 py-4 px-6 text-center font-medium transition-colors relative ${
+              className={`flex-1 min-w-0 py-3 px-3 sm:px-6 text-center font-medium transition-colors relative whitespace-nowrap ${
                 activeTab === 'my-recipes'
                   ? 'text-primary-600 border-b-2 border-primary-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="flex items-center justify-center gap-1 sm:gap-2">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
-                My Recipes
+                <span className="text-sm sm:text-base">Recipes</span>
                 {tabCounts['my-recipes'] > 0 && (
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                  <span className="bg-gray-100 text-gray-600 px-1.5 sm:px-2 py-0.5 rounded-full text-xs flex-shrink-0">
                     {tabCounts['my-recipes']}
                   </span>
                 )}
@@ -492,19 +492,19 @@ export default function CustomMealsClient({ initialMeals }: Props) {
             </button>
             <button
               onClick={() => setActiveTab('quick-cook')}
-              className={`flex-1 py-4 px-6 text-center font-medium transition-colors relative ${
+              className={`flex-1 min-w-0 py-3 px-3 sm:px-6 text-center font-medium transition-colors relative whitespace-nowrap ${
                 activeTab === 'quick-cook'
                   ? 'text-primary-600 border-b-2 border-primary-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="flex items-center justify-center gap-1 sm:gap-2">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Quick Cook
+                <span className="text-sm sm:text-base">Quick Cook</span>
                 {tabCounts['quick-cook'] > 0 && (
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                  <span className="bg-gray-100 text-gray-600 px-1.5 sm:px-2 py-0.5 rounded-full text-xs flex-shrink-0">
                     {tabCounts['quick-cook']}
                   </span>
                 )}
@@ -512,17 +512,17 @@ export default function CustomMealsClient({ initialMeals }: Props) {
             </button>
             <button
               onClick={() => setActiveTab('party-plans')}
-              className={`flex-1 py-4 px-6 text-center font-medium transition-colors relative ${
+              className={`flex-1 min-w-0 py-3 px-3 sm:px-6 text-center font-medium transition-colors relative whitespace-nowrap ${
                 activeTab === 'party-plans'
                   ? 'text-primary-600 border-b-2 border-primary-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <span className="flex items-center justify-center gap-2">
-                <span className="text-lg">🎉</span>
-                Party Plans
+              <span className="flex items-center justify-center gap-1 sm:gap-2">
+                <span className="text-base sm:text-lg flex-shrink-0">🎉</span>
+                <span className="text-sm sm:text-base">Party</span>
                 {tabCounts['party-plans'] > 0 && (
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                  <span className="bg-gray-100 text-gray-600 px-1.5 sm:px-2 py-0.5 rounded-full text-xs flex-shrink-0">
                     {tabCounts['party-plans']}
                   </span>
                 )}

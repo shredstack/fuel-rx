@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useRef, useEffect } from 'react';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -9,6 +9,7 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -18,17 +19,46 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
+  // Scroll input into view when focused (helps with iOS keyboard)
+  const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    // Small delay to allow keyboard to open
+    setTimeout(() => {
+      textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  };
+
+  // Handle visualViewport resize (keyboard open/close on iOS)
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      // When keyboard opens, scroll input into view
+      if (document.activeElement === textareaRef.current) {
+        setTimeout(() => {
+          textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    return () => viewport.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <form
       onSubmit={handleSubmit}
       className="p-4 border-t bg-white shrink-0"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
     >
       <div className="flex items-end gap-2">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onClick={(e) => e.stopPropagation()}
-          onFocus={(e) => e.stopPropagation()}
+          onFocus={handleFocus}
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === 'Enter' && !e.shiftKey) {

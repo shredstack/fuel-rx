@@ -41,6 +41,7 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
   - [App Store Preparation](#app-store-preparation)
   - [Legal Pages](#legal-pages)
   - [Before App Store Submission](#before-app-store-submission)
+  - [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
 - [Project Structure](#project-structure)
 - [Deployment](#deployment)
   - [Deploy to Vercel](#deploy-to-vercel)
@@ -438,6 +439,38 @@ Support: /support
 4. **Test on physical device** (camera, haptics, push notifications)
 5. **Beta test via TestFlight**
 6. **Submit for review** via App Store Connect
+
+## Steps to redistribute to TestFlight after local code changes
+
+1. Build for mobile
+```bash
+npm run build:mobile
+```
+
+2. Open Xcode
+```bash
+npm run cap:open:ios
+```
+
+3. In Xcode:
+- Select your target device as "Any iOS Device (arm64)"
+- Increment the build number in your project settings (required for each TestFlight upload)
+- Go to Product → Archive
+
+4. After archive completes:
+- The Organizer window opens automatically
+- Click Distribute App
+- Select App Store Connect → Next
+- Select Upload → Next
+- Keep default options → Next
+- Select your signing certificate → Upload
+
+5. In App Store Connect:
+- Wait a few minutes for processing
+- Go to your app → TestFlight tab
+- The new build appears under "iOS Builds"
+- Add it to your testing group(s) if not automatic
+- Your testers will get notified of the new build once it's processed (usually 10-30 minutes).
 
 # Project Structure
 
