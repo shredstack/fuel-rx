@@ -154,10 +154,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
+  // Use upsert to create the row if it doesn't exist (new users won't have one yet)
   const { data, error } = await supabase
     .from('user_onboarding_state')
-    .update(updateData)
-    .eq('user_id', user.id)
+    .upsert(
+      { user_id: user.id, ...updateData },
+      { onConflict: 'user_id' }
+    )
     .select()
     .single();
 
