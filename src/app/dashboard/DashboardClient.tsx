@@ -9,9 +9,11 @@ import type { UserProfile, OnboardingMilestone } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
+import { useSubscription } from '@/hooks/useSubscription'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MealLoggingTeaser from '@/components/onboarding/MealLoggingTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
+import PaywallModal from '@/components/PaywallModal'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 
@@ -66,6 +68,10 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
   // Theme selection state
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
 
+  // Subscription state
+  const { isSubscribed, canGeneratePlan, hasMealPlanGeneration, freePlansRemaining, isOverride, status: subscriptionStatus, refresh: refreshSubscription } = useSubscription()
+  const [showPaywall, setShowPaywall] = useState(false)
+
   // Onboarding state
   const { state: onboardingState, isFeatureDiscovered, discoverFeature } = useOnboardingState()
   const [showMilestoneToast, setShowMilestoneToast] = useState<OnboardingMilestone | null>(null)
@@ -118,6 +124,12 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
   }, [onboardingState, shownMilestones])
 
   const handleGeneratePlan = async () => {
+    // Check if user can generate a plan before starting
+    if (!canGeneratePlan) {
+      setShowPaywall(true)
+      return
+    }
+
     setGenerating(true)
     setError(null)
     setProgressStage('pending')
@@ -145,6 +157,14 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ themeSelection: themeSelectionValue }),
       })
+
+      // Handle 402 Payment Required (free plan limit reached)
+      if (startResponse.status === 402) {
+        setShowPaywall(true)
+        setGenerating(false)
+        setProgressStage(null)
+        return
+      }
 
       if (!startResponse.ok) {
         const data = await startResponse.json()
@@ -271,6 +291,52 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                 'Generate Meal Plan'
               )}
             </button>
+
+            {/* Free plans remaining indicator */}
+            {subscriptionStatus && !isSubscribed && !generating && (
+              <div className="mt-3 text-center">
+                {freePlansRemaining > 0 ? (
+                  <p className="text-sm text-gray-500">
+                    {freePlansRemaining} of {subscriptionStatus.freePlanLimit} free plans remaining
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => setShowPaywall(true)}
+                    className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  >
+                    Upgrade to Pro for unlimited plans
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Subscriber/Override badge */}
+            {(hasMealPlanGeneration || isOverride) && !generating && (
+              <div className="mt-3 text-center">
+                <span className="inline-flex items-center gap-1 text-sm text-primary-600 font-medium">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  {isOverride ? 'VIP Access' : 'FuelRx Pro'} - Unlimited Plans
+                </span>
+              </div>
+            )}
+
+            {/* Basic subscriber message (has AI features but not meal plan generation) */}
+            {isSubscribed && !hasMealPlanGeneration && !isOverride && !generating && (
+              <div className="mt-3 text-center">
+                <p className="text-sm text-gray-500">
+                  FuelRx Basic - {freePlansRemaining} free plans remaining
+                </p>
+                <button
+                  onClick={() => setShowPaywall(true)}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1"
+                >
+                  Upgrade to Pro for unlimited plans
+                </button>
+              </div>
+            )}
+
             {generating && (
               <div className="mt-4 space-y-3">
                 {/* Progress bar */}
@@ -399,6 +465,16 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
             onDismiss={() => setShowMilestoneToast(null)}
           />
         )}
+
+        {/* Paywall Modal */}
+        <PaywallModal
+          isOpen={showPaywall}
+          onClose={() => {
+            setShowPaywall(false)
+            // Refresh subscription status in case user subscribed
+            refreshSubscription()
+          }}
+        />
       </main>
 
       <MobileTabBar />

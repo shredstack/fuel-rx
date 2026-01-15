@@ -11,32 +11,57 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
 # 📑 Table of Contents
 
 <!-- TOC_START -->
-- [Frontend](#frontend)
-- [Backend](#backend)
-- [AI/ML](#aiml)
-- [Hosting & Deployment](#hosting-deployment)
-- [Prerequisites](#prerequisites)
-- [Environment Variables](#environment-variables)
-- [Installation](#installation)
-- [Database Setup](#database-setup)
-- [Inngest Production Setup](#inngest-production-setup)
-- [Ingest Developer Setup](#ingest-developer-setup)
-- [Email Notification System](#email-notification-system)
-  - [Setup](#setup)
-  - [How It Works](#how-it-works)
-  - [Testing Locally](#testing-locally)
-- [Deploy to Vercel](#deploy-to-vercel)
-- [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
-- [Quick Meals](#quick-meals)
-- [Logging](#logging)
-  - [Barcode Scanning](#barcode-scanning)
-  - [Snap a Picture](#snap-a-picture)
-- [🔧 Meal Plan Quality Improvements](#meal-plan-quality-improvements)
-- [⚡ Convenience Features](#convenience-features)
-- [📸 Photo Capture ("Snap a Meal")](#photo-capture-snap-a-meal)
-- [✅ Frictionless Tracking (Optional)](#frictionless-tracking-optional)
-- [👥 Community Features](#community-features)
-- [Priority Order (Suggested)](#priority-order-suggested)
+- [FuelRx](#fuelrx)
+- [📑 Table of Contents](#-table-of-contents)
+- [Core Philosophy](#core-philosophy)
+- [The Core Loop](#the-core-loop)
+- [The Pitch](#the-pitch)
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+  - [Frontend](#frontend)
+  - [Backend](#backend)
+  - [AI/ML](#aiml)
+  - [Hosting \& Deployment](#hosting--deployment)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Environment Variables](#environment-variables)
+  - [Installation](#installation)
+  - [Database Setup](#database-setup)
+  - [Inngest Production Setup](#inngest-production-setup)
+  - [Ingest Developer Setup](#ingest-developer-setup)
+  - [Email Notification System](#email-notification-system)
+    - [Setup](#setup)
+    - [How It Works](#how-it-works)
+    - [Testing Locally](#testing-locally)
+- [Developer Tips](#developer-tips)
+- [Native App](#native-app)
+  - [Developer Notes](#developer-notes)
+  - [App Icons](#app-icons)
+  - [App Store Preparation](#app-store-preparation)
+  - [Legal Pages](#legal-pages)
+  - [Before App Store Submission](#before-app-store-submission)
+- [Project Structure](#project-structure)
+- [Deployment](#deployment)
+  - [Deploy to Vercel](#deploy-to-vercel)
+- [Features](#features-1)
+  - [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
+  - [Quick Meals](#quick-meals)
+  - [Logging](#logging)
+    - [Barcode Scanning](#barcode-scanning)
+    - [Snap a Picture](#snap-a-picture)
+- [Feature Roadmap](#feature-roadmap)
+  - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
+  - [⚡ Convenience Features](#-convenience-features)
+  - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
+  - [✅ Frictionless Tracking (Optional)](#-frictionless-tracking-optional)
+  - [👥 Community Features](#-community-features)
+  - [Priority Order (Suggested)](#priority-order-suggested)
+- [What We're NOT Building](#what-were-not-building)
+- [Success Metrics](#success-metrics)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 <!-- TOC_END -->
 
 ---
@@ -312,6 +337,107 @@ Sometimes Next.js dev server experiences cache issues. If you all of a sudden st
 1. Stop the dev server
 2. Run rm -rf .next
 3. Run npm run dev again
+
+# Native App
+
+## Developer Notes
+
+Make sure you install xcode from the Apple App Store.
+
+Testing Guide: docs/MOBILE_TESTING.md
+
+```bash
+# 1. Build for mobile
+npm run build:mobile
+
+# 2. Open Xcode
+npm run cap:open:ios
+# OR npx cap open ios
+
+# 3. In Xcode:
+#    - Select "iPhone 15 Pro" simulator
+#    - Press ⌘R to build and run
+```
+
+**Running with local development server**
+
+Get your local ip address:
+```bash
+ipconfig getifaddr en0
+```
+
+Then set the environment variable and sync:
+```bash
+CAPACITOR_SERVER_URL=http://<ip_address>:3000 npx cap sync ios
+# Example: CAPACITOR_SERVER_URL=http://192.168.86.249:3000 npx cap sync ios
+```
+
+Now, start your Next.js dev server and point Capacitor to it.
+
+Build the Next.js app (creates the 'out' directory):
+```bash
+npm run build
+```
+
+Start the dev server:
+```bash
+npm run dev
+```
+
+Sync to ios:
+```bash
+npx cap sync ios
+```
+
+Then in Xcode:
+1. Clean the build (Product → Clean Build Folder, or ⌘+Shift+K)
+2. Rebuild and run the app (⌘+R)
+
+## App Icons
+
+We have a couple scripts to help generate app icons:
+
+1. scripts/generate-app-icons.sh: Generates all required icon sizes from a source image
+2. scripts/create-placeholder-icon.sh: Creates a simple placeholder icon for testing
+
+To use:
+
+Make sure you install ImageMagick: `brew install imagemagick`
+
+```bash
+# Option 1: Create a placeholder icon for testing
+./scripts/create-placeholder-icon.sh
+./scripts/generate-app-icons.sh scripts/assets/app-icon-source.png
+
+# Option 2: Use your own 1024x1024 icon
+./scripts/generate-app-icons.sh path/to/your-icon.png
+```
+
+## App Store Preparation
+
+app-store/metadata.md contains:
+- App name, subtitle, description
+- Keywords for discoverability
+- Categories and age rating
+- Screenshot requirements
+- Review notes for Apple
+
+## Legal Pages
+
+Privacy Policy: /privacy
+
+Terms of Service: /terms
+
+Support: /support
+
+## Before App Store Submission
+
+1. **Create your app icon** (1024x1024 PNG, no transparency)
+2. **Generate icon sizes**: `./scripts/generate-app-icons.sh your-icon.png`
+3. **Take screenshots** on iPhone 15 Pro Max and iPad Pro
+4. **Test on physical device** (camera, haptics, push notifications)
+5. **Beta test via TestFlight**
+6. **Submit for review** via App Store Connect
 
 # Project Structure
 

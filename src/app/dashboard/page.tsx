@@ -14,18 +14,24 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
+  // Check if user has completed onboarding
+  const { data: onboardingState } = await supabase
+    .from('user_onboarding_state')
+    .select('profile_completed')
+    .eq('user_id', user.id)
+    .single()
+
+  // Redirect to onboarding if not completed
+  if (!onboardingState?.profile_completed) {
+    redirect('/onboarding')
+  }
+
   // Get user profile
   const { data: profile } = await supabase
     .from('user_profiles')
     .select('*')
     .eq('id', user.id)
     .single()
-
-  // Check if user needs to complete onboarding
-  if (!profile || profile.target_protein === 150 && profile.target_carbs === 200 && profile.target_fat === 70) {
-    // User has default values, likely hasn't completed onboarding
-    // We'll still show dashboard but prompt them
-  }
 
   // Get most recent meal plan - use maybeSingle() to handle no results gracefully
   const { data: recentPlan } = await supabase

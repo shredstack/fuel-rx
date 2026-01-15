@@ -4,7 +4,7 @@ import { KeyboardResize } from '@capacitor/keyboard';
 // For production, point to your Vercel deployment
 // For development, use your local IP with live reload
 const isProduction = process.env.NODE_ENV === 'production';
-const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://fuelrx.vercel.app';
+const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://fuel-rx.shredstack.net';
 
 const config: CapacitorConfig = {
   appId: 'com.fuelrx.app',
