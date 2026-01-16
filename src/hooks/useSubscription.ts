@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { SubscriptionStatusResponse } from '@/lib/types';
 import {
   isRevenueCatAvailable,
+  isRevenueCatInitialized,
+  initializeRevenueCat,
   presentPaywall,
   restorePurchases,
 } from '@/lib/revenuecat';
+import { createClient } from '@/lib/supabase/client';
 
 interface UseSubscriptionReturn {
   // Subscription status
@@ -35,6 +38,34 @@ export function useSubscription(): UseSubscriptionReturn {
   const [status, setStatus] = useState<SubscriptionStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initializingRef = useRef(false);
+
+  // Initialize RevenueCat when hook mounts (if on native platform)
+  useEffect(() => {
+    async function initRevenueCat() {
+      // Only initialize on native platforms and if not already initialized
+      if (!isRevenueCatAvailable() || isRevenueCatInitialized() || initializingRef.current) {
+        return;
+      }
+
+      initializingRef.current = true;
+
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          await initializeRevenueCat(user.id);
+        }
+      } catch (err) {
+        console.error('[useSubscription] Failed to initialize RevenueCat:', err);
+      } finally {
+        initializingRef.current = false;
+      }
+    }
+
+    initRevenueCat();
+  }, []);
 
   // Fetch subscription status from API
   const fetchStatus = useCallback(async () => {

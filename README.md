@@ -39,6 +39,7 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
   - [Developer Notes](#developer-notes)
   - [App Icons](#app-icons)
   - [App Store Preparation](#app-store-preparation)
+    - [Screenshot Tips](#screenshot-tips)
   - [Legal Pages](#legal-pages)
   - [Before App Store Submission](#before-app-store-submission)
   - [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
@@ -422,6 +423,39 @@ app-store/metadata.md contains:
 - Categories and age rating
 - Screenshot requirements
 - Review notes for Apple
+
+### Screenshot Tips
+
+**Required Screenshot Sizes for App Store**
+
+- **6.5" Display** (1284 x 2778): iPhone 14 Plus, iPhone 13 Pro Max, iPhone 12 Pro Max, iPhone 11 Pro Max
+- **6.5" Display** (1242 x 2688): iPhone XS Max, iPhone 11 Pro Max
+- **12.9" iPad Display** (2048 x 2732): iPad Pro 12.9"
+
+**How to Take Screenshots in Xcode Simulator**
+
+1. Open Xcode and go to **Window → Devices and Simulators**
+2. Launch **iPhone 11 Pro Max** or **iPhone 14 Plus** simulator for 6.5" screenshots
+3. Run your app in the simulator
+4. Take screenshot: Press `Cmd + S` in the Simulator, or go to **File → Save Screen**
+5. Screenshots save to Desktop by default
+
+**Quick Simulator Commands**
+
+```bash
+# List available simulators
+xcrun simctl list devices
+
+# Boot specific devices for App Store screenshots
+xcrun simctl boot "iPhone 11 Pro Max"
+xcrun simctl boot "iPad Pro (12.9-inch) (6th generation)"
+```
+
+**Tips**
+
+- Make sure the simulator is set to **100% scale** (Window → Physical Size or `Cmd + 1`)
+- Take screenshots in **portrait orientation** for the main set
+- You need **at least 3 screenshots** per device size, up to 10
 
 ## Legal Pages
 
