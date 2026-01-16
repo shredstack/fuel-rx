@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Logo from '@/components/Logo'
+import { KeyboardAwareView } from '@/components/KeyboardAwareView'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -70,6 +71,7 @@ export default function SignupPage() {
               <p className="text-sm">
                 We&apos;ve sent a verification link to <strong>{email}</strong>.
                 Please click the link in your email to verify your account, then sign in.
+                <strong> If not in your inbox, check your spam!</strong>
               </p>
             </div>
 
@@ -83,7 +85,7 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 overflow-auto">
+    <KeyboardAwareView className="min-h-screen flex flex-col bg-gray-50 overflow-auto">
       <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
@@ -177,6 +179,6 @@ export default function SignupPage() {
           </div>
         </div>
       </div>
-    </div>
+    </KeyboardAwareView>
   )
 }

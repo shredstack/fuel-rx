@@ -15,6 +15,15 @@ export default async function CustomMealsPage() {
     redirect('/login')
   }
 
+  // Fetch user profile to check social_feed_enabled
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('social_feed_enabled')
+    .eq('id', user.id)
+    .single()
+
+  const socialFeedEnabled = profile?.social_feed_enabled || false
+
   // Fetch user's custom meals from meals table
   // Include user_created, quick_cook, and party_meal source types
   const { data: mealsData } = await supabase
@@ -94,5 +103,5 @@ export default async function CustomMealsPage() {
     })
   )
 
-  return <CustomMealsClient initialMeals={savedMeals} />
+  return <CustomMealsClient initialMeals={savedMeals} socialFeedEnabled={socialFeedEnabled} />
 }

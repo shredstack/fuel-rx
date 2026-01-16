@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import Logo from '@/components/Logo'
+import { KeyboardAwareView } from '@/components/KeyboardAwareView'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -55,7 +56,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 overflow-auto">
+    <KeyboardAwareView className="min-h-screen flex flex-col bg-gray-50 overflow-auto">
       <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
@@ -138,7 +139,7 @@ function LoginForm() {
           </div>
         </div>
       </div>
-    </div>
+    </KeyboardAwareView>
   )
 }
 

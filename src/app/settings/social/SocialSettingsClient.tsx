@@ -111,7 +111,7 @@ export default function SocialSettingsClient({ initialSettings }: Props) {
                   Enable Community Feed
                 </span>
                 <p className="text-sm text-gray-500 mt-1">
-                  When enabled, your shared custom meals and favorited meal plan meals will appear in the community feed.
+                  When enabled, your shared custom meals and favorited meal plan meals will appear with your permission in the community feed.
                   You&apos;ll also be able to browse and save meals from other users.
                 </p>
               </div>

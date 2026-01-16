@@ -103,6 +103,11 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Share modal state
   const [shareModalOpen, setShareModalOpen] = useState(false)
 
+  // Like meal confirmation modal state
+  const [likeMealModalOpen, setLikeMealModalOpen] = useState(false)
+  const [likeMealShareWithCommunity, setLikeMealShareWithCommunity] = useState(true)
+  const [pendingLikeMeal, setPendingLikeMeal] = useState<MealEntity | null>(null)
+
   // Cooking status state
   const [cookingStatuses, setCookingStatuses] = useState<Map<string, MealPlanMealCookingStatus>>(new Map())
 
@@ -455,60 +460,77 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             .eq('source_meals_table_id', meal.id)
         }
       }
+    } else if (preference === 'liked' && socialFeedEnabled) {
+      // If liking and user has community enabled, show confirmation modal
+      setPendingLikeMeal(meal)
+      setLikeMealShareWithCommunity(true) // Default to checked
+      setLikeMealModalOpen(true)
     } else {
-      // Upsert preference
-      const { error } = await supabase
-        .from('meal_preferences')
-        .upsert({
+      // For dislike or like without community, proceed directly
+      await executeLikeMeal(meal, preference, false)
+    }
+  }
+
+  const executeLikeMeal = async (meal: MealEntity, preference: MealPreferenceType, shareWithCommunity: boolean) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase
+      .from('meal_preferences')
+      .upsert({
+        user_id: user.id,
+        meal_name: meal.name,
+        preference: preference,
+      }, {
+        onConflict: 'user_id,meal_name',
+      })
+
+    if (!error) {
+      setMealPreferences({ ...mealPreferences, [meal.name]: preference })
+
+      // If liking a meal and user chose to share, share to feed
+      if (preference === 'liked' && shareWithCommunity) {
+        const { error: shareError } = await supabase.from('social_feed_posts').insert({
           user_id: user.id,
-          meal_name: mealName,
-          preference: preference,
-        }, {
-          onConflict: 'user_id,meal_name',
+          source_type: 'liked_meal',
+          source_meals_table_id: meal.id,
+          meal_name: meal.name,
+          calories: Math.round(meal.calories),
+          protein: Math.round(meal.protein),
+          carbs: Math.round(meal.carbs),
+          fat: Math.round(meal.fat),
+          prep_time: minutesToPrepTime(meal.prep_time_minutes),
+          ingredients: meal.ingredients.map(ing => ({
+            name: ing.name,
+            amount: ing.amount,
+            unit: ing.unit,
+            calories: Math.round(ing.calories),
+            protein: Math.round(ing.protein),
+            carbs: Math.round(ing.carbs),
+            fat: Math.round(ing.fat),
+          })),
+          instructions: meal.instructions,
+          meal_type: meal.meal_type,
         })
-
-      if (!error) {
-        setMealPreferences({ ...mealPreferences, [mealName]: preference })
-
-        // If liking a meal and user has community enabled, share to feed
-        if (preference === 'liked') {
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('social_feed_enabled')
-            .eq('id', user.id)
-            .single()
-
-          if (profile?.social_feed_enabled) {
-            const { error: shareError } = await supabase.from('social_feed_posts').insert({
-              user_id: user.id,
-              source_type: 'liked_meal',
-              source_meals_table_id: meal.id,
-              meal_name: meal.name,
-              calories: Math.round(meal.calories),
-              protein: Math.round(meal.protein),
-              carbs: Math.round(meal.carbs),
-              fat: Math.round(meal.fat),
-              prep_time: minutesToPrepTime(meal.prep_time_minutes),
-              ingredients: meal.ingredients.map(ing => ({
-                name: ing.name,
-                amount: ing.amount,
-                unit: ing.unit,
-                calories: Math.round(ing.calories),
-                protein: Math.round(ing.protein),
-                carbs: Math.round(ing.carbs),
-                fat: Math.round(ing.fat),
-              })),
-              instructions: meal.instructions,
-              meal_type: meal.meal_type,
-            })
-            // Ignore duplicate errors (23505) - meal already shared
-            if (shareError && shareError.code !== '23505') {
-              console.error('Error sharing liked meal to community feed:', shareError)
-            }
-          }
+        // Ignore duplicate errors (23505) - meal already shared
+        if (shareError && shareError.code !== '23505') {
+          console.error('Error sharing liked meal to community feed:', shareError)
         }
       }
     }
+  }
+
+  const handleLikeMealConfirm = async () => {
+    if (pendingLikeMeal) {
+      await executeLikeMeal(pendingLikeMeal, 'liked', likeMealShareWithCommunity)
+    }
+    setLikeMealModalOpen(false)
+    setPendingLikeMeal(null)
+  }
+
+  const handleLikeMealCancel = () => {
+    setLikeMealModalOpen(false)
+    setPendingLikeMeal(null)
   }
 
   const toggleIngredientPreference = async (ingredientName: string, preference: IngredientPreferenceType) => {
@@ -953,6 +975,49 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           mealPlanId={mealPlan.id}
           mealPlanTitle={mealPlan.title || (mealPlan.theme ? `${mealPlan.theme.emoji || ''} ${mealPlan.theme.display_name} Meal Plan` : 'Meal Plan')}
         />
+
+        {/* Like Meal Confirmation Modal */}
+        {likeMealModalOpen && pendingLikeMeal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Like this meal?</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                This will save &quot;{pendingLikeMeal.name}&quot; to your liked meals.
+              </p>
+
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg mb-6">
+                <input
+                  type="checkbox"
+                  id="like-share-with-community"
+                  checked={likeMealShareWithCommunity}
+                  onChange={(e) => setLikeMealShareWithCommunity(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                />
+                <label htmlFor="like-share-with-community" className="flex-1 cursor-pointer">
+                  <span className="text-sm font-medium text-gray-900">Share with community</span>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    This meal will be visible to other FuelRx users
+                  </p>
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleLikeMealCancel}
+                  className="btn-outline flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLikeMealConfirm}
+                  className="btn-primary flex-1"
+                >
+                  Like
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* First Plan Tour */}
         {shouldShowTour && currentTourStep < FIRST_PLAN_TOUR_STEPS.length && (
