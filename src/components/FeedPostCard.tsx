@@ -120,12 +120,15 @@ interface Props {
   post: SocialFeedPost
   onSave: (postId: string) => Promise<void>
   onUnsave: (postId: string) => Promise<void>
+  onDelete?: (postId: string) => Promise<void>
 }
 
-export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
+export default function FeedPostCard({ post, onSave, onUnsave, onDelete }: Props) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isSaved, setIsSaved] = useState(post.is_saved || false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const authorName = post.author?.display_name || post.author?.name || 'Anonymous'
   const prepTimeLabel = CUSTOM_MEAL_PREP_TIME_OPTIONS.find(
@@ -174,6 +177,18 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
       console.error('Error toggling save:', error)
     }
     setSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!onDelete) return
+    setDeleting(true)
+    try {
+      await onDelete(post.id)
+    } catch (error) {
+      console.error('Error deleting post:', error)
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -464,7 +479,40 @@ export default function FeedPostCard({ post, onSave, onUnsave }: Props) {
         </button>
 
         {post.is_own_post ? (
-          <span className="text-sm text-gray-500 italic">Your post</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 italic">Your post</span>
+            {onDelete && (
+              showDeleteConfirm ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Delete?</span>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleting ? 'Deleting...' : 'Yes'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={deleting}
+                    className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 disabled:opacity-50"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-1 px-3 py-1 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              )
+            )}
+          </div>
         ) : (
           <button
             onClick={handleToggleSave}
