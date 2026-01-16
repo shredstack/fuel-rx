@@ -169,11 +169,9 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Missing user ID' }, { status: 400 });
   }
 
-  // Skip sandbox events in production (optional - you might want to process them)
-  if (event.environment === 'SANDBOX' && process.env.NODE_ENV === 'production') {
-    console.log('RevenueCat webhook: Skipping sandbox event in production');
-    return Response.json({ success: true, skipped: true });
-  }
+  // Process both sandbox and production events
+  // Sandbox events come from TestFlight and beta testers
+  console.log(`RevenueCat webhook: Processing ${event.environment} event`);
 
   console.log(`RevenueCat webhook: Processing ${event.type} for user ${userId}`);
 
