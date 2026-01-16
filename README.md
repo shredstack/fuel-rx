@@ -43,6 +43,7 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
   - [Legal Pages](#legal-pages)
   - [Before App Store Submission](#before-app-store-submission)
   - [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
+  - [Paywall - AI Feature Access Logic](#paywall---ai-feature-access-logic)
 - [Project Structure](#project-structure)
 - [Deployment](#deployment)
   - [Deploy to Vercel](#deploy-to-vercel)
@@ -505,6 +506,20 @@ npm run cap:open:ios
 - The new build appears under "iOS Builds"
 - Add it to your testing group(s) if not automatic
 - Your testers will get notified of the new build once it's processed (usually 10-30 minutes).
+
+## Paywall - AI Feature Access Logic
+
+To ensure my personal Anthropic bill doesn't get out of control, we've implemented a paywall. The following table outlines the different plans available to users.
+
+| User Type | Free Plans Left | AI Features | Meal Plan Generation |
+|-----------|-----------------|-------------|---------------------|
+| Free user | 3, 2, or 1 | ✅ Yes | ✅ Yes |
+| Free user | 0 | ❌ Paywall | ❌ Paywall |
+| Basic subscriber | N/A | ✅ Yes | ❌ Paywall (uses free plans) |
+| Pro subscriber | N/A | ✅ Yes | ✅ Unlimited |
+| Override (VIP) | N/A | ✅ Yes | ✅ Unlimited |
+
+**AI Features include:** Cooking Assistant, Snap-a-Meal photo analysis, Quick Cook meal generation, and Prep Mode generation.
 
 # Project Structure
 

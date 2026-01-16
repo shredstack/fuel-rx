@@ -61,17 +61,15 @@ export default function PrepViewClient({
 
   // Build a map from composite meal IDs (meal_monday_breakfast_0) to actual meal UUIDs
   // This is needed for the cooking assistant to look up meals in the database
+  // Index is tracked per meal type (not global), matching prompt-builder.ts logic
   const mealIdMap: Record<string, { id: string; name: string }> = {}
   for (const day of days) {
-    const snackCounts: Record<string, number> = {}
+    const mealTypeCounts: Record<string, number> = {}
     for (const slot of day.meals) {
-      let index = 0
-      if (slot.meal_type === 'snack') {
-        snackCounts[slot.meal_type] = (snackCounts[slot.meal_type] || 0)
-        index = snackCounts[slot.meal_type]
-        snackCounts[slot.meal_type]++
-      }
-      const compositeId = `meal_${day.day}_${slot.meal_type}_${index}`
+      const mealType = slot.meal_type
+      const index = mealTypeCounts[mealType] || 0
+      mealTypeCounts[mealType] = index + 1
+      const compositeId = `meal_${day.day}_${mealType}_${index}`
       mealIdMap[compositeId] = { id: slot.meal.id, name: slot.meal.name }
     }
   }

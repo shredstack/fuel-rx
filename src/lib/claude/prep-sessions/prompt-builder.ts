@@ -23,12 +23,15 @@ export function buildPrepSessionsPrompt(
 ): string {
   const prepStyle = profile.prep_style || 'day_of';
 
-  // Build meal IDs for reference
+  // Build meal IDs for reference (index per meal type, not global)
   const mealIds: Record<string, string> = {};
   days.forEach((day) => {
-    day.meals.forEach((meal, mealIndex) => {
-      const id = `meal_${day.day}_${meal.type}_${mealIndex}`;
-      mealIds[`${day.day}_${meal.type}_${mealIndex}`] = id;
+    const mealTypeCounts: Record<string, number> = {};
+    day.meals.forEach((meal) => {
+      const typeIndex = mealTypeCounts[meal.type] || 0;
+      mealTypeCounts[meal.type] = typeIndex + 1;
+      const id = `meal_${day.day}_${meal.type}_${typeIndex}`;
+      mealIds[`${day.day}_${meal.type}_${typeIndex}`] = id;
     });
   });
 
@@ -84,8 +87,12 @@ Use the generate_prep_sessions tool to provide your prep schedule.`;
  */
 function buildMealSummary(days: DayPlan[]): string {
   return days.map(day => {
-    const mealsList = day.meals.map((m, idx) => {
-      const mealId = `meal_${day.day}_${m.type}_${idx}`;
+    // Track index per meal type (not global index)
+    const mealTypeCounts: Record<string, number> = {};
+    const mealsList = day.meals.map((m) => {
+      const typeIndex = mealTypeCounts[m.type] || 0;
+      mealTypeCounts[m.type] = typeIndex + 1;
+      const mealId = `meal_${day.day}_${m.type}_${typeIndex}`;
       const ingredientsList = m.ingredients.map(ing => `${ing.amount} ${ing.unit} ${ing.name}`).join(', ');
       const instructionsList = m.instructions.length > 0
         ? `\n      Instructions: ${m.instructions.map((inst, i) => `${i + 1}. ${inst}`).join(' ')}`

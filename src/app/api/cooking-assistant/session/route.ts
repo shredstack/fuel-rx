@@ -82,8 +82,8 @@ export async function POST(request: Request) {
       .single();
 
     if (mealError || !meal) {
-      console.error('Meal lookup error:', mealError);
-      return NextResponse.json({ error: 'Meal not found' }, { status: 404 });
+      console.error('Meal lookup error:', { mealError, mealId, userId: user.id });
+      return NextResponse.json({ error: 'Meal not found', details: mealError?.message }, { status: 404 });
     }
 
     // Check for existing active session

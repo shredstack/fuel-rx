@@ -6,6 +6,8 @@ import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatInput } from './ChatInput';
 import PaywallModal from '@/components/PaywallModal';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useKeyboard } from '@/hooks/useKeyboard';
+import { usePlatform } from '@/hooks/usePlatform';
 import type { CookingChatMessage } from '@/lib/types';
 
 interface CookingAssistantDrawerProps {
@@ -29,21 +31,31 @@ export function CookingAssistantDrawer({
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [webKeyboardHeight, setWebKeyboardHeight] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const { refresh: refreshSubscription } = useSubscription();
 
-  // Handle iOS keyboard visibility
+  // Use Capacitor keyboard hook for native iOS
+  const { keyboardHeight: nativeKeyboardHeight } = useKeyboard();
+  const { isNative } = usePlatform();
+
+  // Use native keyboard height on Capacitor, fallback to visualViewport for web/PWA
+  const keyboardHeight = isNative ? nativeKeyboardHeight : webKeyboardHeight;
+
+  // Handle keyboard visibility for web/PWA (visualViewport API)
   useEffect(() => {
+    // Skip on native - we use the Capacitor keyboard plugin instead
+    if (isNative) return;
+
     const viewport = window.visualViewport;
     if (!viewport) return;
 
     const handleResize = () => {
       // Calculate keyboard height by comparing viewport height to window height
       const keyboardH = window.innerHeight - viewport.height;
-      setKeyboardHeight(keyboardH > 0 ? keyboardH : 0);
+      setWebKeyboardHeight(keyboardH > 0 ? keyboardH : 0);
     };
 
     viewport.addEventListener('resize', handleResize);
@@ -53,7 +65,7 @@ export function CookingAssistantDrawer({
       viewport.removeEventListener('resize', handleResize);
       viewport.removeEventListener('scroll', handleResize);
     };
-  }, []);
+  }, [isNative]);
 
   // Initialize session on mount
   const initializeSession = useCallback(async () => {
