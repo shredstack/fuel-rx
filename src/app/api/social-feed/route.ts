@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
-  const filter = searchParams.get('filter') || 'all' // 'all' or 'following'
+  const filter = searchParams.get('filter') || 'all' // 'all', 'following', or 'my_posts'
   const offset = (page - 1) * limit
 
   try {
@@ -55,12 +55,15 @@ export async function GET(request: Request) {
         *,
         author:user_profiles!social_feed_posts_user_id_fkey(id, display_name, name)
       `, { count: 'exact' })
-      .neq('user_id', user.id) // Exclude own posts
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    // Apply following filter
-    if (filter === 'following' && followingIds.length > 0) {
+    // Apply filters based on filter type
+    if (filter === 'my_posts') {
+      // Show only the user's own posts
+      query = query.eq('user_id', user.id)
+    } else if (filter === 'following' && followingIds.length > 0) {
+      // Show posts from users the current user follows
       query = query.in('user_id', followingIds)
     }
 
@@ -92,6 +95,7 @@ export async function GET(request: Request) {
           ...post,
           cooked_photo_url: cookedPhotoUrl,
           is_saved: savedPostIds.has(post.id),
+          is_own_post: post.user_id === user.id,
         }
       })
     )
