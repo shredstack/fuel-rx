@@ -175,22 +175,32 @@ export async function POST(request: Request) {
 
   console.log(`RevenueCat webhook: Processing ${event.type} for user ${userId}`);
 
-  // Get the FuelRx Pro entitlement from subscriber info
-  const premiumEntitlement = subscriberInfo?.entitlements?.['FuelRx Pro'] || null;
+  // Check if user has the FuelRx Pro entitlement from the event
+  const hasProEntitlement = event.entitlement_ids?.includes('FuelRx Pro') ?? false;
 
-  // Determine if subscription is active
-  // An entitlement is active if it exists and hasn't expired
+  // Determine if subscription is active based on event type and entitlement
   const now = new Date();
-  const expiresDate = premiumEntitlement?.expires_date
-    ? new Date(premiumEntitlement.expires_date)
+  const expiresDate = event.expiration_at_ms
+    ? new Date(event.expiration_at_ms)
     : null;
-  const isActive = premiumEntitlement !== null && (expiresDate === null || expiresDate > now);
+
+  // Active if: has entitlement AND (no expiration OR not yet expired) AND not a cancellation/expiration event
+  const isActiveEvent = ['INITIAL_PURCHASE', 'RENEWAL', 'NON_RENEWING_PURCHASE', 'UNCANCELLATION', 'PRODUCT_CHANGE'].includes(event.type);
+  const isExpiredEvent = ['CANCELLATION', 'EXPIRATION'].includes(event.type);
+  const isActive = hasProEntitlement && isActiveEvent && !isExpiredEvent && (expiresDate === null || expiresDate > now);
 
   // Get tier from product identifier
   const tier = getTierFromProductId(event.product_id);
 
-  // Get detailed status
-  const status = getSubscriptionStatus(isActive, premiumEntitlement);
+  // Get status based on event type
+  let status: SubscriptionStatus = 'expired';
+  if (isExpiredEvent) {
+    status = event.type === 'CANCELLATION' ? 'cancelled' : 'expired';
+  } else if (event.type === 'BILLING_ISSUE') {
+    status = 'billing_retry';
+  } else if (isActive) {
+    status = 'active';
+  }
 
   // Get feature access based on tier
   const { hasAiFeatures, hasMealPlanGeneration } = getFeatureAccess(tier, isActive);
@@ -204,9 +214,9 @@ export async function POST(request: Request) {
     subscription_status: status,
     has_ai_features: hasAiFeatures,
     has_meal_plan_generation: hasMealPlanGeneration,
-    current_period_start: premiumEntitlement?.purchase_date || null,
-    current_period_end: premiumEntitlement?.expires_date || null,
-    original_purchase_date: premiumEntitlement?.original_purchase_date || null,
+    current_period_start: event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null,
+    current_period_end: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
+    original_purchase_date: event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null,
     last_synced_at: new Date().toISOString(),
   };
 
