@@ -1,12 +1,12 @@
 /**
  * Grocery List API Endpoint
  *
- * GET /api/meal-plans/[id]/grocery-list - Compute and return grocery list
+ * GET /api/meal-plans/[id]/grocery-list - Compute and return contextual grocery list with household info
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { computeGroceryListFromPlan } from '@/lib/meal-plan-service';
+import { getContextualGroceryListWithHousehold } from '@/lib/meal-plan-service';
 
 export async function GET(
   request: Request,
@@ -37,10 +37,10 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Compute the grocery list
-    const groceryList = await computeGroceryListFromPlan(id);
+    // Compute the contextual grocery list with household info
+    const contextualList = await getContextualGroceryListWithHousehold(id, user.id);
 
-    return NextResponse.json({ groceryList });
+    return NextResponse.json(contextualList);
   } catch (error) {
     console.error('Error computing grocery list:', error);
     return NextResponse.json(

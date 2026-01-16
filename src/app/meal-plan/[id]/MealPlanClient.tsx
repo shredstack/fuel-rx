@@ -20,6 +20,7 @@ import type {
   CustomMealPrepTime,
   CookingStatus,
   MealPlanMealCookingStatus,
+  GroceryItemWithContext,
 } from '@/lib/types'
 import { normalizeCoreIngredients, getMealTypeColorClasses, MEAL_TYPE_CONFIG } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
@@ -39,6 +40,7 @@ import MobileTabBar from '@/components/MobileTabBar'
 interface Props {
   mealPlan: MealPlanNormalized & {
     grocery_list: Ingredient[]
+    contextual_grocery_list?: GroceryItemWithContext[]
   }
 }
 
@@ -297,6 +299,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       ...mealPlan,
       days: updatedDays,
       grocery_list: response.groceryList,
+      contextual_grocery_list: response.contextualGroceryList,
     })
 
     // Track first_meal_swapped milestone

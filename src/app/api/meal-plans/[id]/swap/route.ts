@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { swapMeal, computeGroceryListFromPlan, computeDailyTotals } from '@/lib/meal-plan-service';
+import { swapMeal, computeGroceryListFromPlan, computeContextualGroceryList, computeDailyTotals } from '@/lib/meal-plan-service';
 import type { SwapRequest, SwapResponse } from '@/lib/types';
 
 export async function POST(
@@ -43,9 +43,10 @@ export async function POST(
       );
     }
 
-    // Compute updated grocery list and daily totals
-    const [groceryList, dailyTotals] = await Promise.all([
+    // Compute updated grocery lists (both formats) and daily totals
+    const [groceryList, contextualGroceryList, dailyTotals] = await Promise.all([
       computeGroceryListFromPlan(mealPlanId),
+      computeContextualGroceryList(mealPlanId),
       computeDailyTotals(mealPlanId),
     ]);
 
@@ -56,6 +57,7 @@ export async function POST(
       newMeal: swapResult.newMeal,
       updatedDailyTotals: dailyTotals,
       groceryList,
+      contextualGroceryList,
       updatedCoreIngredients: swapResult.updatedCoreIngredients,
       message: swapResult.message,
     };

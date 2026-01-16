@@ -1097,7 +1097,8 @@ export interface MealPlanNormalized {
   is_favorite: boolean;
   created_at: string;
   days: DayPlanNormalized[];
-  grocery_list: Ingredient[];  // Computed on-demand
+  grocery_list: Ingredient[];  // Legacy format - computed on-demand
+  contextual_grocery_list?: GroceryItemWithContext[];  // New contextual format
   prep_sessions?: PrepSession[];
 }
 
@@ -1138,6 +1139,54 @@ export interface GroceryListDelta {
   }>;
 }
 
+// ============================================
+// Contextual Grocery List Types
+// ============================================
+
+/**
+ * Grocery item category type (matches grocery list categories)
+ */
+export type GroceryCategory = 'produce' | 'protein' | 'dairy' | 'grains' | 'pantry' | 'frozen' | 'other';
+
+/**
+ * A meal reference for a grocery item, showing where/how it's used
+ */
+export interface GroceryMealReference {
+  day: DayOfWeek;
+  meal_type: MealType;
+  meal_name: string;
+  amount: string;      // e.g., "1", "0.5", "2"
+  unit: string;        // e.g., "whole", "cup", "oz"
+  meal_plan_meal_id: string;  // For linking to meal details
+}
+
+/**
+ * A grocery item with contextual meal references instead of calculated totals.
+ * This gives shoppers agency to scale appropriately for their household.
+ */
+export interface GroceryItemWithContext {
+  name: string;
+  category: GroceryCategory;
+  meals: GroceryMealReference[];
+}
+
+/**
+ * Household information for display in grocery list
+ */
+export interface GroceryListHouseholdInfo {
+  hasHousehold: boolean;
+  description: string;  // e.g., "2 adults + 1 child"
+  avgMultiplier: number;
+}
+
+/**
+ * The full contextual grocery list with optional household context
+ */
+export interface ContextualGroceryList {
+  items: GroceryItemWithContext[];
+  householdInfo?: GroceryListHouseholdInfo;
+}
+
 /**
  * SwapResponse is returned from the swap API endpoint.
  */
@@ -1147,7 +1196,8 @@ export interface SwapResponse {
   mealPlanMeals: MealPlanMeal[];
   newMeal: MealEntity;  // The new meal that was swapped in
   updatedDailyTotals: Record<DayOfWeek, Macros>;
-  groceryList: Ingredient[];  // Full recomputed list
+  groceryList: Ingredient[];  // Legacy format - kept for backwards compatibility
+  contextualGroceryList?: GroceryItemWithContext[];  // New contextual format
   updatedCoreIngredients?: CoreIngredients;  // Updated core ingredients (if new ingredients were added)
   message?: string;
 }

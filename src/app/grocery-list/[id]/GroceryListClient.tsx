@@ -1,22 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import type { Ingredient, CoreIngredients } from '@/lib/types'
-import Logo from '@/components/Logo'
+import type { ContextualGroceryList, GroceryItemWithContext, CoreIngredients, GroceryCategory, MealType } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
+import GroceryItemCard from '@/components/grocery/GroceryItemCard'
+import HouseholdBanner from '@/components/grocery/HouseholdBanner'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 
 interface Props {
   mealPlanId: string
   weekStartDate: string
-  groceryList: Ingredient[]
+  groceryList: ContextualGroceryList
   coreIngredients?: CoreIngredients | null
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
+const CATEGORY_LABELS: Record<GroceryCategory, string> = {
   produce: 'Produce',
   protein: 'Protein',
   dairy: 'Dairy',
@@ -26,10 +27,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
-const CATEGORY_ORDER = ['produce', 'protein', 'dairy', 'grains', 'pantry', 'frozen', 'other']
+const CATEGORY_ORDER: GroceryCategory[] = ['produce', 'protein', 'dairy', 'grains', 'pantry', 'frozen', 'other']
+
+// Meal types that can be filtered
+const FILTERABLE_MEAL_TYPES: { type: MealType; label: string }[] = [
+  { type: 'breakfast', label: 'Breakfast' },
+  { type: 'lunch', label: 'Lunch' },
+  { type: 'dinner', label: 'Dinner' },
+  { type: 'snack', label: 'Snacks' },
+]
 
 export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients }: Props) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
+  const [selectedMealTypes, setSelectedMealTypes] = useState<Set<MealType>>(
+    new Set(FILTERABLE_MEAL_TYPES.map(m => m.type))
+  )
 
   // Onboarding state
   const { state: onboardingState, markMilestone, shouldShowTip, dismissTip } = useOnboardingState()
@@ -41,33 +53,92 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
     }
   }, [onboardingState, markMilestone])
 
-  // Group items by category
-  const groupedItems = groceryList.reduce((acc, item) => {
-    const category = item.category || 'other'
-    if (!acc[category]) {
-      acc[category] = []
+  // Determine which meal types are present in the grocery list
+  const availableMealTypes = useMemo(() => {
+    const types = new Set<MealType>()
+    for (const item of groceryList.items) {
+      for (const meal of item.meals) {
+        types.add(meal.meal_type)
+      }
     }
-    acc[category].push(item)
-    return acc
-  }, {} as Record<string, Ingredient[]>)
+    return FILTERABLE_MEAL_TYPES.filter(m => types.has(m.type))
+  }, [groceryList.items])
+
+  // Filter items based on selected meal types
+  const filteredItems = useMemo(() => {
+    const allSelected = selectedMealTypes.size === availableMealTypes.length
+
+    // If all meal types selected, return original items
+    if (allSelected) {
+      return groceryList.items
+    }
+
+    // Filter each item's meals and recalculate
+    return groceryList.items
+      .map(item => {
+        const filteredMeals = item.meals.filter(meal => selectedMealTypes.has(meal.meal_type))
+        if (filteredMeals.length === 0) return null
+
+        return {
+          ...item,
+          meals: filteredMeals,
+        }
+      })
+      .filter((item): item is GroceryItemWithContext => item !== null)
+  }, [groceryList.items, selectedMealTypes, availableMealTypes.length])
+
+  // Group filtered items by category
+  const groupedItems = useMemo(() => {
+    return filteredItems.reduce((acc, item) => {
+      const category = item.category || 'other'
+      if (!acc[category]) {
+        acc[category] = []
+      }
+      acc[category].push(item)
+      return acc
+    }, {} as Record<GroceryCategory, GroceryItemWithContext[]>)
+  }, [filteredItems])
 
   // Sort categories
   const sortedCategories = CATEGORY_ORDER.filter(cat => groupedItems[cat])
 
-  const toggleItem = (itemKey: string) => {
+  const toggleItem = (itemName: string) => {
     setCheckedItems(prev => {
       const newSet = new Set(prev)
-      if (newSet.has(itemKey)) {
-        newSet.delete(itemKey)
+      if (newSet.has(itemName)) {
+        newSet.delete(itemName)
       } else {
-        newSet.add(itemKey)
+        newSet.add(itemName)
       }
       return newSet
     })
   }
 
-  const totalItems = groceryList.length
-  const checkedCount = checkedItems.size
+  const toggleMealType = (mealType: MealType) => {
+    setSelectedMealTypes(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(mealType)) {
+        // Don't allow deselecting all meal types
+        if (newSet.size > 1) {
+          newSet.delete(mealType)
+        }
+      } else {
+        newSet.add(mealType)
+      }
+      return newSet
+    })
+  }
+
+  const selectAllMealTypes = () => {
+    setSelectedMealTypes(new Set(availableMealTypes.map(m => m.type)))
+  }
+
+  const totalItems = filteredItems.length
+  const checkedCount = Array.from(checkedItems).filter(name =>
+    filteredItems.some(item => item.name === name)
+  ).length
+
+  const isFiltered = selectedMealTypes.size < availableMealTypes.length
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
@@ -95,6 +166,63 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
           </p>
         </div>
 
+        {/* Meal Type Filter */}
+        {availableMealTypes.length > 1 && (
+          <div className="card mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-700">Shop for</h3>
+              {isFiltered && (
+                <button
+                  onClick={selectAllMealTypes}
+                  className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  Select all
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {availableMealTypes.map(({ type, label }) => {
+                const isSelected = selectedMealTypes.has(type)
+                return (
+                  <button
+                    key={type}
+                    onClick={() => toggleMealType(type)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-primary-100 text-primary-700 border-2 border-primary-300'
+                        : 'bg-gray-100 text-gray-500 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            {isFiltered && (
+              <p className="mt-3 text-xs text-gray-500">
+                Showing ingredients only for selected meal types. Totals are adjusted accordingly.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Scaling Notice - always shown */}
+        {groceryList.householdInfo?.hasHousehold ? (
+          <HouseholdBanner householdInfo={groceryList.householdInfo} />
+        ) : (
+          <div className="bg-gray-100 border border-gray-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Amounts shown are for 1 adult.</span>{' '}
+                Multiply as needed if cooking for more people.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Core Ingredients Summary */}
         {coreIngredients && (
           <div className="mb-6">
@@ -107,9 +235,9 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
           <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2">
-                <span className="text-lg">💡</span>
+                <span className="text-lg">*</span>
                 <p className="text-blue-800">
-                  <strong>Pro tip:</strong> Check off items as you shop! Your progress is saved locally.
+                  <strong>Pro tip:</strong> Check off items as you shop! Expand any item to see which meals use it.
                 </p>
               </div>
               <button
@@ -143,40 +271,30 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
 
         {/* Grocery list by category */}
         <div className="space-y-6">
-          {sortedCategories.map(category => (
-            <div key={category} className="card">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                {CATEGORY_LABELS[category]}
-              </h2>
-              <ul className="space-y-3">
-                {groupedItems[category].map((item, idx) => {
-                  const itemKey = `${category}-${item.name}-${idx}`
-                  const isChecked = checkedItems.has(itemKey)
-
-                  return (
-                    <li key={itemKey}>
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleItem(itemKey)}
-                          className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                        />
-                        <span
-                          className={`flex-1 ${
-                            isChecked ? 'line-through text-gray-400' : 'text-gray-700'
-                          }`}
-                        >
-                          <span className="font-medium">{item.amount} {item.unit}</span>{' '}
-                          {item.name}
-                        </span>
-                      </label>
-                    </li>
-                  )
-                })}
-              </ul>
+          {sortedCategories.length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-gray-500">No ingredients needed for the selected meal types.</p>
             </div>
-          ))}
+          ) : (
+            sortedCategories.map(category => (
+              <div key={category} className="card">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  {CATEGORY_LABELS[category]}
+                </h2>
+                <div className="space-y-2">
+                  {groupedItems[category].map((item) => (
+                    <GroceryItemCard
+                      key={item.name}
+                      item={item}
+                      isChecked={checkedItems.has(item.name)}
+                      onToggle={() => toggleItem(item.name)}
+                      householdInfo={groceryList.householdInfo}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Actions */}
