@@ -96,6 +96,19 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
     }
   }
 
+  const handleDelete = async (postId: string) => {
+    const response = await fetch(`/api/social-feed/${postId}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to delete post')
+    }
+
+    // Remove the post from local state
+    setPosts(prev => prev.filter(p => p.id !== postId))
+  }
+
   if (!socialEnabled) {
     return (
       <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
@@ -244,6 +257,7 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
                   post={post}
                   onSave={handleSave}
                   onUnsave={handleUnsave}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>

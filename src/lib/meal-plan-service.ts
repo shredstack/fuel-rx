@@ -20,8 +20,11 @@ import type {
   MealPlanTheme,
   IngredientCategory,
   CoreIngredientItem,
+  GroceryItemWithContext,
+  ContextualGroceryList,
+  HouseholdServingsPrefs,
 } from '@/lib/types';
-import { getCoreIngredientName } from '@/lib/types';
+import { getCoreIngredientName, CHILD_PORTION_MULTIPLIER } from '@/lib/types';
 import { saveMealsWithDeduplication, type GeneratedMeal } from './meal-service';
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -445,6 +448,148 @@ export async function computeGroceryListFromPlan(mealPlanId: string): Promise<In
   }
 
   return (data || []) as Ingredient[];
+}
+
+/**
+ * Compute contextual grocery list from linked meals using database function.
+ * Returns items with meal references instead of calculated totals.
+ */
+export async function computeContextualGroceryList(
+  mealPlanId: string
+): Promise<GroceryItemWithContext[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc('compute_grocery_list_with_context', {
+    p_meal_plan_id: mealPlanId,
+  });
+
+  if (error) {
+    console.error('Error computing contextual grocery list:', error);
+    return [];
+  }
+
+  return (data || []) as GroceryItemWithContext[];
+}
+
+/**
+ * Check if household servings preferences indicate additional household members.
+ */
+export function hasHouseholdMembers(servings: HouseholdServingsPrefs): boolean {
+  for (const day of DAYS_ORDER) {
+    const dayServings = servings[day];
+    if (!dayServings) continue;
+
+    for (const mealType of ['breakfast', 'lunch', 'dinner', 'snacks'] as const) {
+      const mealServings = dayServings[mealType];
+      if (mealServings && (mealServings.adults > 0 || mealServings.children > 0)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Get a human-readable description of household composition.
+ * e.g., "2 adults + 1 child" or "1 adult + 3 children"
+ */
+export function getHouseholdDescription(servings: HouseholdServingsPrefs): string {
+  // Find the most common configuration across all days/meals
+  let maxAdults = 0;
+  let maxChildren = 0;
+
+  for (const day of DAYS_ORDER) {
+    const dayServings = servings[day];
+    if (!dayServings) continue;
+
+    for (const mealType of ['breakfast', 'lunch', 'dinner', 'snacks'] as const) {
+      const mealServings = dayServings[mealType];
+      if (mealServings) {
+        maxAdults = Math.max(maxAdults, mealServings.adults);
+        maxChildren = Math.max(maxChildren, mealServings.children);
+      }
+    }
+  }
+
+  const parts: string[] = [];
+
+  // Always include 1 for the user themselves
+  const totalAdults = 1 + maxAdults;
+  parts.push(`${totalAdults} adult${totalAdults > 1 ? 's' : ''}`);
+
+  if (maxChildren > 0) {
+    parts.push(`${maxChildren} child${maxChildren > 1 ? 'ren' : ''}`);
+  }
+
+  return parts.join(' + ');
+}
+
+/**
+ * Calculate average serving multiplier for household.
+ * Returns a multiplier where 1.0 = single person, 2.0 = double portions, etc.
+ */
+export function getAverageServingMultiplier(servings: HouseholdServingsPrefs): number {
+  let totalMultiplier = 0;
+  let mealCount = 0;
+
+  for (const day of DAYS_ORDER) {
+    const dayServings = servings[day];
+    if (!dayServings) continue;
+
+    for (const mealType of ['breakfast', 'lunch', 'dinner', 'snacks'] as const) {
+      const mealServings = dayServings[mealType];
+      if (mealServings) {
+        // Base multiplier is 1 (for the user) + additional adults + (children * child multiplier)
+        const multiplier = 1 + mealServings.adults + (mealServings.children * CHILD_PORTION_MULTIPLIER);
+        totalMultiplier += multiplier;
+        mealCount++;
+      }
+    }
+  }
+
+  return mealCount > 0 ? totalMultiplier / mealCount : 1;
+}
+
+/**
+ * Get contextual grocery list with household information.
+ * This is the main function for the grocery list page.
+ */
+export async function getContextualGroceryListWithHousehold(
+  mealPlanId: string,
+  userId: string
+): Promise<ContextualGroceryList> {
+  const supabase = await createClient();
+
+  // Fetch grocery items and user profile in parallel
+  const [groceryItems, profileResult] = await Promise.all([
+    computeContextualGroceryList(mealPlanId),
+    supabase
+      .from('user_profiles')
+      .select('household_servings')
+      .eq('id', userId)
+      .single()
+  ]);
+
+  // Process household info
+  let householdInfo: ContextualGroceryList['householdInfo'] = undefined;
+
+  if (profileResult.data?.household_servings) {
+    const servings = profileResult.data.household_servings as HouseholdServingsPrefs;
+    const hasHousehold = hasHouseholdMembers(servings);
+
+    if (hasHousehold) {
+      householdInfo = {
+        hasHousehold: true,
+        description: getHouseholdDescription(servings),
+        avgMultiplier: getAverageServingMultiplier(servings),
+      };
+    }
+  }
+
+  return {
+    items: groceryItems,
+    householdInfo,
+  };
 }
 
 /**

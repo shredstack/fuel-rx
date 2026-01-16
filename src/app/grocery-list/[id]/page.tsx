@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { normalizeCoreIngredients } from '@/lib/types'
-import { computeGroceryListFromPlan } from '@/lib/meal-plan-service'
+import { getContextualGroceryListWithHousehold } from '@/lib/meal-plan-service'
 import GroceryListClient from './GroceryListClient'
 
 interface Props {
@@ -28,8 +28,8 @@ export default async function GroceryListPage({ params }: Props) {
     notFound()
   }
 
-  // Compute grocery list from normalized meals
-  const groceryList = await computeGroceryListFromPlan(id)
+  // Compute contextual grocery list with household info
+  const groceryList = await getContextualGroceryListWithHousehold(id, user.id)
 
   return (
     <GroceryListClient

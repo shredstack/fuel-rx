@@ -20,6 +20,7 @@ import type {
   CustomMealPrepTime,
   CookingStatus,
   MealPlanMealCookingStatus,
+  GroceryItemWithContext,
 } from '@/lib/types'
 import { normalizeCoreIngredients, getMealTypeColorClasses, MEAL_TYPE_CONFIG } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
@@ -39,6 +40,7 @@ import MobileTabBar from '@/components/MobileTabBar'
 interface Props {
   mealPlan: MealPlanNormalized & {
     grocery_list: Ingredient[]
+    contextual_grocery_list?: GroceryItemWithContext[]
   }
 }
 
@@ -297,6 +299,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       ...mealPlan,
       days: updatedDays,
       grocery_list: response.groceryList,
+      contextual_grocery_list: response.contextualGroceryList,
     })
 
     // Track first_meal_swapped milestone
@@ -1087,15 +1090,15 @@ function MealCard({
           onClick={onToggle}
           className="flex-1 text-left"
         >
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`px-2 py-1 rounded text-xs font-medium ${getMealTypeColorClasses(meal.meal_type)}`}>
               {mealTypeConfig?.label || meal.meal_type}
             </span>
-            <span className="text-sm text-gray-500">
-              {meal.prep_time_minutes} min prep
+            <span className="text-xs text-gray-500">
+              {meal.prep_time_minutes} min
             </span>
             {!mealSlot.is_original && (
-              <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
                 Swapped
               </span>
             )}
