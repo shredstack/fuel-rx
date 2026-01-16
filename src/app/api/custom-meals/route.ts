@@ -154,6 +154,12 @@ export async function POST(request: Request) {
 
     if (saveError) {
       console.error('Error saving custom meal:', saveError);
+      // Handle duplicate name constraint violation
+      if (saveError.code === '23505' && saveError.message?.includes('idx_meals_user_name_unique')) {
+        return NextResponse.json({
+          error: 'You already have a meal with this name. Please choose a different name.'
+        }, { status: 409 });
+      }
       return NextResponse.json({ error: 'Failed to save custom meal' }, { status: 500 });
     }
 
@@ -344,6 +350,12 @@ export async function PUT(request: Request) {
 
     if (updateError) {
       console.error('Error updating custom meal:', updateError);
+      // Handle duplicate name constraint violation
+      if (updateError.code === '23505' && updateError.message?.includes('idx_meals_user_name_unique')) {
+        return NextResponse.json({
+          error: 'You already have a meal with this name. Please choose a different name.'
+        }, { status: 409 });
+      }
       return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 });
     }
 
