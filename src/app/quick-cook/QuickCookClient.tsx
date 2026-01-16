@@ -19,6 +19,8 @@ import GuestCountInput from '@/components/GuestCountInput'
 import SingleMealResult from '@/components/SingleMealResult'
 import PartyPrepGuideDisplay from '@/components/PartyPrepGuideDisplay'
 import IngredientSelector, { type IngredientSelection } from '@/components/IngredientSelector'
+import PaywallModal from '@/components/PaywallModal'
+import { useSubscription } from '@/hooks/useSubscription'
 
 interface Props {
   profile: UserProfile
@@ -84,6 +86,10 @@ export default function QuickCookClient({ profile }: Props) {
   // Saving state
   const [saving, setSaving] = useState(false)
 
+  // Subscription state
+  const [showPaywall, setShowPaywall] = useState(false)
+  const { refresh: refreshSubscription } = useSubscription()
+
   // Rotate loading messages
   useEffect(() => {
     if (!generating) return
@@ -143,6 +149,12 @@ export default function QuickCookClient({ profile }: Props) {
             : undefined,
         }),
       })
+
+      if (response.status === 402) {
+        setShowPaywall(true)
+        setGenerating(false)
+        return
+      }
 
       if (!response.ok) {
         const data = await response.json()
@@ -581,6 +593,15 @@ export default function QuickCookClient({ profile }: Props) {
           </div>
         )}
       </main>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => {
+          setShowPaywall(false)
+          refreshSubscription()
+        }}
+      />
     </div>
   )
 }

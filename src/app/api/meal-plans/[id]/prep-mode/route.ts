@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generatePrepModeForExistingPlan } from '@/lib/claude'
+import { checkAiAccess, createAiAccessDeniedResponse } from '@/lib/subscription/check-ai-access'
 
 export async function POST(
   request: Request,
@@ -13,6 +14,12 @@ export async function POST(
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Check AI feature access
+  const aiAccess = await checkAiAccess(user.id)
+  if (!aiAccess.allowed) {
+    return createAiAccessDeniedResponse()
   }
 
   // Verify user owns this meal plan

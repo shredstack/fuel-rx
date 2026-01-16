@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { anthropic } from '@/lib/claude/client';
+import { checkAiAccess, createAiAccessDeniedResponse } from '@/lib/subscription/check-ai-access';
 import type { MealEntity, CookingChatMessage, IngredientWithNutrition } from '@/lib/types';
 
 /**
@@ -82,6 +83,12 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check AI feature access
+    const aiAccess = await checkAiAccess(user.id);
+    if (!aiAccess.allowed) {
+      return createAiAccessDeniedResponse();
     }
 
     const { sessionId, message, batchContext } = await request.json();

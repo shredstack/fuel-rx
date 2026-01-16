@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { analyzeMealPhoto } from '@/lib/claude/meal-photo-analysis';
+import { checkAiAccess, createAiAccessDeniedResponse } from '@/lib/subscription/check-ai-access';
 
 interface RouteParams {
   params: Promise<{
@@ -20,6 +21,12 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Check AI feature access
+  const aiAccess = await checkAiAccess(user.id);
+  if (!aiAccess.allowed) {
+    return createAiAccessDeniedResponse();
   }
 
   try {

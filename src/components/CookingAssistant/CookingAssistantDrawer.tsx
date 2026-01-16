@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatInput } from './ChatInput';
+import PaywallModal from '@/components/PaywallModal';
+import { useSubscription } from '@/hooks/useSubscription';
 import type { CookingChatMessage } from '@/lib/types';
 
 interface CookingAssistantDrawerProps {
@@ -28,8 +30,10 @@ export function CookingAssistantDrawer({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [showPaywall, setShowPaywall] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const { refresh: refreshSubscription } = useSubscription();
 
   // Handle iOS keyboard visibility
   useEffect(() => {
@@ -60,6 +64,11 @@ export function CookingAssistantDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mealId }),
       });
+
+      if (response.status === 402) {
+        setShowPaywall(true);
+        return;
+      }
 
       const data = await response.json();
 
@@ -113,6 +122,14 @@ export function CookingAssistantDrawer({
           batchContext,
         }),
       });
+
+      if (response.status === 402) {
+        setShowPaywall(true);
+        // Remove the optimistically added message
+        setMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id));
+        setIsLoading(false);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to send message');
@@ -257,8 +274,17 @@ export function CookingAssistantDrawer({
         )}
 
         {/* Input */}
-        <ChatInput onSend={sendMessage} disabled={isLoading} />
+        <ChatInput onSend={sendMessage} disabled={isLoading || showPaywall} />
       </div>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => {
+          setShowPaywall(false);
+          refreshSubscription();
+        }}
+      />
     </>
   );
 }

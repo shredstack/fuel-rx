@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { checkAiAccess, createAiAccessDeniedResponse } from '@/lib/subscription/check-ai-access';
 import type { CookingChatMessage, MealEntity } from '@/lib/types';
 
 /**
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check AI feature access
+    const aiAccess = await checkAiAccess(user.id);
+    if (!aiAccess.allowed) {
+      return createAiAccessDeniedResponse();
     }
 
     const { mealId } = await request.json();

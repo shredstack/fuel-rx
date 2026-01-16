@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generateSingleMeal } from '@/lib/claude/single-meal';
 import { generatePartyPrepGuide } from '@/lib/claude/party-meal';
 import { fetchRecipeContent } from '@/lib/recipe-fetch';
+import { checkAiAccess, createAiAccessDeniedResponse } from '@/lib/subscription/check-ai-access';
 import type { MealType, PartyType, MealPlanTheme, IngredientUsageMode } from '@/lib/types';
 
 export async function POST(request: Request) {
@@ -12,6 +13,12 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check AI feature access
+    const aiAccess = await checkAiAccess(user.id);
+    if (!aiAccess.allowed) {
+      return createAiAccessDeniedResponse();
     }
 
     const body = await request.json();
