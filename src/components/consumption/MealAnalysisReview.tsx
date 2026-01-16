@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { MealType, MealPhotoAnalysisResult } from '@/lib/types';
 import { MacroInput } from '@/components/ui';
+import PaywallModal from '@/components/PaywallModal';
+import { useSubscription } from '@/hooks/useSubscription';
 
 interface MealAnalysisReviewProps {
   photoId: string;
@@ -75,6 +77,8 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
   const [saveTo, setSaveTo] = useState<'consumption' | 'library' | 'both'>('consumption');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const { refresh: refreshSubscription } = useSubscription();
 
   // Calculate totals from ingredients
   const totalMacros = useMemo(() => {
@@ -102,6 +106,12 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
       const response = await fetch(`/api/meal-photos/${photoId}/analyze`, {
         method: 'POST',
       });
+
+      if (response.status === 402) {
+        setShowPaywall(true);
+        setIsAnalyzing(false);
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -443,6 +453,16 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
           {isSaving ? 'Saving...' : saveTo === 'both' ? 'Log & Save' : saveTo === 'consumption' ? 'Log Meal' : 'Save Meal'}
         </button>
       </div>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => {
+          setShowPaywall(false);
+          refreshSubscription();
+          onCancel();
+        }}
+      />
     </div>
   );
 }

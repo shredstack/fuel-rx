@@ -53,7 +53,8 @@ export async function GET() {
   // Can use AI features if:
   // 1. Has override
   // 2. Has any active subscription (basic or pro)
-  const canUseAiFeatures = isOverride || hasAiFeatures;
+  // 3. Is free user with remaining free plans
+  const canUseAiFeatures = isOverride || hasAiFeatures || freePlansRemaining > 0;
 
   const response: SubscriptionStatusResponse = {
     isSubscribed,

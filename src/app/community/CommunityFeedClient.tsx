@@ -12,7 +12,7 @@ interface Props {
   userName: string
 }
 
-type FilterType = 'all' | 'following'
+type FilterType = 'all' | 'following' | 'my_posts'
 
 export default function CommunityFeedClient({ socialEnabled, userName }: Props) {
   const [posts, setPosts] = useState<SocialFeedPost[]>([])
@@ -161,6 +161,16 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
           >
             Following
           </button>
+          <button
+            onClick={() => handleFilterChange('my_posts')}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+              filter === 'my_posts'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            My Posts
+          </button>
         </div>
 
         {error && (
@@ -201,16 +211,27 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
               />
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {filter === 'following' ? 'No meals from people you follow' : 'No meals in the feed yet'}
+              {filter === 'following'
+                ? 'No meals from people you follow'
+                : filter === 'my_posts'
+                  ? 'You haven\'t shared any meals yet'
+                  : 'No meals in the feed yet'}
             </h3>
             <p className="text-gray-500 mb-4">
               {filter === 'following'
                 ? 'Follow some users to see their shared meals here.'
-                : 'Be the first to share a meal with the community!'}
+                : filter === 'my_posts'
+                  ? 'Share your favorite meals, custom creations, or cooked dishes with the community!'
+                  : 'Be the first to share a meal with the community!'}
             </p>
             {filter === 'following' && (
               <Link href="/community/users" className="btn-primary inline-block">
                 Find People to Follow
+              </Link>
+            )}
+            {filter === 'my_posts' && (
+              <Link href="/meals" className="btn-primary inline-block">
+                Go to My Meals
               </Link>
             )}
           </div>

@@ -509,6 +509,7 @@ export interface SocialFeedPost {
     name: string | null;
   };
   is_saved?: boolean;
+  is_own_post?: boolean;
 }
 
 export interface UserFollow {

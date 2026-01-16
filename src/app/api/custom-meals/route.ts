@@ -154,15 +154,30 @@ export async function POST(request: Request) {
 
     if (saveError) {
       console.error('Error saving custom meal:', saveError);
+      // Handle duplicate name constraint violation
+      if (saveError.code === '23505' && saveError.message?.includes('idx_meals_user_name_unique')) {
+        return NextResponse.json({
+          error: 'You already have a meal with this name. Please choose a different name.'
+        }, { status: 409 });
+      }
       return NextResponse.json({ error: 'Failed to save custom meal' }, { status: 500 });
     }
 
     // If sharing and user has social feed enabled, post to social feed
     if (shouldShare && profile?.social_feed_enabled) {
-      const { error: shareError } = await supabase.from('social_feed_posts').upsert({
+      // Delete any existing post for this meal first (since partial indexes don't support ON CONFLICT)
+      await supabase
+        .from('social_feed_posts')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('source_type', 'custom_meal')
+        .eq('source_meals_table_id', savedMeal.id);
+
+      // Insert new post
+      const { error: shareError } = await supabase.from('social_feed_posts').insert({
         user_id: user.id,
         source_type: 'custom_meal',
-        source_meal_id: savedMeal.id,
+        source_meals_table_id: savedMeal.id, // Use source_meals_table_id which references meals table
         meal_name: savedMeal.name,
         calories: Math.round(savedMeal.calories),
         protein: Math.round(savedMeal.protein),
@@ -172,9 +187,6 @@ export async function POST(request: Request) {
         prep_time: minutesToPrepTime(savedMeal.prep_time_minutes),
         ingredients: savedMeal.ingredients,
         meal_prep_instructions: savedMeal.prep_instructions,
-      }, {
-        onConflict: 'user_id,source_type,source_meal_id',
-        ignoreDuplicates: false,
       });
       if (shareError) {
         console.error('Error sharing to community feed:', shareError);
@@ -344,28 +356,39 @@ export async function PUT(request: Request) {
 
     if (updateError) {
       console.error('Error updating custom meal:', updateError);
+      // Handle duplicate name constraint violation
+      if (updateError.code === '23505' && updateError.message?.includes('idx_meals_user_name_unique')) {
+        return NextResponse.json({
+          error: 'You already have a meal with this name. Please choose a different name.'
+        }, { status: 409 });
+      }
       return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 });
     }
 
     // Handle social feed post based on sharing setting
     if (shouldShare && profile?.social_feed_enabled) {
-      // Create or update feed post
-      await supabase.from('social_feed_posts').upsert({
+      // Delete any existing post for this meal first (since partial indexes don't support ON CONFLICT)
+      await supabase
+        .from('social_feed_posts')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('source_type', 'custom_meal')
+        .eq('source_meals_table_id', updatedMeal.id);
+
+      // Insert new/updated post
+      await supabase.from('social_feed_posts').insert({
         user_id: user.id,
         source_type: 'custom_meal',
-        source_meal_id: updatedMeal.id,
+        source_meals_table_id: updatedMeal.id, // Use source_meals_table_id which references meals table
         meal_name: updatedMeal.name,
-        calories: updatedMeal.calories,
-        protein: updatedMeal.protein,
-        carbs: updatedMeal.carbs,
-        fat: updatedMeal.fat,
+        calories: Math.round(updatedMeal.calories),
+        protein: Math.round(updatedMeal.protein),
+        carbs: Math.round(updatedMeal.carbs),
+        fat: Math.round(updatedMeal.fat),
         image_url: updatedMeal.image_url,
-        prep_time: updatedMeal.prep_time_minutes,
+        prep_time: minutesToPrepTime(updatedMeal.prep_time_minutes),
         ingredients: updatedMeal.ingredients,
         meal_prep_instructions: updatedMeal.prep_instructions,
-      }, {
-        onConflict: 'user_id,source_type,source_meal_id',
-        ignoreDuplicates: false,
       });
     } else {
       // Remove from feed if sharing disabled
@@ -374,7 +397,7 @@ export async function PUT(request: Request) {
         .delete()
         .eq('user_id', user.id)
         .eq('source_type', 'custom_meal')
-        .eq('source_meal_id', updatedMeal.id);
+        .eq('source_meals_table_id', updatedMeal.id);
     }
 
     // Return in a format compatible with the old API for the client
@@ -422,7 +445,7 @@ export async function DELETE(request: Request) {
       .delete()
       .eq('user_id', user.id)
       .eq('source_type', 'custom_meal')
-      .eq('source_meal_id', mealId);
+      .eq('source_meals_table_id', mealId);
 
     // Delete the meal
     const { error: deleteError } = await supabase
