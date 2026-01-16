@@ -46,7 +46,7 @@ export async function checkAiAccess(userId: string): Promise<AiAccessResult> {
 
   // Free tier users can access AI features while they have free plans remaining
   const freePlansUsed = subscription?.free_plans_used ?? 0;
-  const freePlanLimit = subscription?.free_plan_limit ?? 3;
+  const freePlanLimit = subscription?.free_plan_limit ?? 2;
   const hasFreePlansRemaining = freePlansUsed < freePlanLimit;
 
   if (hasFreePlansRemaining) {
