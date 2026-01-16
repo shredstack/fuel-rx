@@ -86,6 +86,9 @@ export default function QuickCookClient({ profile }: Props) {
   // Saving state
   const [saving, setSaving] = useState(false)
 
+  // Share with community - default to user's social_feed_enabled setting
+  const [shareWithCommunity, setShareWithCommunity] = useState(profile.social_feed_enabled || false)
+
   // Subscription state
   const [showPaywall, setShowPaywall] = useState(false)
   const { refresh: refreshSubscription } = useSubscription()
@@ -183,14 +186,8 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Check if user has community enabled for auto-sharing
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('social_feed_enabled')
-        .eq('id', user.id)
-        .single()
-
-      const shouldShare = userProfile?.social_feed_enabled ?? false
+      // Use the shareWithCommunity state (user can toggle before saving)
+      const shouldShare = shareWithCommunity
 
       // Insert into meals table with all single meal fields
       const { data: savedMeal, error: insertError } = await supabase.from('meals').insert({
@@ -262,14 +259,8 @@ export default function QuickCookClient({ profile }: Props) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Check if user has community enabled for auto-sharing
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('social_feed_enabled')
-        .eq('id', user.id)
-        .single()
-
-      const shouldShare = userProfile?.social_feed_enabled ?? false
+      // Use the shareWithCommunity state (user can toggle before saving)
+      const shouldShare = shareWithCommunity
 
       const partyData = {
         dishes: generatedPartyGuide.dishes,
@@ -399,6 +390,9 @@ export default function QuickCookClient({ profile }: Props) {
             onSave={handleSaveMeal}
             onRegenerate={handleRegenerate}
             saving={saving}
+            socialFeedEnabled={profile.social_feed_enabled || false}
+            shareWithCommunity={shareWithCommunity}
+            onShareWithCommunityChange={setShareWithCommunity}
           />
         )}
 
@@ -408,6 +402,9 @@ export default function QuickCookClient({ profile }: Props) {
             onRegenerate={handleRegenerate}
             onSave={handleSavePartyGuide}
             saving={saving}
+            socialFeedEnabled={profile.social_feed_enabled || false}
+            shareWithCommunity={shareWithCommunity}
+            onShareWithCommunityChange={setShareWithCommunity}
           />
         )}
 

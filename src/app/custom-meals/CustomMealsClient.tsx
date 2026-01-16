@@ -27,6 +27,7 @@ import MobileTabBar from '@/components/MobileTabBar'
 
 interface Props {
   initialMeals: SavedMeal[]
+  socialFeedEnabled: boolean
 }
 
 type TabType = 'my-recipes' | 'quick-cook' | 'party-plans'
@@ -53,7 +54,7 @@ const emptyIngredient: IngredientInput = {
   isExpanded: true,
 }
 
-export default function CustomMealsClient({ initialMeals }: Props) {
+export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: Props) {
   const searchParams = useSearchParams()
   const [meals, setMeals] = useState<SavedMeal[]>(initialMeals)
   const [activeTab, setActiveTab] = useState<TabType>('my-recipes')
@@ -79,8 +80,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Share with community checkbox
-  const [shareWithCommunity, setShareWithCommunity] = useState(false)
+  // Share with community checkbox - default to user's social_feed_enabled setting
+  const [shareWithCommunity, setShareWithCommunity] = useState(socialFeedEnabled)
 
   // Quick Add mode - enter total macros directly without ingredients
   const [isQuickAddMode, setIsQuickAddMode] = useState(false)
@@ -198,7 +199,7 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setMealName('')
     setIngredients([{ ...emptyIngredient }])
     removeImage()
-    setShareWithCommunity(false)
+    setShareWithCommunity(socialFeedEnabled) // Reset to user's default
     setIsQuickAddMode(false)
     setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
     setPrepTime(null)

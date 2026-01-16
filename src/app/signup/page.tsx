@@ -71,6 +71,7 @@ export default function SignupPage() {
               <p className="text-sm">
                 We&apos;ve sent a verification link to <strong>{email}</strong>.
                 Please click the link in your email to verify your account, then sign in.
+                <strong> If not in your inbox, check your spam!</strong>
               </p>
             </div>
 

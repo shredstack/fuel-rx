@@ -93,7 +93,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Account created. Please check your email to verify your account. If not in your inbox, check your spam!',
+      message: 'Account created. Please check your email to verify your account.',
     });
   } catch (error) {
     console.error('[Signup] Unexpected error:', error);

@@ -8,6 +8,9 @@ interface Props {
   onRegenerate: () => void
   onSave?: () => void
   saving?: boolean
+  socialFeedEnabled?: boolean
+  shareWithCommunity?: boolean
+  onShareWithCommunityChange?: (value: boolean) => void
 }
 
 const ROLE_COLORS: Record<PartyDish['role'], string> = {
@@ -117,7 +120,15 @@ function PrepPhaseCard({ phase, icon, phaseKey }: { phase: PartyPrepPhase; icon:
   )
 }
 
-export default function PartyPrepGuideDisplay({ guide, onRegenerate, onSave, saving }: Props) {
+export default function PartyPrepGuideDisplay({
+  guide,
+  onRegenerate,
+  onSave,
+  saving,
+  socialFeedEnabled,
+  shareWithCommunity,
+  onShareWithCommunityChange,
+}: Props) {
   const [copiedList, setCopiedList] = useState(false)
 
   const handleCopyShoppingList = async () => {
@@ -272,6 +283,25 @@ export default function PartyPrepGuideDisplay({ guide, onRegenerate, onSave, sav
           ))}
         </ul>
       </div>
+
+      {/* Share with Community Toggle */}
+      {socialFeedEnabled && onShareWithCommunityChange && (
+        <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg print:hidden">
+          <input
+            type="checkbox"
+            id="share-party-with-community"
+            checked={shareWithCommunity}
+            onChange={(e) => onShareWithCommunityChange(e.target.checked)}
+            className="mt-0.5 w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+          />
+          <label htmlFor="share-party-with-community" className="flex-1 cursor-pointer">
+            <span className="text-sm font-medium text-gray-900">Share with community</span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              This party plan will be visible to other FuelRx users
+            </p>
+          </label>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3 print:hidden">
