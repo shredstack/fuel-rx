@@ -2269,3 +2269,48 @@ export interface SubscriptionStatusResponse {
   // Override status
   isOverride: boolean;
 }
+
+// ============================================================================
+// Protein Focus Types
+// ============================================================================
+
+/**
+ * Meal types that can have a protein focus applied.
+ * Uses simplified meal type names (not the full MealType union).
+ */
+export type FocusMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+/**
+ * How many meals of the selected type should feature the focused protein.
+ */
+export type FocusMealCount = '3-4' | '5-7' | 'all';
+
+/**
+ * Protein focus constraint for meal plan generation.
+ * Allows users to specify a primary protein for a specific meal type
+ * with optional cuisine variety enforcement.
+ */
+export interface ProteinFocusConstraint {
+  /** Which meal type to apply the constraint to */
+  mealType: FocusMealType;
+
+  /** The protein to focus on (e.g., "shrimp", "chicken breast") */
+  protein: string;
+
+  /** How many meals of this type should feature the protein */
+  count: FocusMealCount;
+
+  /** Whether to enforce cuisine variety across the focused meals */
+  varyCuisines: boolean;
+}
+
+/**
+ * Protein focus history entry for tracking user's recent protein selections.
+ */
+export interface ProteinFocusHistoryEntry {
+  id: string;
+  user_id: string;
+  protein: string;
+  meal_type: FocusMealType;
+  used_at: string;
+}

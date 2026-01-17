@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { MILESTONE_MESSAGES } from '@/lib/types'
-import type { UserProfile, OnboardingMilestone } from '@/lib/types'
+import type { UserProfile, OnboardingMilestone, ProteinFocusConstraint } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
+import ProteinFocusPicker from '@/components/ProteinFocusPicker'
 import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -67,6 +68,9 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
 
   // Theme selection state
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
+
+  // Protein focus state
+  const [proteinFocus, setProteinFocus] = useState<ProteinFocusConstraint | null>(null)
 
   // Subscription state
   const { isSubscribed, canGeneratePlan, hasMealPlanGeneration, freePlansRemaining, isOverride, status: subscriptionStatus, refresh: refreshSubscription } = useSubscription()
@@ -151,11 +155,19 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
         themeSelection.type === 'none' ? 'none' :
         themeSelection.themeId
 
+      // Build request body - only include proteinFocus if a protein is selected
+      const requestBody: { themeSelection: string; proteinFocus?: ProteinFocusConstraint } = {
+        themeSelection: themeSelectionValue,
+      }
+      if (proteinFocus?.protein) {
+        requestBody.proteinFocus = proteinFocus
+      }
+
       // Start the job
       const startResponse = await fetch('/api/generate-meal-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themeSelection: themeSelectionValue }),
+        body: JSON.stringify(requestBody),
       })
 
       // Handle 402 Payment Required (free plan limit reached)
@@ -251,13 +263,22 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
             </p>
 
             {/* Theme selector */}
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Choose a theme
               </label>
               <ThemeSelector
                 value={themeSelection}
                 onChange={setThemeSelection}
+                disabled={generating}
+              />
+            </div>
+
+            {/* Protein focus picker */}
+            <div className="mb-6">
+              <ProteinFocusPicker
+                value={proteinFocus}
+                onChange={setProteinFocus}
                 disabled={generating}
               />
             </div>

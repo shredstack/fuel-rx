@@ -3,6 +3,7 @@ import type {
   CoreIngredients,
   MealPlanTheme,
   ThemeIngredientGuidance,
+  ProteinFocusConstraint,
 } from '../types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS, normalizeCoreIngredients } from '../types';
 import { callLLMWithToolUse } from './client';
@@ -20,7 +21,8 @@ export async function generateCoreIngredients(
   recentMealNames?: string[],
   mealPreferences?: { liked: string[]; disliked: string[] },
   ingredientPreferences?: { liked: string[]; disliked: string[] },
-  theme?: MealPlanTheme
+  theme?: MealPlanTheme,
+  proteinFocus?: ProteinFocusConstraint | null
 ): Promise<CoreIngredients> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -148,6 +150,41 @@ Use these as your PRIMARY selection pool. You may add complementary ingredients,
 `;
   }
 
+  // Build protein focus section if provided
+  let proteinFocusSection = '';
+  if (proteinFocus) {
+    const countText =
+      proteinFocus.count === 'all' ? '7' :
+      proteinFocus.count === '5-7' ? '5-7' : '3-4';
+
+    const quantityText =
+      proteinFocus.count === 'all' ? '2-2.5' :
+      proteinFocus.count === '5-7' ? '1.5-2' : '1';
+
+    proteinFocusSection = `
+## 🎯 PROTEIN FOCUS CONSTRAINT (CRITICAL)
+
+The user wants to focus on **${proteinFocus.protein.toUpperCase()}** for their **${proteinFocus.mealType}s** this week.
+
+**Requirements:**
+- You MUST include "${proteinFocus.protein}" as one of the selected proteins
+- This protein should be the PRIMARY protein for ${countText} ${proteinFocus.mealType} meals
+- Select a quantity sufficient for ${countText} ${proteinFocus.mealType} servings (approximately ${quantityText} lbs)
+- Other proteins selected should complement different meal types (breakfast, lunch, snacks)
+
+${proteinFocus.varyCuisines ? `
+**Cuisine Variety Required:**
+To enable varied preparations of ${proteinFocus.protein}, also select ingredients that support these cuisine styles:
+- Asian: ginger, garlic, soy-compatible vegetables, rice
+- Mexican/Latin: lime, cilantro, peppers, black beans
+- Mediterranean: olive oil, lemon, garlic, tomatoes
+- American/Southern: butter-friendly vegetables, corn
+
+This ensures the ${proteinFocus.mealType}s feel distinct despite using the same protein.
+` : ''}
+`;
+  }
+
   // Fetch cached nutrition data for common ingredients to provide as reference
   const commonIngredients = [
     'chicken breast', 'ground beef', 'salmon', 'eggs', 'greek yogurt',
@@ -158,7 +195,7 @@ Use these as your PRIMARY selection pool. You may add complementary ingredients,
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
   const prompt = `You are a meal planning assistant for CrossFit athletes. Your job is to select a focused set of core ingredients for one week of meals that will MEET THE USER'S CALORIE AND MACRO TARGETS.
-${themeSection}${exclusionsSection}${preferencesSection}${ingredientPreferencesSection}
+${themeSection}${proteinFocusSection}${exclusionsSection}${preferencesSection}${ingredientPreferencesSection}
 ## CRITICAL: WEEKLY CALORIE TARGET
 The user needs approximately ${weeklyCalories} calories for the week (${profile.target_calories} per day).
 - Weekly Protein Target: ${weeklyProtein}g (${profile.target_protein}g/day)
