@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
+import type { ProteinFocusConstraint } from '@/lib/types';
 
 // Theme selection can be:
 // - 'surprise': auto-select based on preferences and season (default)
@@ -9,6 +10,7 @@ type ThemeSelectionRequest = 'surprise' | 'none' | string;
 
 interface GenerateMealPlanRequest {
   themeSelection?: ThemeSelectionRequest;
+  proteinFocus?: ProteinFocusConstraint | null;
 }
 
 export async function POST(request: Request) {
@@ -47,15 +49,19 @@ export async function POST(request: Request) {
     }, { status: 402 }); // 402 Payment Required
   }
 
-  // Parse request body for theme selection
+  // Parse request body for theme selection and protein focus
   let themeSelection: ThemeSelectionRequest = 'surprise';
+  let proteinFocus: ProteinFocusConstraint | null = null;
   try {
     const body: GenerateMealPlanRequest = await request.json();
     if (body.themeSelection) {
       themeSelection = body.themeSelection;
     }
+    if (body.proteinFocus) {
+      proteinFocus = body.proteinFocus;
+    }
   } catch {
-    // No body or invalid JSON - use default (surprise)
+    // No body or invalid JSON - use defaults
   }
 
   // Check for existing pending/in-progress job
@@ -85,11 +91,11 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Failed to create job' }, { status: 500 });
   }
 
-  // Trigger Inngest function with theme selection
+  // Trigger Inngest function with theme selection and protein focus
   try {
     await inngest.send({
       name: 'meal-plan/generate',
-      data: { jobId: job.id, userId: user.id, themeSelection },
+      data: { jobId: job.id, userId: user.id, themeSelection, proteinFocus },
     });
   } catch (error) {
     console.error('Failed to send Inngest event:', error);

@@ -7,6 +7,7 @@ import type {
   MealWithIngredientNutrition,
   MealComplexity,
   SelectableMealType,
+  ProteinFocusConstraint,
 } from '../types';
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, MEAL_COMPLEXITY_LABELS, getStandardMealTypes, DEFAULT_SELECTED_MEAL_TYPES } from '../types';
 import { callLLMWithToolUse } from './client';
@@ -35,7 +36,8 @@ export async function generateMealsFromCoreIngredients(
   userId: string,
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
-  theme?: MealPlanTheme
+  theme?: MealPlanTheme,
+  proteinFocus?: ProteinFocusConstraint | null
 ): Promise<{ title: string; meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -193,6 +195,55 @@ ${theme.meal_name_style}` : ''}
 `;
   }
 
+  // Build protein focus section if provided
+  let proteinFocusSection = '';
+  if (proteinFocus) {
+    const minCount =
+      proteinFocus.count === 'all' ? 7 :
+      proteinFocus.count === '5-7' ? 5 : 3;
+    const maxCount =
+      proteinFocus.count === 'all' ? 7 :
+      proteinFocus.count === '5-7' ? 7 : 4;
+
+    const cuisineExamples = [
+      { style: 'Asian', examples: 'teriyaki, stir-fry, Thai curry, sesame ginger' },
+      { style: 'Mexican/Latin', examples: 'tacos, fajitas, cilantro lime, chipotle' },
+      { style: 'Mediterranean', examples: 'Greek-style, lemon herb, garlic butter' },
+      { style: 'Cajun/Southern', examples: 'blackened, Cajun, low-country boil style' },
+      { style: 'Italian', examples: 'scampi, fra diavolo, primavera' },
+      { style: 'Peruvian', examples: 'ceviche-style, ají amarillo' },
+    ];
+
+    proteinFocusSection = `
+## 🎯 PROTEIN FOCUS CONSTRAINT (MUST FOLLOW)
+
+**Primary Protein for ${proteinFocus.mealType.charAt(0).toUpperCase() + proteinFocus.mealType.slice(1)}s:** ${proteinFocus.protein}
+
+**Requirements:**
+- Generate ${minCount}-${maxCount} ${proteinFocus.mealType} meals that feature ${proteinFocus.protein} as the PRIMARY protein
+- The remaining ${7 - maxCount}-${7 - minCount} ${proteinFocus.mealType}(s) can use other available proteins for variety
+
+${proteinFocus.varyCuisines ? `
+**CRITICAL - Cuisine Variety:**
+Each ${proteinFocus.protein} ${proteinFocus.mealType} MUST be prepared in a DIFFERENT cuisine style. Use at least ${Math.min(minCount, 4)} different styles from:
+
+${cuisineExamples.map(c => `- **${c.style}**: ${c.examples}`).join('\n')}
+
+Example for shrimp dinners:
+- Monday: Garlic Butter Shrimp Scampi (Italian)
+- Tuesday: Spicy Cajun Shrimp & Grits (Southern)
+- Wednesday: Shrimp Pad Thai (Asian)
+- Thursday: Shrimp Tacos with Cilantro Lime Slaw (Mexican)
+- Friday: Greek Shrimp with Feta & Orzo (Mediterranean)
+
+**Each meal should feel completely different despite using the same protein.**
+` : `
+**Preparation Variety:**
+Even without strict cuisine variety, ensure each ${proteinFocus.protein} meal uses different cooking methods (grilled, sautéed, baked, etc.) and flavor profiles.
+`}
+`;
+  }
+
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
 ## CRITICAL: ACCURACY HIERARCHY
@@ -224,7 +275,7 @@ You must follow this priority order — earlier priorities ALWAYS override later
 ❌ WRONG: "Meal needs to hit 500 cal → report 500 cal even though ingredients sum to 420"
 
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
-${themeStyleSection}${preferencesSection}${validatedMealsSection}${householdSection}
+${themeStyleSection}${proteinFocusSection}${preferencesSection}${validatedMealsSection}${householdSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
 ${nutritionReference}

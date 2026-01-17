@@ -1,8 +1,10 @@
 # Context for Claude
 
-## Production URL
+## Architecture Notes
 
-The correct production url for FuelRx's web application is: https://fuel-rx.shredstack.net
+The correct production url for FuelRx's web application is: https://fuel-rx.shredstack.net.
+
+Native iOS app uses Capacitor WebView loading from fuel-rx.shredstack.net, so web changes automatically appear in the app without rebuild/resubmission.
 
 ## App Development Best Practices
 

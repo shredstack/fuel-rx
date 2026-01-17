@@ -6,7 +6,7 @@ import {
   generatePrepSessions,
   organizeMealsIntoDays,
 } from '@/lib/claude';
-import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme, MealType, DayOfWeek } from '@/lib/types';
+import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme, MealType, DayOfWeek, ProteinFocusConstraint } from '@/lib/types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
 import { getTestConfig, FIXTURE_MEAL_PLAN, FIXTURE_GROCERY_LIST, FIXTURE_CORE_INGREDIENTS, FIXTURE_PREP_SESSIONS } from '@/lib/claude_test';
 import { normalizeForMatching } from '@/lib/meal-service';
@@ -165,10 +165,11 @@ export const generateMealPlanFunction = inngest.createFunction(
   },
   { event: 'meal-plan/generate' },
   async ({ event, step }) => {
-    const { jobId, userId, themeSelection } = event.data as {
+    const { jobId, userId, themeSelection, proteinFocus } = event.data as {
       jobId: string;
       userId: string;
       themeSelection?: 'surprise' | 'none' | string; // 'surprise' = auto, 'none' = no theme, or specific theme ID
+      proteinFocus?: ProteinFocusConstraint | null;
     };
 
     try {
@@ -509,6 +510,8 @@ export const generateMealPlanFunction = inngest.createFunction(
         // Update status at the START of this step (only runs once per step execution)
         const themeMessage = userData.selectedTheme
           ? `Selecting ${userData.selectedTheme.theme.display_name} ingredients...`
+          : proteinFocus
+          ? `Selecting ingredients with ${proteinFocus.protein} focus...`
           : 'Selecting ingredients for your week...';
         await updateJobStatus(jobId, 'generating_ingredients', themeMessage);
 
@@ -518,7 +521,8 @@ export const generateMealPlanFunction = inngest.createFunction(
           userData.recentMealNames,
           userData.mealPreferences,
           userData.ingredientPreferences,
-          userData.selectedTheme?.theme
+          userData.selectedTheme?.theme,
+          proteinFocus
         );
       });
 
@@ -526,6 +530,8 @@ export const generateMealPlanFunction = inngest.createFunction(
       const mealsResult = await step.run('generate-meals', async () => {
         const themeMessage = userData.selectedTheme
           ? `Creating your ${userData.selectedTheme.theme.display_name} meal plan...`
+          : proteinFocus
+          ? `Creating ${proteinFocus.protein} ${proteinFocus.mealType}s...`
           : 'Creating your 7-day meal plan...';
         await updateJobStatus(jobId, 'generating_meals', themeMessage);
 
@@ -535,7 +541,8 @@ export const generateMealPlanFunction = inngest.createFunction(
           userId,
           userData.mealPreferences,
           userData.validatedMeals,
-          userData.selectedTheme?.theme
+          userData.selectedTheme?.theme,
+          proteinFocus
         );
       });
 
@@ -625,6 +632,7 @@ export const generateMealPlanFunction = inngest.createFunction(
             is_favorite: false,
             prep_style: userData.profile.prep_style || 'day_of',
             title: generatedTitle || null,
+            protein_focus: proteinFocus || null,
           })
           .select()
           .single();
@@ -869,6 +877,28 @@ export const generateMealPlanFunction = inngest.createFunction(
           console.error('[Email] Failed to send notification:', err);
         }
       });
+
+      // Step 11: Track protein focus history (if protein focus was used)
+      if (proteinFocus) {
+        await step.run('track-protein-focus-history', async () => {
+          const supabase = createServiceRoleClient();
+          try {
+            await supabase
+              .from('protein_focus_history')
+              .upsert({
+                user_id: userId,
+                protein: proteinFocus.protein,
+                meal_type: proteinFocus.mealType,
+                used_at: new Date().toISOString(),
+              }, {
+                onConflict: 'user_id,protein,meal_type',
+              });
+          } catch (err) {
+            // Non-critical - don't fail the job
+            console.error('[Protein Focus] Failed to track history:', err);
+          }
+        });
+      }
 
       return { success: true, mealPlanId: savedPlanId };
 
