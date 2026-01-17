@@ -494,6 +494,17 @@ export const generateMealPlanFunction = inngest.createFunction(
             await supabase.from('meal_plan_ingredients').insert(ingredientInserts);
           }
 
+          // Auto-add weekly staples to this meal plan
+          try {
+            await supabase.rpc('auto_add_weekly_staples', {
+              p_meal_plan_id: savedPlan.id,
+              p_user_id: userId,
+            });
+          } catch (stapleError) {
+            console.error('Failed to auto-add weekly staples:', stapleError);
+            // Don't throw - staples are non-critical
+          }
+
           return savedPlan.id;
         });
 
@@ -819,6 +830,17 @@ export const generateMealPlanFunction = inngest.createFunction(
           }
         } else {
           console.warn('No prep sessions to save - prepSessionsArray may have been empty');
+        }
+
+        // Auto-add weekly staples to this meal plan
+        try {
+          await supabase.rpc('auto_add_weekly_staples', {
+            p_meal_plan_id: savedPlan.id,
+            p_user_id: userId,
+          });
+        } catch (stapleError) {
+          console.error('Failed to auto-add weekly staples:', stapleError);
+          // Don't throw - staples are non-critical
         }
 
         return savedPlan.id;
