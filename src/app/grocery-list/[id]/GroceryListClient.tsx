@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import type { ContextualGroceryList, GroceryItemWithContext, CoreIngredients, GroceryCategory, MealType } from '@/lib/types'
+import type { ContextualGroceryList, GroceryItemWithContext, CoreIngredients, GroceryCategory, MealType, MealPlanStapleWithDetails, GroceryStaple, MealPlanCustomItem } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 import GroceryItemCard from '@/components/grocery/GroceryItemCard'
 import HouseholdBanner from '@/components/grocery/HouseholdBanner'
+import GroceryStaplesSection from '@/components/grocery/GroceryStaplesSection'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 
 interface Props {
@@ -15,6 +16,9 @@ interface Props {
   weekStartDate: string
   groceryList: ContextualGroceryList
   coreIngredients?: CoreIngredients | null
+  initialStaples: MealPlanStapleWithDetails[]
+  availableStaples: GroceryStaple[]
+  initialCustomItems: MealPlanCustomItem[]
 }
 
 const CATEGORY_LABELS: Record<GroceryCategory, string> = {
@@ -37,11 +41,19 @@ const FILTERABLE_MEAL_TYPES: { type: MealType; label: string }[] = [
   { type: 'snack', label: 'Snacks' },
 ]
 
-export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients }: Props) {
+export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients, initialStaples, availableStaples: initialAvailableStaples, initialCustomItems }: Props) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
   const [selectedMealTypes, setSelectedMealTypes] = useState<Set<MealType>>(
     new Set(FILTERABLE_MEAL_TYPES.map(m => m.type))
   )
+  const [staples, setStaples] = useState<MealPlanStapleWithDetails[]>(initialStaples)
+  const [customItems, setCustomItems] = useState<MealPlanCustomItem[]>(initialCustomItems)
+
+  // Compute available staples based on current staples in list
+  const availableStaples = useMemo(() => {
+    const stapleIdsInPlan = new Set(staples.map(s => s.staple_id))
+    return initialAvailableStaples.filter(s => !stapleIdsInPlan.has(s.id))
+  }, [staples, initialAvailableStaples])
 
   // Onboarding state
   const { state: onboardingState, markMilestone, shouldShowTip, dismissTip } = useOnboardingState()
@@ -229,6 +241,16 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
             <CoreIngredientsCard coreIngredients={coreIngredients} />
           </div>
         )}
+
+        {/* My Staples Section */}
+        <GroceryStaplesSection
+          mealPlanId={mealPlanId}
+          staples={staples}
+          availableStaples={availableStaples}
+          onStaplesChange={setStaples}
+          customItems={customItems}
+          onCustomItemsChange={setCustomItems}
+        />
 
         {/* Onboarding tip for checklist feature */}
         {shouldShowTip('grocery_list_checklist') && (

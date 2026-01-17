@@ -2314,3 +2314,71 @@ export interface ProteinFocusHistoryEntry {
   meal_type: FocusMealType;
   used_at: string;
 }
+
+// ============================================
+// Grocery Staples Types
+// ============================================
+
+/**
+ * Frequency options for grocery staples
+ */
+export type StapleFrequency = 'every_week' | 'as_needed';
+
+/**
+ * A user's grocery staple item (from user_grocery_staples table)
+ */
+export interface GroceryStaple {
+  id: string;
+  user_id: string;
+  name: string;
+  brand: string | null;
+  variant: string | null;
+  display_name: string;  // Computed column
+  category: GroceryCategory;
+  add_frequency: StapleFrequency;
+  times_added: number;
+  last_added_at: string | null;
+  barcode: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Input for creating/updating a grocery staple
+ */
+export interface GroceryStapleInput {
+  name: string;
+  brand?: string | null;
+  variant?: string | null;
+  category: GroceryCategory;
+  add_frequency: StapleFrequency;
+}
+
+/**
+ * A staple linked to a specific meal plan (from meal_plan_staples table)
+ */
+export interface MealPlanStaple {
+  id: string;
+  meal_plan_id: string;
+  staple_id: string;
+  is_checked: boolean;
+  created_at: string;
+}
+
+/**
+ * Staple with full details (joined query result)
+ */
+export interface MealPlanStapleWithDetails extends MealPlanStaple {
+  staple: GroceryStaple;
+}
+
+/**
+ * A one-off custom item added to a specific meal plan (not a saved staple)
+ */
+export interface MealPlanCustomItem {
+  id: string;
+  meal_plan_id: string;
+  name: string;
+  is_checked: boolean;
+  created_at: string;
+}
