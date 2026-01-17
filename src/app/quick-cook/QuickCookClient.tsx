@@ -20,6 +20,7 @@ import SingleMealResult from '@/components/SingleMealResult'
 import PartyPrepGuideDisplay from '@/components/PartyPrepGuideDisplay'
 import IngredientSelector, { type IngredientSelection } from '@/components/IngredientSelector'
 import PaywallModal from '@/components/PaywallModal'
+import { KeyboardAwareView } from '@/components/KeyboardAwareView'
 import { useSubscription } from '@/hooks/useSubscription'
 
 interface Props {
@@ -410,7 +411,7 @@ export default function QuickCookClient({ profile }: Props) {
 
         {/* Form - hide when results are shown */}
         {!generatedMeal && !generatedPartyGuide && (
-          <div className="card max-w-xl mx-auto">
+          <KeyboardAwareView className="card max-w-xl mx-auto">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">
               {mode === 'normal'
                 ? "What kind of meal would you like?"
@@ -572,7 +573,7 @@ export default function QuickCookClient({ profile }: Props) {
                 </p>
               )}
             </div>
-          </div>
+          </KeyboardAwareView>
         )}
 
         {/* Generate Another Button - shown when results are visible */}

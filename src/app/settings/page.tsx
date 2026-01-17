@@ -131,6 +131,17 @@ export default async function SettingsPage() {
       <Navbar />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Deprecation notice */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <p className="text-amber-800 text-sm">
+            This page is deprecated. Please use your{' '}
+            <Link href="/profile" className="font-medium underline hover:text-amber-900">
+              Profile
+            </Link>{' '}
+            to manage settings.
+          </p>
+        </div>
+
         <h1 className="text-2xl font-bold text-primary-600 mb-6">Settings</h1>
         {settingsGroups.map((group) => (
           <div key={group.title} className="mb-8">

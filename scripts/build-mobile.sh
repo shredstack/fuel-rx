@@ -58,7 +58,7 @@ cat > out/index.html << 'EOF'
   <script>
     // Redirect to main app if online
     if (navigator.onLine) {
-      window.location.href = 'https://fuelrx.vercel.app';
+      window.location.href = 'https://fuel-rx.shredstack.net';
     }
   </script>
 </body>

@@ -83,7 +83,7 @@ AI-powered meal planning for CrossFit athletes. Generate weekly plans, get smart
 ## Support URL
 
 ```
-https://fuelrx.vercel.app/support
+https://fuel-rx.shredstack.net/support
 ```
 
 ---
@@ -91,7 +91,7 @@ https://fuelrx.vercel.app/support
 ## Privacy Policy URL
 
 ```
-https://fuelrx.vercel.app/privacy
+https://fuel-rx.shredstack.net/privacy
 ```
 
 ---

@@ -1,5 +1,9 @@
 # Context for Claude
 
+## Production URL
+
+The correct production url for FuelRx's web application is: https://fuel-rx.shredstack.net
+
 ## App Development Best Practices
 
 ### Reusable Components
