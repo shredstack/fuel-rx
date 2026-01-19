@@ -2049,6 +2049,7 @@ export interface SaveMealPhotoOptions {
     protein: number;
     carbs: number;
     fat: number;
+    category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
   }>;
   notes?: string;
   consumedAt?: string;

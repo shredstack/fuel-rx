@@ -37,6 +37,7 @@ interface EditableIngredient {
   carbs: number;
   fat: number;
   confidence: number;
+  category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
 }
 
 interface AnalysisResponse {
@@ -62,6 +63,7 @@ interface AnalysisResponse {
     carbs: number;
     fat: number;
     confidence_score: number;
+    category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
   }>;
 }
 
@@ -133,6 +135,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
           carbs: ing.carbs,
           fat: ing.fat,
           confidence: ing.confidence_score,
+          category: ing.category,
         }))
       );
     } catch (err) {
