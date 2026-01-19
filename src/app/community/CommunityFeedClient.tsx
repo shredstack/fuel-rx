@@ -1,11 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import FeedPostCard from '@/components/FeedPostCard'
-import type { SocialFeedPost } from '@/lib/types'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
+import {
+  useSocialFeed,
+  useSavePost,
+  useUnsavePost,
+  useDeletePost,
+} from '@/hooks/queries/useSocialFeed'
 
 interface Props {
   socialEnabled: boolean
@@ -15,98 +20,49 @@ interface Props {
 type FilterType = 'all' | 'following' | 'my_posts'
 
 export default function CommunityFeedClient({ socialEnabled, userName }: Props) {
-  const [posts, setPosts] = useState<SocialFeedPost[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterType>('all')
-  const [hasMore, setHasMore] = useState(false)
-  const [page, setPage] = useState(1)
 
-  const fetchFeed = useCallback(async (pageNum: number, currentFilter: FilterType, append = false) => {
-    if (pageNum === 1) {
-      setLoading(true)
-    } else {
-      setLoadingMore(true)
-    }
-    setError(null)
+  // Use React Query infinite query for the feed
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch,
+  } = useSocialFeed(filter)
 
-    try {
-      const response = await fetch(
-        `/api/social-feed?page=${pageNum}&limit=20&filter=${currentFilter}`
-      )
+  // Mutation hooks
+  const savePostMutation = useSavePost()
+  const unsavePostMutation = useUnsavePost()
+  const deletePostMutation = useDeletePost()
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch feed')
-      }
-
-      const data = await response.json()
-
-      if (append) {
-        setPosts(prev => [...prev, ...data.posts])
-      } else {
-        setPosts(data.posts)
-      }
-      setHasMore(data.hasMore)
-      setPage(pageNum)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load feed')
-    } finally {
-      setLoading(false)
-      setLoadingMore(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (socialEnabled) {
-      fetchFeed(1, filter)
-    }
-  }, [socialEnabled, filter, fetchFeed])
+  // Flatten all pages into a single array of posts
+  const posts = data?.pages.flatMap(page => page.posts) ?? []
 
   const handleFilterChange = (newFilter: FilterType) => {
     if (newFilter !== filter) {
       setFilter(newFilter)
-      setPosts([])
     }
   }
 
   const handleLoadMore = () => {
-    if (hasMore && !loadingMore) {
-      fetchFeed(page + 1, filter, true)
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
     }
   }
 
   const handleSave = async (postId: string) => {
-    const response = await fetch(`/api/social-feed/${postId}/save`, {
-      method: 'POST',
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to save meal')
-    }
+    await savePostMutation.mutateAsync(postId)
   }
 
   const handleUnsave = async (postId: string) => {
-    const response = await fetch(`/api/social-feed/${postId}/save`, {
-      method: 'DELETE',
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to unsave meal')
-    }
+    await unsavePostMutation.mutateAsync(postId)
   }
 
   const handleDelete = async (postId: string) => {
-    const response = await fetch(`/api/social-feed/${postId}`, {
-      method: 'DELETE',
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to delete post')
-    }
-
-    // Remove the post from local state
-    setPosts(prev => prev.filter(p => p.id !== postId))
+    await deletePostMutation.mutateAsync(postId)
   }
 
   if (!socialEnabled) {
@@ -188,9 +144,9 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
 
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
-            {error}
+            {error instanceof Error ? error.message : 'Failed to load feed'}
             <button
-              onClick={() => fetchFeed(1, filter)}
+              onClick={() => refetch()}
               className="ml-2 text-red-800 font-medium"
             >
               Retry
@@ -198,7 +154,7 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
           </div>
         )}
 
-        {loading ? (
+        {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map(i => (
               <div key={i} className="card animate-pulse">
@@ -262,14 +218,14 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
               ))}
             </div>
 
-            {hasMore && (
+            {hasNextPage && (
               <div className="mt-6 text-center">
                 <button
                   onClick={handleLoadMore}
-                  disabled={loadingMore}
+                  disabled={isFetchingNextPage}
                   className="btn-outline"
                 >
-                  {loadingMore ? 'Loading...' : 'Load More'}
+                  {isFetchingNextPage ? 'Loading...' : 'Load More'}
                 </button>
               </div>
             )}

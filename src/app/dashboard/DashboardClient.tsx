@@ -11,6 +11,7 @@ import ProteinFocusPicker from '@/components/ProteinFocusPicker'
 import QuickCookCard from '@/components/QuickCookCard'
 import { useOnboardingState } from '@/hooks/useOnboardingState'
 import { useSubscription } from '@/hooks/useSubscription'
+import { useJobStatus } from '@/hooks/queries/useJobStatus'
 import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MealLoggingTeaser from '@/components/onboarding/MealLoggingTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
@@ -63,8 +64,47 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
   const [profile, setProfile] = useState(initialProfile)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [progressStage, setProgressStage] = useState<JobStatus | null>(null)
-  const [progressMessage, setProgressMessage] = useState<string>('')
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+
+  // Use React Query for job status polling
+  const { data: jobStatus } = useJobStatus(currentJobId, {
+    enabled: generating && !!currentJobId,
+  })
+
+  // Derive progress state from job status
+  const progressStage = jobStatus?.status || (generating ? 'pending' : null)
+  const progressMessage = jobStatus?.progressMessage || ''
+
+  // Helper to handle errors with user-friendly messages
+  const handleJobError = (errorMessage: string) => {
+    setGenerating(false)
+    setCurrentJobId(null)
+    // Provide user-friendly message for specific error types
+    if (errorMessage.includes('prep sessions') || errorMessage.includes('generate')) {
+      setError('Failed to generate your meal plan. Please try again later.')
+    } else {
+      setError(errorMessage)
+    }
+  }
+
+  // Handle job completion/failure
+  useEffect(() => {
+    if (!jobStatus) return
+
+    // Check for error field in job response
+    if (jobStatus.error) {
+      handleJobError(jobStatus.error)
+      return
+    }
+
+    if (jobStatus.status === 'completed' && jobStatus.mealPlanId) {
+      setGenerating(false)
+      setCurrentJobId(null)
+      router.push(`/meal-plan/${jobStatus.mealPlanId}`)
+    } else if (jobStatus.status === 'failed') {
+      handleJobError(jobStatus.errorMessage || 'Failed to generate meal plan')
+    }
+  }, [jobStatus, router])
 
   // Theme selection state
   const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
@@ -136,17 +176,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
 
     setGenerating(true)
     setError(null)
-    setProgressStage('pending')
-    setProgressMessage('Starting...')
-
-    let pollInterval: NodeJS.Timeout | null = null
-
-    const cleanup = () => {
-      if (pollInterval) {
-        clearInterval(pollInterval)
-        pollInterval = null
-      }
-    }
+    setCurrentJobId(null) // Clear any previous job
 
     try {
       // Determine themeSelection value to send to API
@@ -174,7 +204,6 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
       if (startResponse.status === 402) {
         setShowPaywall(true)
         setGenerating(false)
-        setProgressStage(null)
         return
       }
 
@@ -185,49 +214,14 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
 
       const { jobId } = await startResponse.json()
 
-      // Helper to handle errors (can't throw from setInterval async callback)
-      const handleError = (errorMessage: string) => {
-        cleanup()
-        if (errorMessage.includes('prep sessions') || errorMessage.includes('generate')) {
-          setError('Failed to generate your meal plan. Please try again later.')
-        } else {
-          setError(errorMessage)
-        }
-        setGenerating(false)
-        setProgressStage(null)
-      }
-
-      // Poll for status
-      pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await fetch(`/api/job-status/${jobId}`)
-          const job = await statusResponse.json()
-
-          if (job.error) {
-            handleError(job.error)
-            return
-          }
-
-          setProgressStage(job.status as JobStatus)
-          setProgressMessage(job.progressMessage || '')
-
-          if (job.status === 'completed' && job.mealPlanId) {
-            cleanup()
-            router.push(`/meal-plan/${job.mealPlanId}`)
-          } else if (job.status === 'failed') {
-            handleError(job.errorMessage || 'Failed to generate meal plan')
-          }
-        } catch (pollError) {
-          handleError(pollError instanceof Error ? pollError.message : 'Something went wrong')
-        }
-      }, 3000) // Poll every 3 seconds
+      // Set the job ID - React Query will automatically start polling
+      setCurrentJobId(jobId)
 
     } catch (err) {
-      cleanup()
       const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
       setError(errorMessage)
       setGenerating(false)
-      setProgressStage(null)
+      setCurrentJobId(null)
     }
   }
 

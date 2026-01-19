@@ -64,7 +64,8 @@ export default function MealSection({
   onEditAmount,
   onRepeatFromPrevious,
 }: MealSectionProps) {
-  const [isCollapsed, setIsCollapsed] = useState(initialCollapsed && entries.length === 0);
+  // Start expanded if there are entries OR if there are previous entries to show the "Log same" hint
+  const [isCollapsed, setIsCollapsed] = useState(initialCollapsed && entries.length === 0 && !previousEntries);
   const [isRepeating, setIsRepeating] = useState(false);
 
   const config = MEAL_TYPE_CONFIG[mealType];

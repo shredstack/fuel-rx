@@ -28,6 +28,63 @@ Before writing new UI code, check if similar functionality already exists that c
 3. Maintainability - We want code that's easier to iterate on without risking other stages or components
 4. Readability - Clear code organization for future development
 
+### React Query for Data Fetching
+
+We use TanStack Query (React Query) for all client-side data fetching to ensure the UI stays up-to-date after user actions. **Never use manual `fetch` + `useState` patterns** for data that needs to stay synchronized.
+
+**Key files:**
+- `src/providers/QueryProvider.tsx` - App-wide provider with default config
+- `src/lib/queryKeys.ts` - Query key factory for cache invalidation
+- `src/hooks/queries/` - All query and mutation hooks
+
+**Creating query hooks:**
+```typescript
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+
+export function useMyData(id: string) {
+  return useQuery({
+    queryKey: queryKeys.myDomain.detail(id),
+    queryFn: async () => {
+      const response = await fetch(`/api/my-data/${id}`);
+      if (!response.ok) throw new Error('Failed to fetch');
+      return response.json();
+    },
+  });
+}
+```
+
+**Creating mutation hooks with cache invalidation:**
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
+
+export function useUpdateMyData() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data) => {
+      const response = await fetch('/api/my-data', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update');
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate related queries so UI updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.myDomain.all });
+    },
+  });
+}
+```
+
+**Guidelines:**
+- Always add new query keys to `queryKeys.ts` using the hierarchical pattern
+- Mutations should invalidate related queries in `onSuccess` to keep UI in sync
+- Use optimistic updates for instant feedback on user actions (see `useSocialFeed.ts` for examples)
+- For polling, use `refetchInterval` that stops when done (see `useJobStatus.ts`)
+
 ### Meal Plan Generation
 
 Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.
