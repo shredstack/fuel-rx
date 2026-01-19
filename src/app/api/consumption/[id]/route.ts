@@ -2,12 +2,16 @@
  * Consumption Entry API Endpoint
  *
  * DELETE /api/consumption/[id] - Remove a consumption entry
- * PATCH /api/consumption/[id] - Update a consumption entry (e.g., meal type)
+ * PATCH /api/consumption/[id] - Update a consumption entry (meal type or amount/macros)
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { removeConsumptionEntry, updateConsumptionEntryMealType } from '@/lib/consumption-service';
+import {
+  removeConsumptionEntry,
+  updateConsumptionEntryMealType,
+  updateConsumptionEntryAmount,
+} from '@/lib/consumption-service';
 import type { MealType } from '@/lib/types';
 
 interface Props {
@@ -50,10 +54,33 @@ export async function PATCH(request: Request, { params }: Props) {
     }
 
     const body = await request.json();
-    const { meal_type } = body;
+    const { meal_type, amount, calories, protein, carbs, fat, grams } = body;
 
+    // Check if this is an amount update or a meal type update
+    const hasAmountUpdate = amount !== undefined || calories !== undefined || protein !== undefined ||
+      carbs !== undefined || fat !== undefined || grams !== undefined;
+
+    if (hasAmountUpdate) {
+      // Validate amount if provided
+      if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
+        return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+      }
+
+      const entry = await updateConsumptionEntryAmount(id, user.id, {
+        amount,
+        calories,
+        protein,
+        carbs,
+        fat,
+        grams,
+      });
+
+      return NextResponse.json(entry);
+    }
+
+    // Meal type update
     if (!meal_type) {
-      return NextResponse.json({ error: 'meal_type is required' }, { status: 400 });
+      return NextResponse.json({ error: 'meal_type or amount/macros update is required' }, { status: 400 });
     }
 
     // Validate meal_type

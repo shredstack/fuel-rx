@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { IngredientToLog, MealType, IngredientCategoryType } from '@/lib/types';
 import MealTypeSelector from './MealTypeSelector';
 import { countsToward800g } from './FruitVegProgressBar';
@@ -34,15 +34,28 @@ interface IngredientAmountPickerProps {
     grams?: number,
     category?: IngredientCategoryType
   ) => Promise<void>;
+  initialMealType?: MealType | null;
 }
 
-export default function IngredientAmountPicker({ ingredient, isOpen, onClose, onLog }: IngredientAmountPickerProps) {
+export default function IngredientAmountPicker({ ingredient, isOpen, onClose, onLog, initialMealType }: IngredientAmountPickerProps) {
   const [amount, setAmount] = useState(ingredient.default_amount);
-  const [mealType, setMealType] = useState<MealType>(getTimeBasedMealType());
+  const [mealType, setMealType] = useState<MealType>(initialMealType || getTimeBasedMealType());
   const [logging, setLogging] = useState(false);
   // 800g Challenge: grams input for fruits/vegetables
   const isFruitOrVeg = countsToward800g(ingredient.category);
   const [grams, setGrams] = useState<number>(ingredient.default_grams || 100);
+
+  // Reset meal type when a new ingredient is selected or initialMealType changes
+  // This ensures the correct meal type is shown when clicking + on a section
+  useEffect(() => {
+    setMealType(initialMealType || getTimeBasedMealType());
+  }, [initialMealType, ingredient.name]);
+
+  // Reset amount and grams when ingredient changes
+  useEffect(() => {
+    setAmount(ingredient.default_amount);
+    setGrams(ingredient.default_grams || 100);
+  }, [ingredient.name, ingredient.default_amount, ingredient.default_grams]);
 
   if (!isOpen) return null;
 

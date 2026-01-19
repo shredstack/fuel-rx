@@ -174,7 +174,8 @@ export default function AddIngredientModal({
       if (response.ok) {
         const ingredient: IngredientToLog = await response.json();
         onSelectIngredient(ingredient);
-        onClose();
+        // Don't call onClose() here - let the parent handle closing
+        // This preserves addingToMealType for IngredientAmountPicker
       }
     } catch (error) {
       console.error('Error saving barcode product:', error);
@@ -197,7 +198,8 @@ export default function AddIngredientModal({
       if (response.ok) {
         const ingredient: IngredientToLog = await response.json();
         onSelectIngredient(ingredient);
-        onClose();
+        // Don't call onClose() here - let the parent handle closing
+        // This preserves addingToMealType for IngredientAmountPicker
       }
     } catch (error) {
       console.error('Error saving manual ingredient:', error);
@@ -322,7 +324,8 @@ export default function AddIngredientModal({
                       key={`${ingredient.name}-${index}`}
                       onClick={() => {
                         onSelectIngredient(ingredient);
-                        onClose();
+                        // Don't call onClose() here - let the parent handle closing
+                        // This preserves addingToMealType for IngredientAmountPicker
                       }}
                       className="w-full p-3 bg-gray-50 hover:bg-primary-50 rounded-lg text-left transition-colors"
                     >
