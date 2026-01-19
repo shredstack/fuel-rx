@@ -455,6 +455,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
             ) : (
               <p className="text-gray-600 mt-2">
                 Generate your first meal plan to get started!
+                If you recently completed onboarding, your first plan is generating in the background. You'll recieve an email once finished or refresh this page in 5-10 minutes. 😀
               </p>
             )}
           </div>
