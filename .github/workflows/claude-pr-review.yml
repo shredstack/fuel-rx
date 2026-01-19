@@ -1,0 +1,206 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          # Get the diff between base and head
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+
+          # Get list of changed files
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+
+          echo "Changed files:"
+          cat changed_files.txt
+
+      - name: Check for database migrations
+        id: check_migrations
+        run: |
+          if grep -q "supabase/migrations" changed_files.txt; then
+            echo "has_migrations=true" >> $GITHUB_OUTPUT
+            echo "Migration files detected!"
+          else
+            echo "has_migrations=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare review context
+        id: context
+        run: |
+          # Read PR instructions
+          PR_INSTRUCTIONS=$(cat claude_pr_instructions.md)
+
+          # Read CLAUDE.md for project context
+          CLAUDE_MD=$(cat CLAUDE.md)
+
+          # Get the diff content (limit to 100KB to avoid token limits)
+          DIFF_CONTENT=$(head -c 100000 pr_diff.txt)
+
+          # Get changed files list
+          CHANGED_FILES=$(cat changed_files.txt)
+
+          # Check if migrations are involved
+          HAS_MIGRATIONS="${{ steps.check_migrations.outputs.has_migrations }}"
+
+          # Create the prompt
+          cat > review_prompt.txt << 'PROMPT_EOF'
+          You are reviewing PR #${{ github.event.pull_request.number }}: "${{ github.event.pull_request.title }}"
+
+          Author: ${{ github.event.pull_request.user.login }}
+          Branch: ${{ github.head_ref }} -> ${{ github.base_ref }}
+
+          ## PR Description
+          ${{ github.event.pull_request.body }}
+
+          ## Changed Files
+          PROMPT_EOF
+
+          echo "$CHANGED_FILES" >> review_prompt.txt
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          ## Diff
+          ```diff
+          PROMPT_EOF
+
+          echo "$DIFF_CONTENT" >> review_prompt.txt
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+          ```
+
+          ## Project Context (from CLAUDE.md)
+          PROMPT_EOF
+
+          echo "$CLAUDE_MD" >> review_prompt.txt
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          ## Review Instructions
+          PROMPT_EOF
+
+          echo "$PR_INSTRUCTIONS" >> review_prompt.txt
+
+          if [ "$HAS_MIGRATIONS" = "true" ]; then
+            cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          **IMPORTANT**: This PR contains database migrations. Pay extra attention to the Database Migration Review section.
+          PROMPT_EOF
+          fi
+
+          cat >> review_prompt.txt << 'PROMPT_EOF'
+
+          Please provide your review following the structure in the Review Instructions.
+          PROMPT_EOF
+
+      - name: Run Claude review
+        id: claude_review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Read the prompt
+          PROMPT=$(cat review_prompt.txt)
+
+          # Call Claude API
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4096,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": $prompt
+                  }
+                ]
+              }')")
+
+          # Extract the review text
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: Could not generate review"')
+
+          # Save to file for the comment step
+          echo "$REVIEW" > review_output.txt
+
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review_output.txt', 'utf8');
+
+            // Check if there's an existing Claude review comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('## Claude PR Review')
+            );
+
+            const body = `## Claude PR Review
+
+            ${review}
+
+            ---
+            *This review was automatically generated by Claude. Reply to this comment or use \`@claude\` in a new comment to ask follow-up questions.*
+
+            <details>
+            <summary>Review metadata</summary>
+
+            - Commit: \`${{ github.event.pull_request.head.sha }}\`
+            - Reviewed at: ${new Date().toISOString()}
+            </details>`;
+
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: body
+              });
+              console.log('Updated existing review comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+              console.log('Created new review comment');
+            }
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Failed to generate Claude review. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`
+            });
