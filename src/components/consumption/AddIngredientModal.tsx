@@ -41,6 +41,7 @@ export default function AddIngredientModal({
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
   const [barcodeEditedName, setBarcodeEditedName] = useState<string>('');
+  const [barcodeEditedCategory, setBarcodeEditedCategory] = useState<IngredientCategoryType>('other');
   const [barcodeEditingMacros, setBarcodeEditingMacros] = useState(false);
   const [barcodeEditedMacros, setBarcodeEditedMacros] = useState({
     calories: 0,
@@ -101,6 +102,7 @@ export default function AddIngredientModal({
       setBarcodeProduct(null);
       setBarcodeError(null);
       setBarcodeEditedName('');
+      setBarcodeEditedCategory('other');
       setBarcodeEditingMacros(false);
       setBarcodeEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
       setManualForm({
@@ -132,6 +134,8 @@ export default function AddIngredientModal({
         // Initialize editable name with brand + product name
         const initialName = data.brand ? `${data.brand} ${data.name}` : data.name;
         setBarcodeEditedName(initialName);
+        // Initialize category to 'other' (user can change)
+        setBarcodeEditedCategory('other');
         // Initialize editable macros with scanned values
         setBarcodeEditedMacros({
           calories: data.calories,
@@ -154,13 +158,14 @@ export default function AddIngredientModal({
     if (!barcodeProduct || !barcodeEditedName.trim()) return;
 
     // Save the barcode product as a user-added ingredient
-    // Use the user-edited name and macros (which default to scanned values)
+    // Use the user-edited name, category, and macros (which default to scanned values)
     try {
       const response = await fetch('/api/ingredients/user-added', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: barcodeEditedName.trim(),
+          category: barcodeEditedCategory,
           serving_size: barcodeProduct.serving_size || 1,
           serving_unit: barcodeProduct.serving_unit || 'serving',
           calories: barcodeEditedMacros.calories,
@@ -431,6 +436,26 @@ export default function AddIngredientModal({
                       </p>
                     </div>
 
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Category
+                      </label>
+                      <select
+                        value={barcodeEditedCategory}
+                        onChange={(e) => setBarcodeEditedCategory(e.target.value as IngredientCategoryType)}
+                        className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                      >
+                        {CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Select &quot;Fruit&quot; or &quot;Vegetable&quot; to count toward 800g goal
+                      </p>
+                    </div>
+
                     {barcodeEditingMacros ? (
                       <div className="mt-4">
                         <div className="grid grid-cols-4 gap-2">
@@ -524,6 +549,7 @@ export default function AddIngredientModal({
                         setBarcodeProduct(null);
                         setBarcodeError(null);
                         setBarcodeEditedName('');
+                        setBarcodeEditedCategory('other');
                         setBarcodeEditingMacros(false);
                         setBarcodeEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
                       }}

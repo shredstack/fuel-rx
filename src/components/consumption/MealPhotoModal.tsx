@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import MealPhotoCapture from './MealPhotoCapture';
 import MealAnalysisReview from './MealAnalysisReview';
+import PhotoProduceExtractorModal from './PhotoProduceExtractorModal';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 interface MealPhotoModalProps {
@@ -12,11 +13,17 @@ interface MealPhotoModalProps {
   onMealLogged: (entry: ConsumptionEntry) => void;
 }
 
-type ModalStep = 'capture' | 'review' | 'success';
+type ModalStep = 'capture' | 'review' | 'success' | 'produce';
 
 interface PhotoData {
   photoId: string;
   imageUrl: string;
+}
+
+interface ProduceModalData {
+  ingredients: SaveMealData['ingredients'];
+  mealName: string;
+  mealType: MealType;
 }
 
 interface SaveMealData {
@@ -30,6 +37,7 @@ interface SaveMealData {
     protein: number;
     carbs: number;
     fat: number;
+    category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
   }>;
   totalMacros: {
     calories: number;
@@ -47,6 +55,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedMealName, setSavedMealName] = useState<string>('');
+  const [produceModalData, setProduceModalData] = useState<ProduceModalData | null>(null);
 
   const handlePhotoUploaded = useCallback((photoId: string, imageUrl: string) => {
     setPhotoData({ photoId, imageUrl });
@@ -88,10 +97,6 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
 
         const result = await response.json();
 
-        // Show success briefly
-        setSavedMealName(data.mealName);
-        setStep('success');
-
         // Create a consumption entry to pass back
         if (result.consumptionEntryId) {
           const entry: ConsumptionEntry = {
@@ -113,17 +118,35 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
           onMealLogged(entry);
         }
 
-        // Close after brief success display
-        setTimeout(() => {
-          handleClose();
-        }, 1500);
+        // Check if there are any fruits or vegetables to add to 800g goal
+        const hasProduce = data.ingredients.some(
+          (ing) => ing.category === 'fruit' || ing.category === 'vegetable'
+        );
+
+        if (hasProduce && (data.saveTo === 'consumption' || data.saveTo === 'both')) {
+          // Show produce extraction modal
+          setSavedMealName(data.mealName);
+          setProduceModalData({
+            ingredients: data.ingredients,
+            mealName: data.mealName,
+            mealType: data.mealType,
+          });
+          setStep('produce');
+        } else {
+          // No produce - show success briefly and close
+          setSavedMealName(data.mealName);
+          setStep('success');
+          setTimeout(() => {
+            handleClose();
+          }, 1500);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to save meal');
       } finally {
         setIsSaving(false);
       }
     },
-    [photoData, onMealLogged]
+    [photoData, onMealLogged, selectedDate]
   );
 
   const handleRetry = useCallback(() => {
@@ -137,10 +160,37 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
     setPhotoData(null);
     setError(null);
     setSavedMealName('');
+    setProduceModalData(null);
     onClose();
   }, [onClose]);
 
+  const handleProduceModalClose = useCallback(() => {
+    // Produce modal finished (either skipped or logged)
+    // Show brief success then close
+    setStep('success');
+    setTimeout(() => {
+      handleClose();
+    }, 1500);
+  }, [handleClose]);
+
   if (!isOpen) return null;
+
+  // Produce step renders its own modal
+  if (step === 'produce' && produceModalData) {
+    return (
+      <PhotoProduceExtractorModal
+        isOpen={true}
+        onClose={handleProduceModalClose}
+        ingredients={produceModalData.ingredients}
+        mealName={produceModalData.mealName}
+        mealType={produceModalData.mealType}
+        selectedDate={selectedDate}
+        onIngredientsLogged={() => {
+          // Produce logged successfully - close will trigger success display
+        }}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
