@@ -84,7 +84,7 @@ export async function generateMealsFromCoreIngredients(
 
   // Build meal complexity instructions based on user preferences
   const breakfastComplexity = profile.breakfast_complexity || 'minimal_prep';
-  const lunchComplexity = profile.lunch_complexity || 'minimal_prep';
+  const lunchComplexity = profile.lunch_complexity || 'quick_assembly';
   const dinnerComplexity = profile.dinner_complexity || 'full_recipe';
 
   const complexityInstructions = `

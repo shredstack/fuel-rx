@@ -167,7 +167,7 @@ export interface MealComplexityPrefs {
 
 export const DEFAULT_MEAL_COMPLEXITY_PREFS: MealComplexityPrefs = {
   breakfast: 'minimal_prep',
-  lunch: 'minimal_prep',
+  lunch: 'quick_assembly',
   dinner: 'full_recipe',
 };
 

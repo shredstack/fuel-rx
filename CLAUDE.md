@@ -6,6 +6,12 @@ The correct production url for FuelRx's web application is: https://fuel-rx.shre
 
 Native iOS app uses Capacitor WebView loading from fuel-rx.shredstack.net, so web changes automatically appear in the app without rebuild/resubmission.
 
+### Authentication and Email Notifications
+
+When a new user signs up, we use Resend to send the email verification to their inbox.
+
+All email notifications for FuelRx should use Resend (and not Supabase email integration). This gives us more control on who sends it as well as flow (we can send emails for various things that the user does on the app).
+
 ## App Development Best Practices
 
 ### Reusable Components

@@ -269,6 +269,121 @@ If you have any questions or feedback, just reply to this email!
   }
 }
 
+interface SendPasswordResetEmailParams {
+  to: string;
+  resetUrl: string;
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  resetUrl,
+}: SendPasswordResetEmailParams): Promise<{ success: boolean; error?: string }> {
+  const client = getResendClient();
+
+  if (!client) {
+    console.log('[Email] Skipping password reset email - RESEND_API_KEY not configured');
+    return { success: false, error: 'Email service not configured' };
+  }
+
+  try {
+    const { error } = await client.emails.send({
+      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      replyTo: REPLY_TO_EMAIL,
+      to: [to],
+      subject: 'Reset your FuelRx password',
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
+                Coach Hill's FuelRx
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="margin: 0 0 16px; color: #374151; font-size: 16px; line-height: 1.5;">
+                Password Reset Request
+              </p>
+              <p style="margin: 0 0 24px; color: #374151; font-size: 16px; line-height: 1.5;">
+                We received a request to reset your password. Click the button below to choose a new password.
+              </p>
+
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding: 16px 0 32px;">
+                    <a href="${resetUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; padding: 14px 32px; border-radius: 8px;">
+                      Reset Password
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 16px; color: #6b7280; font-size: 14px; line-height: 1.5;">
+                This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+              </p>
+
+              <p style="margin: 24px 0 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="${resetUrl}" style="color: #16a34a; word-break: break-all;">${resetUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                Coach Hill's FuelRx — Fuel your training with personalized nutrition
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `.trim(),
+      text: `Password Reset Request
+
+We received a request to reset your password. Click the link below to choose a new password:
+
+${resetUrl}
+
+This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+
+— Coach Hill's FuelRx`,
+    });
+
+    if (error) {
+      console.error('[Email] Failed to send password reset email:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('[Email] Password reset email sent to:', to);
+    return { success: true };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[Email] Error sending password reset email:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
 interface SendMealPlanSharedEmailParams {
   to: string;
   recipientName: string;
