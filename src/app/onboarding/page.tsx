@@ -52,6 +52,7 @@ export default function OnboardingPage() {
     household_servings: { ...DEFAULT_HOUSEHOLD_SERVINGS_PREFS },
     profile_photo_url: null,
   })
+  const [showSkipModal, setShowSkipModal] = useState(false)
 
   // Auto-calculate calories when macros change
   useEffect(() => {
@@ -82,6 +83,86 @@ export default function OnboardingPage() {
     const stepIndex = STEPS.indexOf(currentStep)
     if (stepIndex > 0) {
       setCurrentStep(STEPS[stepIndex - 1])
+    }
+  }
+
+  const handleSkip = async () => {
+    setLoading(true)
+    setError(null)
+    setShowSkipModal(false)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      router.push('/login')
+      return
+    }
+
+    // Calculate legacy meals_per_day for backward compatibility using defaults
+    const legacyMealsPerDay = Math.min(6, Math.max(3, DEFAULT_SELECTED_MEAL_TYPES.length + 1)) as 3 | 4 | 5 | 6
+    const includeWorkoutMeals = DEFAULT_SELECTED_MEAL_TYPES.includes('pre_workout') || DEFAULT_SELECTED_MEAL_TYPES.includes('post_workout')
+
+    // Save defaults to profile
+    const { error: updateError } = await supabase
+      .from('user_profiles')
+      .update({
+        target_protein: 150,
+        target_carbs: 200,
+        target_fat: 70,
+        target_calories: 2000,
+        dietary_prefs: ['no_restrictions'],
+        selected_meal_types: DEFAULT_SELECTED_MEAL_TYPES,
+        snack_count: 1,
+        meals_per_day: legacyMealsPerDay,
+        include_workout_meals: includeWorkoutMeals,
+        prep_time: 30,
+        meal_consistency_prefs: DEFAULT_MEAL_CONSISTENCY_PREFS,
+        ingredient_variety_prefs: DEFAULT_INGREDIENT_VARIETY_PREFS,
+        prep_style: DEFAULT_PREP_STYLE,
+        breakfast_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.breakfast,
+        lunch_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.lunch,
+        dinner_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.dinner,
+        household_servings: DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+      })
+      .eq('id', user.id)
+
+    if (updateError) {
+      setError(updateError.message)
+      setLoading(false)
+      return
+    }
+
+    // Mark profile_completed milestone
+    const stateResponse = await fetch('/api/onboarding/state', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_completed: true }),
+    })
+
+    if (!stateResponse.ok) {
+      setError('Failed to save onboarding state. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    // Start first meal plan generation
+    const generateResponse = await fetch('/api/generate-meal-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ themeSelection: 'surprise' }),
+    })
+
+    if (generateResponse.ok) {
+      await fetch('/api/onboarding/state', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ first_plan_started: true }),
+      })
+    }
+
+    if (isNative) {
+      window.location.href = '/welcome-celebration'
+    } else {
+      router.push('/welcome-celebration')
     }
   }
 
@@ -467,8 +548,75 @@ export default function OnboardingPage() {
               </button>
             )}
           </div>
+
+          {/* Skip onboarding link - only show on first step */}
+          {currentStep === 'basics' && (
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setShowSkipModal(true)}
+                className="text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                Skip for now and use defaults
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Skip Confirmation Modal */}
+      {showSkipModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Skip Setup?</h3>
+            <p className="text-gray-600 mb-4">
+              No problem! We&apos;ll use our recommended defaults to get you started right away.
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h4 className="font-medium text-gray-900 mb-3">Default Settings</h4>
+              <ul className="text-sm text-gray-600 space-y-2">
+                <li><strong>Macros:</strong> 150g protein, 200g carbs, 70g fat (2,000 cal)</li>
+                <li><strong>Meals:</strong> Breakfast, lunch, dinner + pre/post-workout + 1 snack</li>
+                <li><strong>Prep Style:</strong> Day-of cooking (fresh meals daily)</li>
+                <li><strong>Complexity:</strong> Minimal prep breakfast, quick assembly lunch, full recipe dinner</li>
+                <li><strong>Variety:</strong> Consistent meals during the day, varied dinners</li>
+                <li><strong>Household:</strong> Cooking for yourself only</li>
+              </ul>
+            </div>
+
+            <div className="bg-primary-50 rounded-lg p-4 mb-6">
+              <h4 className="font-medium text-primary-900 mb-2">Customize anytime in your Profile</h4>
+              <ul className="text-sm text-primary-800 space-y-1">
+                <li>• Daily macro targets</li>
+                <li>• Meal types and snack count</li>
+                <li>• Dietary preferences</li>
+                <li>• Prep style and complexity</li>
+                <li>• Ingredient variety</li>
+                <li>• Household size</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSkipModal(false)}
+                className="flex-1 btn-secondary"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleSkip}
+                disabled={loading}
+                className="flex-1 btn-primary"
+              >
+                {loading ? 'Setting up...' : 'Use Defaults'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
