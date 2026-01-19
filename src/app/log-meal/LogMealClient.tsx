@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
+import { useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import type {
   DailyConsumptionSummary,
@@ -18,6 +19,19 @@ import type {
   IngredientCategoryType,
   SelectableMealType,
 } from '@/lib/types';
+import { useLogMealData, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
+import {
+  useLogMeal,
+  useDeleteConsumptionEntry,
+  useUpdateEntryMealType,
+  useUpdateEntryAmount,
+  useRepeatMealType,
+  useRepeatYesterday,
+  optimisticallyAddEntry,
+  optimisticallyRemoveEntry,
+  updateMealLoggedStatusInCache,
+} from '@/hooks/queries/useConsumptionMutations';
+import { queryKeys } from '@/lib/queryKeys';
 import DailyProgressCard from '@/components/consumption/DailyProgressCard';
 import MealSourceSection from '@/components/consumption/MealSourceSection';
 import MealSection from '@/components/consumption/MealSection';
@@ -35,9 +49,6 @@ import ProduceExtractorModal from '@/components/consumption/ProduceExtractorModa
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Navbar from '@/components/Navbar';
 import MobileTabBar from '@/components/MobileTabBar';
-
-// Type for previous entries by meal type
-type PreviousEntriesByMealType = Record<MealType, { entries: ConsumptionEntry[]; sourceDate: string } | null>;
 
 interface Props {
   initialDate: string;
@@ -73,12 +84,37 @@ export default function LogMealClient({
   userMealTypes,
 }: Props) {
   const supabase = createClient();
+  const queryClient = useQueryClient();
 
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [summary, setSummary] = useState(initialSummary);
-  const [available, setAvailable] = useState(initialAvailable);
-  const [previousEntries, setPreviousEntries] = useState<PreviousEntriesByMealType>(initialPreviousEntries);
-  const [loading, setLoading] = useState(false);
+
+  // Use React Query for data fetching with initial data from server
+  const {
+    summary: querySummary,
+    available: queryAvailable,
+    previousEntries: queryPreviousEntries,
+    isLoading: queryLoading,
+    isFetching,
+  } = useLogMealData(selectedDate, {
+    summary: initialSummary,
+    available: initialAvailable,
+    previousEntries: initialPreviousEntries,
+    initialDate,
+  });
+
+  // Fallback to initial data while loading
+  const summary = querySummary || initialSummary;
+  const available = queryAvailable || initialAvailable;
+  const previousEntries = queryPreviousEntries || initialPreviousEntries;
+  const loading = queryLoading || isFetching;
+
+  // Mutation hooks
+  const logMealMutation = useLogMeal();
+  const deleteEntryMutation = useDeleteConsumptionEntry();
+  const updateMealTypeMutation = useUpdateEntryMealType();
+  const updateAmountMutation = useUpdateEntryAmount();
+  const repeatMealTypeMutation = useRepeatMealType();
+  const repeatYesterdayMutation = useRepeatYesterday();
 
   // Period view state
   const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
@@ -128,25 +164,9 @@ export default function LogMealClient({
   useEffect(() => {
     const localToday = getLocalTodayString();
     if (initialDate !== localToday) {
-      // Server date doesn't match client's local date - refetch with correct date
+      // Server date doesn't match client's local date - update to correct date
+      // React Query will automatically fetch data for the new date
       setSelectedDate(localToday);
-      setLoading(true);
-      Promise.all([
-        fetch(`/api/consumption/daily?date=${localToday}`),
-        fetch(`/api/consumption/available?date=${localToday}`),
-      ])
-        .then(async ([summaryRes, availableRes]) => {
-          if (summaryRes.ok && availableRes.ok) {
-            setSummary(await summaryRes.json());
-            setAvailable(await availableRes.json());
-          }
-        })
-        .catch((error) => {
-          console.error('Error correcting date:', error);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
     }
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,49 +204,11 @@ export default function LogMealClient({
     fetchPeriodData();
   }, [selectedPeriod, selectedDate]);
 
-  // Refresh data for current date
-  const refreshData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [summaryRes, availableRes, previousRes] = await Promise.all([
-        fetch(`/api/consumption/daily?date=${selectedDate}`),
-        fetch(`/api/consumption/available?date=${selectedDate}`),
-        fetch(`/api/consumption/previous-by-meal-type?date=${selectedDate}`),
-      ]);
-      if (summaryRes.ok && availableRes.ok) {
-        setSummary(await summaryRes.json());
-        setAvailable(await availableRes.json());
-      }
-      if (previousRes.ok) {
-        setPreviousEntries(await previousRes.json());
-      }
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    }
-    setLoading(false);
-  }, [selectedDate]);
-
-  // Handle date change
-  const handleDateChange = async (newDate: string) => {
+  // Handle date change - React Query automatically fetches data for the new date
+  const handleDateChange = (newDate: string) => {
     setSelectedDate(newDate);
-    setLoading(true);
-    try {
-      const [summaryRes, availableRes, previousRes] = await Promise.all([
-        fetch(`/api/consumption/daily?date=${newDate}`),
-        fetch(`/api/consumption/available?date=${newDate}`),
-        fetch(`/api/consumption/previous-by-meal-type?date=${newDate}`),
-      ]);
-      if (summaryRes.ok && availableRes.ok) {
-        setSummary(await summaryRes.json());
-        setAvailable(await availableRes.json());
-      }
-      if (previousRes.ok) {
-        setPreviousEntries(await previousRes.json());
-      }
-    } catch (error) {
-      console.error('Error loading date:', error);
-    }
-    setLoading(false);
+    // React Query will automatically fetch data for the new date
+    // If the data is already cached, it will be served instantly
   };
 
   // Start meal logging - show meal type selector first
@@ -264,77 +246,49 @@ export default function LogMealClient({
       updated_at: new Date().toISOString(),
     };
 
-    setSummary((prev) => ({
-      ...prev,
-      consumed: {
-        calories: prev.consumed.calories + meal.calories,
-        protein: prev.consumed.protein + meal.protein,
-        carbs: prev.consumed.carbs + meal.carbs,
-        fat: prev.consumed.fat + meal.fat,
-      },
-      entries: [...prev.entries, optimisticEntry],
-      entry_count: prev.entry_count + 1,
-    }));
+    // Apply optimistic updates to cache
+    optimisticallyAddEntry(queryClient, selectedDate, optimisticEntry);
+    updateMealLoggedStatusInCache(queryClient, selectedDate, meal.id, meal.source, true, optimisticEntry.id);
 
-    // Update available meals to show as logged
-    updateMealLoggedStatus(meal.id, meal.source, true, optimisticEntry.id);
+    // Build request payload
+    const payload: { type: string; source_id: string; meal_id?: string; meal_type: MealType; consumed_at: string } = {
+      type: meal.source,
+      source_id: meal.source_id,
+      meal_type: mealType,
+      consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+    };
+    // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
+    if (meal.source === 'meal_plan' && 'meal_id' in meal) {
+      payload.meal_id = (meal as MealPlanMealToLog).meal_id;
+    }
 
     try {
-      // Build request payload, including meal_id for meal_plan type as fallback
-      const payload: { type: string; source_id: string; meal_id?: string; meal_type: MealType; consumed_at: string } = {
-        type: meal.source,
-        source_id: meal.source_id,
-        meal_type: mealType,
-        consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
-      };
-      // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
-      if (meal.source === 'meal_plan' && 'meal_id' in meal) {
-        payload.meal_id = (meal as MealPlanMealToLog).meal_id;
-      }
+      const entry = await logMealMutation.mutateAsync(payload as Parameters<typeof logMealMutation.mutateAsync>[0]);
 
-      const response = await fetch('/api/consumption', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        const entry = await response.json();
-        // Replace optimistic entry with real one
-        setSummary((prev) => ({
-          ...prev,
-          entries: prev.entries.map((e) => (e.id === optimisticEntry.id ? entry : e)),
-        }));
-        updateMealLoggedStatus(meal.id, meal.source, true, entry.id, entry.consumed_at);
-
-        // Check if this meal has a meal_id (meaning it has ingredients we can extract)
-        // Trigger produce extraction modal for 800g tracking
-        const mealIdForProduce = entry.meal_id || ('meal_id' in meal ? (meal as MealPlanMealToLog).meal_id : null);
-        if (mealIdForProduce) {
-          // Check if meal has produce before showing modal
-          try {
-            const checkResponse = await fetch(`/api/consumption/extract-produce?meal_id=${mealIdForProduce}`);
-            if (checkResponse.ok) {
-              const checkData = await checkResponse.json();
-              if (checkData.hasProduce) {
-                setPendingProduceMealId(mealIdForProduce);
-                setPendingProduceMealName(meal.name);
-                setPendingProduceMealType(mealType);
-                setShowProduceModal(true);
-              }
+      // Check if this meal has a meal_id (meaning it has ingredients we can extract)
+      // Trigger produce extraction modal for 800g tracking
+      const mealIdForProduce = entry.meal_id || ('meal_id' in meal ? (meal as MealPlanMealToLog).meal_id : null);
+      if (mealIdForProduce) {
+        // Check if meal has produce before showing modal
+        try {
+          const checkResponse = await fetch(`/api/consumption/extract-produce?meal_id=${mealIdForProduce}`);
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            if (checkData.hasProduce) {
+              setPendingProduceMealId(mealIdForProduce);
+              setPendingProduceMealName(meal.name);
+              setPendingProduceMealType(mealType);
+              setShowProduceModal(true);
             }
-          } catch (e) {
-            // Silently fail - don't block the main logging flow
-            console.error('Error checking for produce:', e);
           }
+        } catch (e) {
+          // Silently fail - don't block the main logging flow
+          console.error('Error checking for produce:', e);
         }
-      } else {
-        // Revert on error
-        await refreshData();
       }
     } catch (error) {
+      // Mutation hook handles cache invalidation on error
       console.error('Error logging meal:', error);
-      await refreshData();
     }
   };
 
@@ -344,32 +298,15 @@ export default function LogMealClient({
     const entry = summary.entries.find((e) => e.id === entryId);
     if (!entry) return;
 
-    // Optimistic update
-    setSummary((prev) => ({
-      ...prev,
-      consumed: {
-        calories: prev.consumed.calories - entry.calories,
-        protein: prev.consumed.protein - entry.protein,
-        carbs: prev.consumed.carbs - entry.carbs,
-        fat: prev.consumed.fat - entry.fat,
-      },
-      entries: prev.entries.filter((e) => e.id !== entryId),
-      entry_count: prev.entry_count - 1,
-    }));
-
-    updateMealLoggedStatus(meal.id, meal.source, false);
+    // Apply optimistic updates to cache
+    optimisticallyRemoveEntry(queryClient, selectedDate, entryId);
+    updateMealLoggedStatusInCache(queryClient, selectedDate, meal.id, meal.source, false);
 
     try {
-      const response = await fetch(`/api/consumption/${entryId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        await refreshData();
-      }
+      await deleteEntryMutation.mutateAsync(entryId);
     } catch (error) {
+      // Mutation hook handles cache invalidation on error
       console.error('Error removing entry:', error);
-      await refreshData();
     }
   };
 
@@ -379,27 +316,25 @@ export default function LogMealClient({
     const entry = summary.entries.find((e) => e.id === entryId);
     if (!entry || entry.meal_type === newMealType) return;
 
-    // Optimistic update
-    setSummary((prev) => ({
-      ...prev,
-      entries: prev.entries.map((e) =>
-        e.id === entryId ? { ...e, meal_type: newMealType } : e
-      ),
-    }));
+    // Optimistic update to cache
+    queryClient.setQueryData<DailyConsumptionSummary>(
+      queryKeys.consumption.daily(selectedDate),
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          entries: old.entries.map((e) =>
+            e.id === entryId ? { ...e, meal_type: newMealType } : e
+          ),
+        };
+      }
+    );
 
     try {
-      const response = await fetch(`/api/consumption/${entryId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meal_type: newMealType }),
-      });
-
-      if (!response.ok) {
-        await refreshData();
-      }
+      await updateMealTypeMutation.mutateAsync({ entryId, mealType: newMealType });
     } catch (error) {
+      // Mutation hook handles cache invalidation on error
       console.error('Error moving entry:', error);
-      await refreshData();
     }
   };
 
@@ -438,135 +373,83 @@ export default function LogMealClient({
       updated_at: new Date().toISOString(),
     };
 
-    // Optimistically update fruit/veg progress
-    setSummary((prev) => {
-      const newSummary = {
-        ...prev,
-        consumed: {
-          calories: prev.consumed.calories + totalMacros.calories,
-          protein: prev.consumed.protein + totalMacros.protein,
-          carbs: prev.consumed.carbs + totalMacros.carbs,
-          fat: prev.consumed.fat + totalMacros.fat,
-        },
-        entries: [...prev.entries, optimisticEntry],
-        entry_count: prev.entry_count + 1,
-      };
-
-      // Update fruit/veg progress if applicable
-      if (grams && category && ['fruit', 'vegetable'].includes(category) && prev.fruitVeg) {
-        newSummary.fruitVeg = {
-          ...prev.fruitVeg,
-          currentGrams: prev.fruitVeg.currentGrams + grams,
-          percentage: Math.round(((prev.fruitVeg.currentGrams + grams) / prev.fruitVeg.goalGrams) * 100),
+    // Optimistically update cache including fruit/veg progress
+    queryClient.setQueryData<DailyConsumptionSummary>(
+      queryKeys.consumption.daily(selectedDate),
+      (prev) => {
+        if (!prev) return prev;
+        const newSummary = {
+          ...prev,
+          consumed: {
+            calories: prev.consumed.calories + totalMacros.calories,
+            protein: prev.consumed.protein + totalMacros.protein,
+            carbs: prev.consumed.carbs + totalMacros.carbs,
+            fat: prev.consumed.fat + totalMacros.fat,
+          },
+          entries: [...prev.entries, optimisticEntry],
+          entry_count: prev.entry_count + 1,
         };
-      }
 
-      return newSummary;
-    });
+        // Update fruit/veg progress if applicable
+        if (grams && category && ['fruit', 'vegetable'].includes(category) && prev.fruitVeg) {
+          newSummary.fruitVeg = {
+            ...prev.fruitVeg,
+            currentGrams: prev.fruitVeg.currentGrams + grams,
+            percentage: Math.round(((prev.fruitVeg.currentGrams + grams) / prev.fruitVeg.goalGrams) * 100),
+          };
+        }
+
+        return newSummary;
+      }
+    );
 
     setSelectedIngredient(null);
 
     try {
-      const response = await fetch('/api/consumption', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'ingredient',
-          ingredient_name: ingredient.name,
-          amount,
-          unit,
-          meal_type: mealType,
-          grams,
-          category,
-          ...totalMacros,
-          consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
-        }),
+      await logMealMutation.mutateAsync({
+        type: 'ingredient',
+        ingredient_name: ingredient.name,
+        amount,
+        unit,
+        meal_type: mealType,
+        grams,
+        category,
+        ...totalMacros,
+        consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
       });
-
-      if (response.ok) {
-        const entry = await response.json();
-        setSummary((prev) => ({
-          ...prev,
-          entries: prev.entries.map((e) => (e.id === optimisticEntry.id ? entry : e)),
-        }));
-        // Refresh to get updated frequent ingredients and accurate fruit/veg totals
-        await refreshData();
-      } else {
-        await refreshData();
-      }
+      // Mutation hook handles cache invalidation to refresh frequent ingredients
     } catch (error) {
+      // Mutation hook handles cache invalidation on error
       console.error('Error logging ingredient:', error);
-      await refreshData();
     }
   };
 
   // Repeat yesterday's meals
   const handleRepeatYesterday = async () => {
-    setLoading(true);
+    const yesterday = new Date(selectedDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
     try {
-      const yesterday = new Date(selectedDate);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      const response = await fetch('/api/consumption/repeat-day', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceDate: yesterdayStr,
-          targetDate: selectedDate,
-        }),
+      await repeatYesterdayMutation.mutateAsync({
+        sourceDate: yesterdayStr,
+        targetDate: selectedDate,
       });
-
-      if (response.ok) {
-        await refreshData();
-      }
+      // Mutation hook handles cache invalidation
     } catch (error) {
       console.error('Error repeating yesterday:', error);
     }
-    setLoading(false);
   };
 
   // Repeat a specific meal type from a previous day
   const handleRepeatMealType = async (mealType: MealType, sourceDate: string) => {
     try {
-      const response = await fetch('/api/consumption/repeat-meal-type', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mealType,
-          sourceDate,
-          targetDate: selectedDate,
-        }),
+      await repeatMealTypeMutation.mutateAsync({
+        mealType,
+        sourceDate,
+        targetDate: selectedDate,
       });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Optimistically update state with new entries
-        if (result.entries && result.entries.length > 0) {
-          const newEntries = result.entries as ConsumptionEntry[];
-          const totalMacros = newEntries.reduce(
-            (acc, e) => ({
-              calories: acc.calories + e.calories,
-              protein: acc.protein + e.protein,
-              carbs: acc.carbs + e.carbs,
-              fat: acc.fat + e.fat,
-            }),
-            { calories: 0, protein: 0, carbs: 0, fat: 0 }
-          );
-
-          setSummary((prev) => ({
-            ...prev,
-            consumed: {
-              calories: prev.consumed.calories + totalMacros.calories,
-              protein: prev.consumed.protein + totalMacros.protein,
-              carbs: prev.consumed.carbs + totalMacros.carbs,
-              fat: prev.consumed.fat + totalMacros.fat,
-            },
-            entries: [...prev.entries, ...newEntries],
-            entry_count: prev.entry_count + newEntries.length,
-          }));
-        }
-      }
+      // Mutation hook handles cache invalidation
     } catch (error) {
       console.error('Error repeating meal type:', error);
     }
@@ -590,40 +473,38 @@ export default function LogMealClient({
       fat: newMacros.fat - originalEntry.fat,
     };
 
-    // Optimistic update
-    setSummary((prev) => ({
-      ...prev,
-      consumed: {
-        calories: prev.consumed.calories + macroDelta.calories,
-        protein: prev.consumed.protein + macroDelta.protein,
-        carbs: prev.consumed.carbs + macroDelta.carbs,
-        fat: prev.consumed.fat + macroDelta.fat,
-      },
-      entries: prev.entries.map((e) =>
-        e.id === entryId
-          ? { ...e, amount: newAmount, ...newMacros, grams: newGrams ?? e.grams }
-          : e
-      ),
-    }));
+    // Optimistic update to cache
+    queryClient.setQueryData<DailyConsumptionSummary>(
+      queryKeys.consumption.daily(selectedDate),
+      (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          consumed: {
+            calories: prev.consumed.calories + macroDelta.calories,
+            protein: prev.consumed.protein + macroDelta.protein,
+            carbs: prev.consumed.carbs + macroDelta.carbs,
+            fat: prev.consumed.fat + macroDelta.fat,
+          },
+          entries: prev.entries.map((e) =>
+            e.id === entryId
+              ? { ...e, amount: newAmount, ...newMacros, grams: newGrams ?? e.grams }
+              : e
+          ),
+        };
+      }
+    );
 
     try {
-      const response = await fetch(`/api/consumption/${entryId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: newAmount,
-          ...newMacros,
-          grams: newGrams,
-        }),
+      await updateAmountMutation.mutateAsync({
+        entryId,
+        amount: newAmount,
+        ...newMacros,
+        grams: newGrams,
       });
-
-      if (!response.ok) {
-        // Revert on error
-        await refreshData();
-      }
     } catch (error) {
+      // Mutation hook handles cache invalidation on error
       console.error('Error updating entry amount:', error);
-      await refreshData();
     }
   };
 
@@ -631,39 +512,6 @@ export default function LogMealClient({
   const handleAddFromSection = (mealType: MealType) => {
     setAddingToMealType(mealType);
     setShowIngredientSearch(true);
-  };
-
-  // Helper to update meal logged status in available lists
-  const updateMealLoggedStatus = (
-    mealId: string,
-    source: string,
-    isLogged: boolean,
-    entryId?: string,
-    loggedAt?: string
-  ) => {
-    setAvailable((prev) => {
-      const updateList = (list: MealToLog[]) =>
-        list.map((m) =>
-          m.id === mealId ? { ...m, is_logged: isLogged, logged_entry_id: entryId, logged_at: loggedAt } : m
-        );
-
-      const updatePlanList = (list: MealPlanMealToLog[]) =>
-        list.map((m) =>
-          m.id === mealId ? { ...m, is_logged: isLogged, logged_entry_id: entryId, logged_at: loggedAt } : m
-        );
-
-      return {
-        ...prev,
-        from_todays_plan: source === 'meal_plan' ? updateList(prev.from_todays_plan) : prev.from_todays_plan,
-        from_week_plan: source === 'meal_plan' ? updateList(prev.from_week_plan) : prev.from_week_plan,
-        latest_plan_meals: source === 'meal_plan' ? updatePlanList(prev.latest_plan_meals || []) : (prev.latest_plan_meals || []),
-        custom_meals: source === 'custom_meal' ? updateList(prev.custom_meals) : prev.custom_meals,
-        quick_cook_meals: source === 'quick_cook' ? updateList(prev.quick_cook_meals) : prev.quick_cook_meals,
-        recent_meals: prev.recent_meals,
-        frequent_ingredients: prev.frequent_ingredients,
-        pinned_ingredients: prev.pinned_ingredients || [],
-      };
-    });
   };
 
   // Recalculate percentages when summary changes
@@ -1203,20 +1051,10 @@ export default function LogMealClient({
           onClose={() => setShowMealPhotoModal(false)}
           selectedDate={selectedDate}
           onMealLogged={(entry) => {
-            // Add the new entry to the summary optimistically
-            setSummary((prev) => ({
-              ...prev,
-              consumed: {
-                calories: prev.consumed.calories + entry.calories,
-                protein: prev.consumed.protein + entry.protein,
-                carbs: prev.consumed.carbs + entry.carbs,
-                fat: prev.consumed.fat + entry.fat,
-              },
-              entries: [...prev.entries, entry],
-              entry_count: prev.entry_count + 1,
-            }));
-            // Refresh data to get accurate totals
-            refreshData();
+            // Optimistically add the new entry to cache
+            optimisticallyAddEntry(queryClient, selectedDate, entry);
+            // Invalidate to get accurate totals from server
+            queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
           }}
         />
 
@@ -1235,26 +1073,30 @@ export default function LogMealClient({
             mealType={pendingProduceMealType}
             selectedDate={selectedDate}
             onIngredientsLogged={(entries) => {
-              // Add the new produce entries to the summary
+              // Optimistically add the new produce entries to cache
               if (entries.length > 0) {
                 const totalGrams = entries.reduce((sum, e) => sum + (e.grams || 0), 0);
-                setSummary((prev) => {
-                  const currentFruitVegGrams = prev.fruitVeg?.currentGrams || 0;
-                  const goalGrams = prev.fruitVeg?.goalGrams || 800;
-                  return {
-                    ...prev,
-                    entries: [...prev.entries, ...entries],
-                    entry_count: prev.entry_count + entries.length,
-                    fruitVeg: prev.fruitVeg ? {
-                      ...prev.fruitVeg,
-                      currentGrams: currentFruitVegGrams + totalGrams,
-                      percentage: Math.round(((currentFruitVegGrams + totalGrams) / goalGrams) * 100),
-                    } : undefined,
-                  };
-                });
+                queryClient.setQueryData<DailyConsumptionSummary>(
+                  queryKeys.consumption.daily(selectedDate),
+                  (prev) => {
+                    if (!prev) return prev;
+                    const currentFruitVegGrams = prev.fruitVeg?.currentGrams || 0;
+                    const goalGrams = prev.fruitVeg?.goalGrams || 800;
+                    return {
+                      ...prev,
+                      entries: [...prev.entries, ...entries],
+                      entry_count: prev.entry_count + entries.length,
+                      fruitVeg: prev.fruitVeg ? {
+                        ...prev.fruitVeg,
+                        currentGrams: currentFruitVegGrams + totalGrams,
+                        percentage: Math.round(((currentFruitVegGrams + totalGrams) / goalGrams) * 100),
+                      } : undefined,
+                    };
+                  }
+                );
               }
-              // Refresh to get accurate totals
-              refreshData();
+              // Invalidate to get accurate totals from server
+              queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
             }}
           />
         )}

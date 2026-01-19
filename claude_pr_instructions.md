@@ -50,6 +50,14 @@ Since meal plan generation is a critical, long-running process (~5 minutes):
 - Will existing in-progress jobs be affected?
 - Is the client-side polling logic preserved?
 
+### Data Fetching Review
+
+Check that client-side data fetching follows our React Query patterns:
+- [ ] **No manual fetch+useState**: Data that needs to stay in sync should use React Query hooks, not `fetch()` + `useState()`
+- [ ] **Query keys defined**: New queries should add keys to `src/lib/queryKeys.ts`
+- [ ] **Cache invalidation**: Mutations should invalidate related queries in `onSuccess` to keep UI updated
+- [ ] **Hook location**: Query/mutation hooks should live in `src/hooks/queries/`
+
 ### Specific Feedback
 
 List specific issues, suggestions, or questions about particular lines of code. Reference file paths and line numbers.
@@ -76,6 +84,7 @@ Choose one:
 - Controlled component pattern for reusable UI (`value`/`onChange` props)
 - Server-side meal plan generation via Inngest (no client orchestration)
 - Migrations in `supabase/migrations/` - never push directly to production
+- **React Query for data fetching** - All client-side data should use TanStack Query hooks (see `src/hooks/queries/`)
 
 ### Files to Pay Extra Attention To
 - `supabase/migrations/**` - Database changes
