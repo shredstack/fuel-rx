@@ -7,7 +7,6 @@ import type { OnboardingData } from '@/lib/types'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { usePlatform } from '@/hooks/usePlatform'
 import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DEFAULT_SELECTED_MEAL_TYPES } from '@/lib/types'
-import HouseholdServingsEditor from '@/components/HouseholdServingsEditor'
 import MacrosEditor from '@/components/MacrosEditor'
 import DietaryPrefsEditor from '@/components/DietaryPrefsEditor'
 import MealTypesSelector from '@/components/MealTypesSelector'
@@ -17,9 +16,10 @@ import PrepStyleSelector from '@/components/PrepStyleSelector'
 import MealComplexityEditor from '@/components/MealComplexityEditor'
 import IngredientVarietyEditor from '@/components/IngredientVarietyEditor'
 import BasicInfoEditor from '@/components/BasicInfoEditor'
+import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import Logo from '@/components/Logo'
 
-const STEPS = ['basics', 'macros', 'meal_types', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
+const STEPS = ['basics', 'macros', 'meal_types', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'theme'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -52,6 +52,8 @@ export default function OnboardingPage() {
     household_servings: { ...DEFAULT_HOUSEHOLD_SERVINGS_PREFS },
     profile_photo_url: null,
   })
+  const [themeSelection, setThemeSelection] = useState<ThemeSelection>({ type: 'surprise' })
+  const [showSkipModal, setShowSkipModal] = useState(false)
 
   // Auto-calculate calories when macros change
   useEffect(() => {
@@ -85,6 +87,17 @@ export default function OnboardingPage() {
     }
   }
 
+  // Track if user skipped to theme step (used to save defaults on submit)
+  const [skippedToTheme, setSkippedToTheme] = useState(false)
+
+  const handleSkip = () => {
+    // Close modal and jump directly to theme selection step
+    // Defaults will be saved when user clicks "Generate My First Plan"
+    setShowSkipModal(false)
+    setSkippedToTheme(true)
+    setCurrentStep('theme')
+  }
+
   const handleSubmit = async () => {
     setLoading(true)
     setError(null)
@@ -95,37 +108,51 @@ export default function OnboardingPage() {
       return
     }
 
-    // Calculate legacy meals_per_day for backward compatibility
-    const legacyMealsPerDay = Math.min(6, Math.max(3, formData.selected_meal_types.length + formData.snack_count)) as 3 | 4 | 5 | 6
-    // Check if workout meals are included
-    const includeWorkoutMeals = formData.selected_meal_types.includes('pre_workout') || formData.selected_meal_types.includes('post_workout')
+    // If user skipped to theme, save defaults; otherwise save their customized preferences
+    const dataToSave = skippedToTheme ? {
+      target_protein: 150,
+      target_carbs: 200,
+      target_fat: 70,
+      target_calories: 2000,
+      dietary_prefs: ['no_restrictions'],
+      selected_meal_types: DEFAULT_SELECTED_MEAL_TYPES,
+      snack_count: 1,
+      meals_per_day: Math.min(6, Math.max(3, DEFAULT_SELECTED_MEAL_TYPES.length + 1)) as 3 | 4 | 5 | 6,
+      include_workout_meals: DEFAULT_SELECTED_MEAL_TYPES.includes('pre_workout') || DEFAULT_SELECTED_MEAL_TYPES.includes('post_workout'),
+      prep_time: 30,
+      meal_consistency_prefs: DEFAULT_MEAL_CONSISTENCY_PREFS,
+      ingredient_variety_prefs: DEFAULT_INGREDIENT_VARIETY_PREFS,
+      prep_style: DEFAULT_PREP_STYLE,
+      breakfast_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.breakfast,
+      lunch_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.lunch,
+      dinner_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.dinner,
+      household_servings: DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+    } : {
+      name: formData.name || null,
+      weight: formData.weight,
+      target_protein: formData.target_protein,
+      target_carbs: formData.target_carbs,
+      target_fat: formData.target_fat,
+      target_calories: formData.target_calories,
+      dietary_prefs: formData.dietary_prefs,
+      selected_meal_types: formData.selected_meal_types,
+      snack_count: formData.snack_count,
+      meals_per_day: Math.min(6, Math.max(3, formData.selected_meal_types.length + formData.snack_count)) as 3 | 4 | 5 | 6,
+      include_workout_meals: formData.selected_meal_types.includes('pre_workout') || formData.selected_meal_types.includes('post_workout'),
+      prep_time: formData.prep_time,
+      meal_consistency_prefs: formData.meal_consistency_prefs,
+      ingredient_variety_prefs: formData.ingredient_variety_prefs,
+      prep_style: formData.prep_style,
+      breakfast_complexity: formData.breakfast_complexity,
+      lunch_complexity: formData.lunch_complexity,
+      dinner_complexity: formData.dinner_complexity,
+      household_servings: formData.household_servings,
+      profile_photo_url: formData.profile_photo_url,
+    }
 
     const { error: updateError } = await supabase
       .from('user_profiles')
-      .update({
-        name: formData.name || null,
-        weight: formData.weight,
-        target_protein: formData.target_protein,
-        target_carbs: formData.target_carbs,
-        target_fat: formData.target_fat,
-        target_calories: formData.target_calories,
-        dietary_prefs: formData.dietary_prefs,
-        // New fields
-        selected_meal_types: formData.selected_meal_types,
-        snack_count: formData.snack_count,
-        // Legacy fields for backward compatibility
-        meals_per_day: legacyMealsPerDay,
-        include_workout_meals: includeWorkoutMeals,
-        prep_time: formData.prep_time,
-        meal_consistency_prefs: formData.meal_consistency_prefs,
-        ingredient_variety_prefs: formData.ingredient_variety_prefs,
-        prep_style: formData.prep_style,
-        breakfast_complexity: formData.breakfast_complexity,
-        lunch_complexity: formData.lunch_complexity,
-        dinner_complexity: formData.dinner_complexity,
-        household_servings: formData.household_servings,
-        profile_photo_url: formData.profile_photo_url,
-      })
+      .update(dataToSave)
       .eq('id', user.id)
 
     if (updateError) {
@@ -147,11 +174,16 @@ export default function OnboardingPage() {
       return
     }
 
-    // Start first meal plan generation
+    // Convert ThemeSelection to API format
+    const themeForApi = themeSelection.type === 'specific'
+      ? themeSelection.themeId
+      : themeSelection.type
+
+    // Start first meal plan generation with user's selected theme
     const generateResponse = await fetch('/api/generate-meal-plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ themeSelection: 'surprise' }),
+      body: JSON.stringify({ themeSelection: themeForApi }),
     })
 
     if (generateResponse.ok) {
@@ -403,32 +435,25 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 8: Household Servings */}
-          {currentStep === 'household' && (
+          {/* Step 8: Theme Selection */}
+          {currentStep === 'theme' && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-gray-900">Feeding Your Household</h3>
+              <h3 className="text-xl font-semibold text-gray-900">Choose Your First Meal Plan Theme</h3>
               <p className="text-gray-600">
-                Are you also cooking for family members? Configure how many additional people you&apos;re feeding at each meal.
-                Your macros remain the priority &mdash; we&apos;ll scale quantities accordingly.
+                Pick a cuisine theme for your first meal plan. We&apos;ll automatically generate it for you
+                once you complete setup!
               </p>
 
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600">
-                  <strong>Note:</strong> Children are counted as 0.6x an adult portion. You (the athlete) are automatically counted as 1 adult.
-                </p>
-              </div>
-
-              {/* Use the shared component */}
-              <HouseholdServingsEditor
-                servings={formData.household_servings}
-                onChange={(newServings) => setFormData(prev => ({ ...prev, household_servings: newServings }))}
-                showQuickActions={true}
+              <ThemeSelector
+                value={themeSelection}
+                onChange={setThemeSelection}
               />
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
-                  <strong>Tip:</strong> You can skip this step if you&apos;re only cooking for yourself.
-                  This is completely optional and can be configured later in settings.
+                  <strong>What happens next:</strong> After you click &quot;Generate My First Plan&quot;, we&apos;ll create
+                  a personalized 7-day meal plan based on your preferences. This takes about 5 minutes &mdash;
+                  you can navigate away and we&apos;ll let you know when it&apos;s ready!
                 </p>
               </div>
             </div>
@@ -448,7 +473,7 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            {currentStep !== 'household' ? (
+            {currentStep !== 'theme' ? (
               <button
                 type="button"
                 onClick={handleNext}
@@ -463,12 +488,77 @@ export default function OnboardingPage() {
                 disabled={loading}
                 className="btn-primary"
               >
-                {loading ? 'Saving...' : 'Complete Setup'}
+                {loading ? 'Generating...' : 'Generate My First Plan'}
               </button>
             )}
           </div>
+
+          {/* Skip onboarding link - only show on first step */}
+          {currentStep === 'basics' && (
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setShowSkipModal(true)}
+                className="text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                Skip for now and use defaults
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Skip Confirmation Modal */}
+      {showSkipModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Skip to Theme Selection?</h3>
+            <p className="text-gray-600 mb-4">
+              No problem! We&apos;ll use our recommended defaults for your profile, and you can choose a theme for your first meal plan.
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h4 className="font-medium text-gray-900 mb-3">Default Settings</h4>
+              <ul className="text-sm text-gray-600 space-y-2">
+                <li><strong>Macros:</strong> 150g protein, 200g carbs, 70g fat (2,000 cal)</li>
+                <li><strong>Meals:</strong> Breakfast, lunch, dinner + pre/post-workout + 1 snack</li>
+                <li><strong>Prep Style:</strong> Day-of cooking (fresh meals daily)</li>
+                <li><strong>Complexity:</strong> Minimal prep breakfast, quick assembly lunch, full recipe dinner</li>
+                <li><strong>Variety:</strong> Consistent meals during the day, varied dinners</li>
+              </ul>
+            </div>
+
+            <div className="bg-primary-50 rounded-lg p-4 mb-6">
+              <h4 className="font-medium text-primary-900 mb-2">Customize anytime in your Profile</h4>
+              <ul className="text-sm text-primary-800 space-y-1">
+                <li>• Daily macro targets</li>
+                <li>• Meal types and snack count</li>
+                <li>• Dietary preferences</li>
+                <li>• Prep style and complexity</li>
+                <li>• Ingredient variety</li>
+                <li>• Household servings</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSkipModal(false)}
+                className="flex-1 btn-secondary"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="flex-1 btn-primary"
+              >
+                Choose Theme
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

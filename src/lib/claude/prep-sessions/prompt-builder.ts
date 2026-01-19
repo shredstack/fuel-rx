@@ -40,7 +40,7 @@ export function buildPrepSessionsPrompt(
 
   // Get meal complexities
   const breakfastComplexity = (profile.breakfast_complexity || 'minimal_prep') as MealComplexity;
-  const lunchComplexity = (profile.lunch_complexity || 'minimal_prep') as MealComplexity;
+  const lunchComplexity = (profile.lunch_complexity || 'quick_assembly') as MealComplexity;
   const dinnerComplexity = (profile.dinner_complexity || 'full_recipe') as MealComplexity;
 
   // Calculate week dates for prep_for_date

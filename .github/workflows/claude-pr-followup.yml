@@ -1,0 +1,194 @@
+name: Claude PR Follow-up
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  respond:
+    # Only run on PR comments that mention @claude
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get PR info
+          PR_DATA=$(gh pr view ${{ github.event.issue.number }} --json headRefName,baseRefName,title,body,headRefOid)
+          echo "head_ref=$(echo $PR_DATA | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "base_ref=$(echo $PR_DATA | jq -r '.baseRefName')" >> $GITHUB_OUTPUT
+          echo "title=$(echo $PR_DATA | jq -r '.title')" >> $GITHUB_OUTPUT
+          echo "head_sha=$(echo $PR_DATA | jq -r '.headRefOid')" >> $GITHUB_OUTPUT
+
+          # Save PR body to file (may contain special characters)
+          echo $PR_DATA | jq -r '.body' > pr_body.txt
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ steps.pr.outputs.base_ref }}
+          git fetch origin ${{ steps.pr.outputs.head_ref }}
+          git diff origin/${{ steps.pr.outputs.base_ref }}...origin/${{ steps.pr.outputs.head_ref }} > pr_diff.txt
+          git diff --name-only origin/${{ steps.pr.outputs.base_ref }}...origin/${{ steps.pr.outputs.head_ref }} > changed_files.txt
+
+      - name: Get conversation context
+        id: conversation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get all comments on this PR
+          gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
+            --jq '.[] | "**\(.user.login)** (\(.created_at)):\n\(.body)\n---"' > conversation.txt
+
+      - name: Prepare follow-up context
+        run: |
+          # Read project files
+          PR_INSTRUCTIONS=$(cat claude_pr_instructions.md)
+          CLAUDE_MD=$(cat CLAUDE.md)
+          DIFF_CONTENT=$(head -c 100000 pr_diff.txt)
+          CHANGED_FILES=$(cat changed_files.txt)
+          CONVERSATION=$(cat conversation.txt)
+          PR_BODY=$(cat pr_body.txt)
+
+          # Create the prompt
+          cat > followup_prompt.txt << 'PROMPT_EOF'
+          You are helping with PR #${{ github.event.issue.number }}: "${{ steps.pr.outputs.title }}"
+
+          Someone has asked you a follow-up question about this PR.
+
+          ## The Question
+          ${{ github.event.comment.body }}
+
+          ## PR Description
+          PROMPT_EOF
+
+          echo "$PR_BODY" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+
+          ## Changed Files
+          PROMPT_EOF
+
+          echo "$CHANGED_FILES" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+
+          ## Diff
+          ```diff
+          PROMPT_EOF
+
+          echo "$DIFF_CONTENT" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+          ```
+
+          ## Previous Conversation
+          PROMPT_EOF
+
+          echo "$CONVERSATION" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+
+          ## Project Context (from CLAUDE.md)
+          PROMPT_EOF
+
+          echo "$CLAUDE_MD" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+
+          ## Review Guidelines (from claude_pr_instructions.md)
+          PROMPT_EOF
+
+          echo "$PR_INSTRUCTIONS" >> followup_prompt.txt
+
+          cat >> followup_prompt.txt << 'PROMPT_EOF'
+
+          Please answer the question helpfully. Reference specific files and line numbers when relevant.
+          If the question asks about code that isn't in this PR, let them know you can only see the PR diff.
+          Keep your response focused and concise.
+          PROMPT_EOF
+
+      - name: Add reaction to show processing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='eyes' || true
+
+      - name: Run Claude response
+        id: claude_response
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PROMPT=$(cat followup_prompt.txt)
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4096,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": $prompt
+                  }
+                ]
+              }')")
+
+          ANSWER=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: Could not generate response"')
+          echo "$ANSWER" > response_output.txt
+
+      - name: Post response
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const response = fs.readFileSync('response_output.txt', 'utf8');
+
+            const body = `${response}
+
+            ---
+            *Responding to @${{ github.event.comment.user.login }}'s question. Mention \`@claude\` to ask more questions.*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Add completion reaction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='rocket' || true
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Sorry, I couldn't process that question. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`
+            });

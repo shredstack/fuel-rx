@@ -44,6 +44,7 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
   - [Before App Store Submission](#before-app-store-submission)
   - [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
   - [Paywall - AI Feature Access Logic](#paywall---ai-feature-access-logic)
+  - [Steps to change subscription prices](#steps-to-change-subscription-prices)
 - [Project Structure](#project-structure)
 - [Deployment](#deployment)
   - [Deploy to Vercel](#deploy-to-vercel)
@@ -520,6 +521,27 @@ To ensure my personal Anthropic bill doesn't get out of control, we've implement
 | Override (VIP) | N/A | ✅ Yes | ✅ Unlimited |
 
 **AI Features include:** Cooking Assistant, Snap-a-Meal photo analysis, Quick Cook meal generation, and Prep Mode generation.
+
+## Steps to change subscription prices
+
+1. App Store Connect (iOS)
+- Go to App Store Connect → Your App → Subscriptions
+- You can either:
+  - Edit existing price: Apple will notify existing subscribers and give them a chance to opt-out
+  - Create a new subscription tier: Existing subscribers keep their price, new subscribers pay more
+  - Apple requires you to notify users of price increases (they handle this automatically)
+2. Google Play Console (Android)
+- Go to Google Play Console → Your App → Monetization → Subscriptions
+- Edit the subscription price or create a new base plan
+- Google also handles notifying existing subscribers
+3. RevenueCat
+- RevenueCat pulls pricing from the app stores, so you don't need to change anything in RevenueCat itself
+- Your products configuration references product IDs, not prices, so no code changes needed
+- Prices will automatically reflect what's set in the app stores
+4. Important Considerations
+- Existing subscribers: Both Apple and Google have policies about grandfathering existing subscribers or requiring consent for price increases
+- Regional pricing: You may want to adjust prices across all regions
+- Testing: After changing prices, test the purchase flow in sandbox/test mode
 
 # Project Structure
 

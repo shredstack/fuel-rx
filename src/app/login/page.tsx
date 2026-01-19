@@ -13,6 +13,9 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showEmailNotConfirmed, setShowEmailNotConfirmed] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
   const searchParams = useSearchParams()
   const supabase = createClient()
 
@@ -31,6 +34,8 @@ function LoginForm() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setShowEmailNotConfirmed(false)
+    setResendSuccess(false)
     setLoading(true)
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -39,7 +44,12 @@ function LoginForm() {
     })
 
     if (error) {
-      setError(error.message)
+      // Check if this is an email not confirmed error
+      if (error.message.toLowerCase().includes('email not confirmed')) {
+        setShowEmailNotConfirmed(true)
+      } else {
+        setError(error.message)
+      }
       setLoading(false)
       return
     }
@@ -53,6 +63,33 @@ function LoginForm() {
 
     // Use window.location for a full page reload to ensure cookies are properly sent
     window.location.href = '/dashboard'
+  }
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      setError('Please enter your email address first')
+      return
+    }
+    setResending(true)
+    setResendSuccess(false)
+
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+
+      if (response.ok) {
+        setResendSuccess(true)
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setResending(false)
+    }
   }
 
   return (
@@ -76,6 +113,27 @@ function LoginForm() {
               {success && (
                 <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm">
                   {success}
+                </div>
+              )}
+              {resendSuccess && (
+                <div className="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm">
+                  A new verification email has been sent! Check your inbox (and spam folder).
+                </div>
+              )}
+              {showEmailNotConfirmed && (
+                <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-sm">
+                  <p className="font-medium mb-1">Email not verified</p>
+                  <p className="mb-2">
+                    Please check your inbox (and spam folder) for an email from fuelrx@shredstack.net and click the verification link.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resending}
+                    className="text-primary-600 hover:text-primary-700 font-medium underline"
+                  >
+                    {resending ? 'Sending...' : 'Resend verification email'}
+                  </button>
                 </div>
               )}
               {error && (
@@ -104,9 +162,14 @@ function LoginForm() {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
+                  <Link href="/forgot-password" className="text-sm text-primary-600 hover:text-primary-700">
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   id="password"
                   type="password"

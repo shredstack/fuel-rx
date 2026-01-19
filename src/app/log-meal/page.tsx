@@ -2,7 +2,13 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import LogMealClient from './LogMealClient';
-import { getDailyConsumptionByDateStr, getAvailableMealsToLogByDateStr } from '@/lib/consumption-service';
+import {
+  getDailyConsumptionByDateStr,
+  getAvailableMealsToLogByDateStr,
+  getPreviousEntriesByMealType,
+} from '@/lib/consumption-service';
+import { DEFAULT_SELECTED_MEAL_TYPES } from '@/lib/types';
+import type { SelectableMealType } from '@/lib/types';
 
 // Helper to get today's date string in user's timezone
 // Falls back to UTC if timezone detection fails
@@ -37,9 +43,19 @@ export default async function LogMealPage() {
   const userTimezone = headersList.get('x-user-timezone');
   const todayStr = getTodayDateString(userTimezone);
 
-  const [dailySummary, availableMeals] = await Promise.all([
+  // Get user's selected meal types
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('selected_meal_types')
+    .eq('id', user.id)
+    .single();
+
+  const userMealTypes: SelectableMealType[] = profile?.selected_meal_types || [...DEFAULT_SELECTED_MEAL_TYPES];
+
+  const [dailySummary, availableMeals, previousEntries] = await Promise.all([
     getDailyConsumptionByDateStr(user.id, todayStr),
     getAvailableMealsToLogByDateStr(user.id, todayStr),
+    getPreviousEntriesByMealType(user.id, todayStr, 7),
   ]);
 
   return (
@@ -47,6 +63,8 @@ export default async function LogMealPage() {
       initialDate={todayStr}
       initialSummary={dailySummary}
       initialAvailable={availableMeals}
+      initialPreviousEntries={previousEntries}
+      userMealTypes={userMealTypes}
     />
   );
 }

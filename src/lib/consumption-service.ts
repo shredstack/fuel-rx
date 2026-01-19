@@ -330,6 +330,167 @@ export async function updateConsumptionEntryMealType(
 }
 
 /**
+ * Update the amount and macros of a consumption log entry.
+ * Used for inline editing of ingredient amounts.
+ */
+export async function updateConsumptionEntryAmount(
+  entryId: string,
+  userId: string,
+  updates: {
+    amount?: number;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    grams?: number;
+  }
+): Promise<ConsumptionEntry> {
+  const supabase = await createClient();
+
+  const updateData: Record<string, number | undefined> = {};
+  if (updates.amount !== undefined) updateData.amount = updates.amount;
+  if (updates.calories !== undefined) updateData.calories = Math.round(updates.calories);
+  if (updates.protein !== undefined) updateData.protein = Math.round(updates.protein * 10) / 10;
+  if (updates.carbs !== undefined) updateData.carbs = Math.round(updates.carbs * 10) / 10;
+  if (updates.fat !== undefined) updateData.fat = Math.round(updates.fat * 10) / 10;
+  if (updates.grams !== undefined) updateData.grams = updates.grams;
+
+  const { data: entry, error } = await supabase
+    .from('meal_consumption_log')
+    .update(updateData)
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to update entry amount: ${error.message}`);
+  if (!entry) throw new Error('Entry not found');
+
+  return entry as ConsumptionEntry;
+}
+
+/**
+ * Get the most recent entries for each meal type, looking back up to a specified number of days.
+ * Used for "Log same as yesterday" feature per meal type section.
+ */
+export async function getPreviousEntriesByMealType(
+  userId: string,
+  beforeDate: string,
+  lookbackDays: number = 7
+): Promise<Record<MealType, { entries: ConsumptionEntry[]; sourceDate: string } | null>> {
+  const supabase = await createClient();
+
+  // Calculate the earliest date to look back to
+  const [year, month, day] = beforeDate.split('-').map(Number);
+  const beforeDateObj = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const earliestDate = new Date(beforeDateObj);
+  earliestDate.setUTCDate(earliestDate.getUTCDate() - lookbackDays);
+  const earliestDateStr = earliestDate.toISOString().split('T')[0];
+
+  // Fetch all entries within the lookback window, ordered by date descending
+  const { data: entries, error } = await supabase
+    .from('meal_consumption_log')
+    .select('*')
+    .eq('user_id', userId)
+    .lt('consumed_date', beforeDate)
+    .gte('consumed_date', earliestDateStr)
+    .order('consumed_date', { ascending: false })
+    .order('consumed_at', { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch previous entries: ${error.message}`);
+
+  // Group entries by meal type, keeping only the most recent date for each type
+  const mealTypes: MealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'snack', 'dinner'];
+  const result: Record<MealType, { entries: ConsumptionEntry[]; sourceDate: string } | null> = {
+    breakfast: null,
+    pre_workout: null,
+    lunch: null,
+    post_workout: null,
+    snack: null,
+    dinner: null,
+  };
+
+  for (const mealType of mealTypes) {
+    // Find entries for this meal type
+    const typeEntries = (entries || []).filter(e => e.meal_type === mealType);
+
+    if (typeEntries.length > 0) {
+      // Get the most recent date that has entries for this meal type
+      const mostRecentDate = typeEntries[0].consumed_date;
+
+      // Get all entries from that date for this meal type
+      const entriesFromDate = typeEntries.filter(e => e.consumed_date === mostRecentDate);
+
+      result[mealType] = {
+        entries: entriesFromDate as ConsumptionEntry[],
+        sourceDate: mostRecentDate,
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Copy all entries of a specific meal type from one date to another.
+ * Used for per-section "Log same as yesterday" feature.
+ */
+export async function repeatMealType(
+  userId: string,
+  mealType: MealType,
+  sourceDate: string,
+  targetDate: string
+): Promise<ConsumptionEntry[]> {
+  const supabase = await createClient();
+
+  // Fetch entries for the specific meal type from the source date
+  const { data: sourceEntries, error: fetchError } = await supabase
+    .from('meal_consumption_log')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('consumed_date', sourceDate)
+    .eq('meal_type', mealType);
+
+  if (fetchError) throw new Error(`Failed to fetch source entries: ${fetchError.message}`);
+
+  if (!sourceEntries || sourceEntries.length === 0) {
+    return [];
+  }
+
+  // Prepare entries for the target date
+  const newEntries = sourceEntries.map((entry) => ({
+    user_id: userId,
+    entry_type: entry.entry_type,
+    meal_plan_meal_id: entry.meal_plan_meal_id,
+    meal_id: entry.meal_id,
+    ingredient_name: entry.ingredient_name,
+    display_name: entry.display_name,
+    meal_type: entry.meal_type,
+    amount: entry.amount,
+    unit: entry.unit,
+    calories: entry.calories,
+    protein: entry.protein,
+    carbs: entry.carbs,
+    fat: entry.fat,
+    consumed_date: targetDate,
+    consumed_at: new Date().toISOString(),
+    notes: entry.notes,
+    grams: entry.grams,
+    ingredient_category: entry.ingredient_category,
+  }));
+
+  // Insert all new entries
+  const { data: inserted, error: insertError } = await supabase
+    .from('meal_consumption_log')
+    .insert(newEntries)
+    .select();
+
+  if (insertError) throw new Error(`Failed to copy entries: ${insertError.message}`);
+
+  return (inserted || []) as ConsumptionEntry[];
+}
+
+/**
  * Get daily consumption summary with progress toward targets.
  */
 export async function getDailyConsumption(userId: string, date: Date): Promise<DailyConsumptionSummary> {

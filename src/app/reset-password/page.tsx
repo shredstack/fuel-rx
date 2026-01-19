@@ -1,21 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Logo from '@/components/Logo'
 import { KeyboardAwareView } from '@/components/KeyboardAwareView'
 
-export default function SignupPage() {
-  const [email, setEmail] = useState('')
+function ResetPasswordForm() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const [resending, setResending] = useState(false)
-  const [resendSuccess, setResendSuccess] = useState(false)
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token')
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
@@ -29,26 +29,30 @@ export default function SignupPage() {
       return
     }
 
+    if (!token) {
+      setError('Invalid reset link. Please request a new password reset.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const response = await fetch('/api/auth/signup', {
+      const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ token, password }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || 'Failed to create account')
+        setError(data.error || 'Failed to reset password')
         setLoading(false)
         return
       }
 
-      // Show success message - user needs to verify email before signing in
       setSuccess(true)
     } catch {
       setError('An unexpected error occurred')
@@ -57,27 +61,31 @@ export default function SignupPage() {
     }
   }
 
-  const handleResendVerification = async () => {
-    setResending(true)
-    setResendSuccess(false)
+  if (!token) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <Link href="/">
+              <Logo size="xl" />
+            </Link>
+          </div>
 
-    try {
-      const response = await fetch('/api/auth/resend-verification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      })
+          <div className="card text-center">
+            <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-2">Invalid Reset Link</h2>
+              <p className="text-sm">
+                This password reset link is invalid. Please request a new one.
+              </p>
+            </div>
 
-      if (response.ok) {
-        setResendSuccess(true)
-      }
-    } catch {
-      // Silently fail - we don't want to reveal if email exists
-    } finally {
-      setResending(false)
-    }
+            <Link href="/forgot-password" className="btn-primary w-full inline-block text-center">
+              Request New Reset Link
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (success) {
@@ -92,31 +100,15 @@ export default function SignupPage() {
 
           <div className="card text-center">
             <div className="bg-green-50 text-green-700 p-4 rounded-lg mb-6">
-              <h2 className="text-xl font-bold mb-2">Check your email!</h2>
+              <h2 className="text-xl font-bold mb-2">Password Reset!</h2>
               <p className="text-sm">
-                We&apos;ve sent a verification link to <strong>{email}</strong>.
-                Please click the link in your email to verify your account, then sign in.
-                <strong> If not in your inbox, check your spam!</strong>
+                Your password has been successfully reset. You can now sign in with your new password.
               </p>
             </div>
 
-            {resendSuccess && (
-              <div className="bg-blue-50 text-blue-700 p-3 rounded-lg mb-4 text-sm">
-                A new verification email has been sent!
-              </div>
-            )}
-
-            <Link href="/login" className="btn-primary w-full inline-block text-center mb-4">
-              Go to Sign In
+            <Link href="/login" className="btn-primary w-full inline-block text-center">
+              Sign In
             </Link>
-
-            <button
-              onClick={handleResendVerification}
-              disabled={resending}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-            >
-              {resending ? 'Sending...' : "Didn't receive the email? Resend verification"}
-            </button>
           </div>
         </div>
       </div>
@@ -128,19 +120,19 @@ export default function SignupPage() {
       <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <Link href="/" className="text-3xl font-bold text-primary-600">
-              Coach Hill&apos;s FuelRx
+            <Link href="/">
+              <Logo size="xl" />
             </Link>
             <h2 className="mt-6 text-2xl font-bold text-gray-900">
-              Create your account
+              Set new password
             </h2>
             <p className="mt-2 text-gray-600">
-              Start planning meals that fuel your training
+              Enter your new password below
             </p>
           </div>
 
           <div className="card">
-            <form onSubmit={handleSignup} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
                 <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
                   {error}
@@ -148,27 +140,8 @@ export default function SignupPage() {
               )}
 
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-field"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
+                  New password
                 </label>
                 <input
                   id="password"
@@ -184,7 +157,7 @@ export default function SignupPage() {
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm password
+                  Confirm new password
                 </label>
                 <input
                   id="confirmPassword"
@@ -203,21 +176,24 @@ export default function SignupPage() {
                 disabled={loading}
                 className="btn-primary w-full"
               >
-                {loading ? 'Creating account...' : 'Create account'}
+                {loading ? 'Resetting...' : 'Reset password'}
               </button>
             </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-gray-600">
-                Already have an account?{' '}
-                <Link href="/login" className="text-primary-600 hover:text-primary-700 font-medium">
-                  Sign in
-                </Link>
-              </p>
-            </div>
           </div>
         </div>
       </div>
     </KeyboardAwareView>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

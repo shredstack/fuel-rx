@@ -167,16 +167,16 @@ export interface MealComplexityPrefs {
 
 export const DEFAULT_MEAL_COMPLEXITY_PREFS: MealComplexityPrefs = {
   breakfast: 'minimal_prep',
-  lunch: 'minimal_prep',
+  lunch: 'quick_assembly',
   dinner: 'full_recipe',
 };
 
 export const DEFAULT_MEAL_CONSISTENCY_PREFS: MealConsistencyPrefs = {
-  breakfast: 'varied',
+  breakfast: 'consistent',
   pre_workout: 'consistent',
-  lunch: 'varied',
+  lunch: 'consistent',
   post_workout: 'consistent',
-  snack: 'varied',
+  snack: 'consistent',
   dinner: 'varied',
 };
 
@@ -193,7 +193,7 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
 export type SelectableMealType = 'breakfast' | 'pre_workout' | 'lunch' | 'post_workout' | 'dinner';
 
 // Default selected meal types for new users
-export const DEFAULT_SELECTED_MEAL_TYPES: SelectableMealType[] = ['breakfast', 'lunch', 'dinner'];
+export const DEFAULT_SELECTED_MEAL_TYPES: SelectableMealType[] = ['breakfast', 'pre_workout', 'lunch', 'post_workout', 'dinner'];
 
 export interface UserProfile {
   id: string;
