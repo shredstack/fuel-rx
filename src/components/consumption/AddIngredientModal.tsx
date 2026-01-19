@@ -41,6 +41,13 @@ export default function AddIngredientModal({
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
   const [barcodeEditedName, setBarcodeEditedName] = useState<string>('');
+  const [barcodeEditingMacros, setBarcodeEditingMacros] = useState(false);
+  const [barcodeEditedMacros, setBarcodeEditedMacros] = useState({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  });
 
   // Manual entry state
   const [manualForm, setManualForm] = useState({
@@ -94,6 +101,8 @@ export default function AddIngredientModal({
       setBarcodeProduct(null);
       setBarcodeError(null);
       setBarcodeEditedName('');
+      setBarcodeEditingMacros(false);
+      setBarcodeEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
       setManualForm({
         name: '',
         category: 'other',
@@ -123,6 +132,14 @@ export default function AddIngredientModal({
         // Initialize editable name with brand + product name
         const initialName = data.brand ? `${data.brand} ${data.name}` : data.name;
         setBarcodeEditedName(initialName);
+        // Initialize editable macros with scanned values
+        setBarcodeEditedMacros({
+          calories: data.calories,
+          protein: data.protein,
+          carbs: data.carbs,
+          fat: data.fat,
+        });
+        setBarcodeEditingMacros(false);
       } else {
         setBarcodeError('Product not found. Try adding it manually.');
       }
@@ -137,7 +154,7 @@ export default function AddIngredientModal({
     if (!barcodeProduct || !barcodeEditedName.trim()) return;
 
     // Save the barcode product as a user-added ingredient
-    // Use the user-edited name (which defaults to brand + product name)
+    // Use the user-edited name and macros (which default to scanned values)
     try {
       const response = await fetch('/api/ingredients/user-added', {
         method: 'POST',
@@ -146,10 +163,10 @@ export default function AddIngredientModal({
           name: barcodeEditedName.trim(),
           serving_size: barcodeProduct.serving_size || 1,
           serving_unit: barcodeProduct.serving_unit || 'serving',
-          calories: barcodeProduct.calories,
-          protein: barcodeProduct.protein,
-          carbs: barcodeProduct.carbs,
-          fat: barcodeProduct.fat,
+          calories: barcodeEditedMacros.calories,
+          protein: barcodeEditedMacros.protein,
+          carbs: barcodeEditedMacros.carbs,
+          fat: barcodeEditedMacros.fat,
           barcode: barcodeProduct.barcode,
         }),
       });
@@ -411,32 +428,87 @@ export default function AddIngredientModal({
                       </p>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-                      <div className="bg-white rounded p-2">
-                        <p className="text-lg font-semibold text-gray-900">
-                          {barcodeProduct.calories}
-                        </p>
-                        <p className="text-xs text-gray-500">cal</p>
+                    {barcodeEditingMacros ? (
+                      <div className="mt-4">
+                        <div className="grid grid-cols-4 gap-2">
+                          <MacroInput
+                            macroType="calories"
+                            value={barcodeEditedMacros.calories}
+                            onChange={(val) =>
+                              setBarcodeEditedMacros((prev) => ({ ...prev, calories: val }))
+                            }
+                            size="sm"
+                          />
+                          <MacroInput
+                            macroType="protein"
+                            value={barcodeEditedMacros.protein}
+                            onChange={(val) =>
+                              setBarcodeEditedMacros((prev) => ({ ...prev, protein: val }))
+                            }
+                            size="sm"
+                          />
+                          <MacroInput
+                            macroType="carbs"
+                            value={barcodeEditedMacros.carbs}
+                            onChange={(val) =>
+                              setBarcodeEditedMacros((prev) => ({ ...prev, carbs: val }))
+                            }
+                            size="sm"
+                          />
+                          <MacroInput
+                            macroType="fat"
+                            value={barcodeEditedMacros.fat}
+                            onChange={(val) =>
+                              setBarcodeEditedMacros((prev) => ({ ...prev, fat: val }))
+                            }
+                            size="sm"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setBarcodeEditingMacros(false)}
+                          className="mt-2 text-sm text-gray-500 hover:text-gray-700 underline w-full text-center"
+                        >
+                          Done editing
+                        </button>
                       </div>
-                      <div className="bg-white rounded p-2">
-                        <p className="text-lg font-semibold text-blue-600">
-                          {barcodeProduct.protein}g
-                        </p>
-                        <p className="text-xs text-gray-500">protein</p>
+                    ) : (
+                      <div className="mt-4">
+                        <div className="grid grid-cols-4 gap-2 text-center">
+                          <div className="bg-white rounded p-2">
+                            <p className="text-lg font-semibold text-gray-900">
+                              {barcodeEditedMacros.calories}
+                            </p>
+                            <p className="text-xs text-gray-500">cal</p>
+                          </div>
+                          <div className="bg-white rounded p-2">
+                            <p className="text-lg font-semibold text-blue-600">
+                              {barcodeEditedMacros.protein}g
+                            </p>
+                            <p className="text-xs text-gray-500">protein</p>
+                          </div>
+                          <div className="bg-white rounded p-2">
+                            <p className="text-lg font-semibold text-green-600">
+                              {barcodeEditedMacros.carbs}g
+                            </p>
+                            <p className="text-xs text-gray-500">carbs</p>
+                          </div>
+                          <div className="bg-white rounded p-2">
+                            <p className="text-lg font-semibold text-amber-600">
+                              {barcodeEditedMacros.fat}g
+                            </p>
+                            <p className="text-xs text-gray-500">fat</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setBarcodeEditingMacros(true)}
+                          className="mt-2 text-sm text-primary-600 hover:text-primary-700 underline w-full text-center"
+                        >
+                          Edit nutrition values
+                        </button>
                       </div>
-                      <div className="bg-white rounded p-2">
-                        <p className="text-lg font-semibold text-green-600">
-                          {barcodeProduct.carbs}g
-                        </p>
-                        <p className="text-xs text-gray-500">carbs</p>
-                      </div>
-                      <div className="bg-white rounded p-2">
-                        <p className="text-lg font-semibold text-amber-600">
-                          {barcodeProduct.fat}g
-                        </p>
-                        <p className="text-xs text-gray-500">fat</p>
-                      </div>
-                    </div>
+                    )}
 
                     <p className="text-sm text-gray-500 text-center mt-3">
                       Per {barcodeProduct.serving_size} {barcodeProduct.serving_unit}
@@ -449,6 +521,8 @@ export default function AddIngredientModal({
                         setBarcodeProduct(null);
                         setBarcodeError(null);
                         setBarcodeEditedName('');
+                        setBarcodeEditingMacros(false);
+                        setBarcodeEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
                       }}
                       className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
                     >
