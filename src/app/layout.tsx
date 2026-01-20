@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { QueryProvider } from '@/providers/QueryProvider'
+import { RealtimeProvider } from '@/providers/RealtimeProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -29,9 +30,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <QueryProvider>
-          <main className="min-h-screen bg-gray-50">
-            {children}
-          </main>
+          <RealtimeProvider>
+            <main className="min-h-screen bg-gray-50">
+              {children}
+            </main>
+          </RealtimeProvider>
         </QueryProvider>
       </body>
     </html>

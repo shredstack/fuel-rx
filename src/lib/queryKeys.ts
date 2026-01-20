@@ -54,4 +54,10 @@ export const queryKeys = {
     search: (query: string) => ['ingredients', 'search', query] as const,
     frequent: () => ['ingredients', 'frequent'] as const,
   },
+
+  // Grocery staples
+  groceryStaples: {
+    all: ['grocery-staples'] as const,
+    list: (frequency?: string) => ['grocery-staples', 'list', frequency] as const,
+  },
 } as const;
