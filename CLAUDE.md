@@ -85,6 +85,65 @@ export function useUpdateMyData() {
 - Use optimistic updates for instant feedback on user actions (see `useSocialFeed.ts` for examples)
 - For polling, use `refetchInterval` that stops when done (see `useJobStatus.ts`)
 
+### Supabase Realtime for Cross-Device Sync
+
+We use Supabase Realtime to keep data synchronized across devices. When a user makes a change on one device, other devices automatically see the update without requiring a manual refresh.
+
+**Key files:**
+- `src/providers/RealtimeProvider.tsx` - Sets up all Realtime subscriptions at the app level
+- `src/hooks/useRealtimeSubscription.ts` - Reusable hook for component-level subscriptions
+
+**Currently subscribed tables:**
+- `meal_consumption_log` - Consumption tracking
+- `meal_plans` - Meal plan data
+- `meal_plan_meals` - Individual meals within plans
+- `social_feed_posts` - Community posts
+- `user_grocery_staples` - Grocery staples
+- `ingredients` - Admin ingredient updates (nutrition info, etc.)
+
+**When to add Realtime subscriptions:**
+
+Add a new Realtime subscription when:
+1. Data can be modified from multiple devices (e.g., logging meals from phone and desktop)
+2. Data can be modified by server processes (e.g., meal plan generation via Inngest)
+3. Data is shared between users (e.g., social feed posts)
+
+**How to add a new Realtime subscription:**
+
+1. **Enable Realtime on the table** - Create a migration:
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE your_table_name;
+```
+
+2. **Add subscription to RealtimeProvider** - In `src/providers/RealtimeProvider.tsx`:
+```typescript
+.on(
+  'postgres_changes',
+  {
+    event: '*',
+    schema: 'public',
+    table: 'your_table_name',
+    filter: `user_id=eq.${user.id}`, // Filter to user's data when applicable
+  },
+  () => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.yourDomain.all,
+    });
+  }
+)
+```
+
+3. **For component-specific subscriptions**, use the `useRealtimeSubscription` hook:
+```typescript
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+
+useRealtimeSubscription({
+  table: 'your_table_name',
+  filter: `user_id=eq.${userId}`,
+  queryKeys: queryKeys.yourDomain.all,
+});
+```
+
 ### Meal Plan Generation
 
 Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.
