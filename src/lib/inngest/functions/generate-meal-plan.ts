@@ -533,7 +533,8 @@ export const generateMealPlanFunction = inngest.createFunction(
           userData.mealPreferences,
           userData.ingredientPreferences,
           userData.selectedTheme?.theme,
-          proteinFocus
+          proteinFocus,
+          jobId
         );
       });
 
@@ -553,7 +554,8 @@ export const generateMealPlanFunction = inngest.createFunction(
           userData.mealPreferences,
           userData.validatedMeals,
           userData.selectedTheme?.theme,
-          proteinFocus
+          proteinFocus,
+          jobId
         );
       });
 
@@ -575,7 +577,9 @@ export const generateMealPlanFunction = inngest.createFunction(
             days,
             coreIngredients,
             userData.profile,
-            userId
+            userId,
+            undefined, // weekStartDate
+            jobId
           );
           return { success: true as const, data: result };
         } catch (err) {

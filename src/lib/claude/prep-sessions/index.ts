@@ -68,7 +68,8 @@ export async function generatePrepSessions(
   coreIngredients: CoreIngredients,
   profile: UserProfile,
   userId: string,
-  weekStartDate?: string
+  weekStartDate?: string,
+  jobId?: string
 ): Promise<PrepModeResponse> {
   const prompt = buildPrepSessionsPrompt(days, coreIngredients, profile, weekStartDate);
 
@@ -79,6 +80,7 @@ export async function generatePrepSessions(
     maxTokens: 64000,
     userId,
     promptType: 'prep_mode_analysis',
+    jobId,
   });
 
   // Handle case where LLM returns prep_sessions as a JSON string instead of array

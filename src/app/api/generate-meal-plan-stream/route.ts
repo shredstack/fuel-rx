@@ -1,3 +1,23 @@
+/**
+ * @deprecated LEGACY ENDPOINT - DO NOT USE OR MODIFY
+ *
+ * This streaming endpoint is DEPRECATED and no longer called by the frontend.
+ * Production meal plan generation now uses Inngest background jobs.
+ *
+ * Current production flow:
+ * - Frontend calls: POST /api/generate-meal-plan
+ * - Which triggers: Inngest function at src/lib/inngest/functions/generate-meal-plan.ts
+ * - Frontend polls: GET /api/job-status/{jobId}
+ *
+ * This endpoint is kept for reference but should NOT be modified.
+ * If you need to change meal plan generation, edit the Inngest function instead.
+ *
+ * Key issues with this legacy approach:
+ * - Uses deprecated orchestrator (generateMealPlanWithProgress)
+ * - Saves to legacy plan_data/grocery_list columns instead of normalized tables
+ * - Makes 4 LLM calls instead of 3 (includes LLM grocery list generation)
+ * - No job tracking or resumability
+ */
 import { createClient } from '@/lib/supabase/server'
 import { generateMealPlanWithProgress } from '@/lib/claude'
 import type { UserProfile, IngredientCategory } from '@/lib/types'
@@ -12,6 +32,7 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/** @deprecated See file-level deprecation notice */
 export async function POST() {
   const supabase = await createClient()
 

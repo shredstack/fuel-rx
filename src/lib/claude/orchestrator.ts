@@ -32,8 +32,26 @@ interface ValidatedMealMacros {
 export type ProgressCallback = (stage: string, message: string) => void;
 
 /**
- * Main two-stage meal plan generation function
- * Orchestrates all three stages and returns a complete meal plan with prep sessions
+ * @deprecated LEGACY CODE - DO NOT USE OR MODIFY
+ *
+ * This orchestrator and its functions (generateMealPlanTwoStage, generateMealPlanWithProgress)
+ * are DEPRECATED and replaced by the Inngest-based meal plan generation.
+ *
+ * Production meal plan generation now uses:
+ * - API: /api/generate-meal-plan (triggers Inngest job)
+ * - Function: src/lib/inngest/functions/generate-meal-plan.ts
+ *
+ * Key differences from Inngest version:
+ * - This version calls LLM for grocery list generation (4 LLM calls total)
+ * - Inngest version computes grocery list from DB (3 LLM calls total)
+ * - This version uses legacy plan_data/grocery_list columns
+ * - Inngest version uses normalized meals/meal_plan_meals tables
+ *
+ * This file is kept only for:
+ * - generatePrepModeForExistingPlan() which IS still used
+ * - Reference during potential future refactoring
+ *
+ * If you need to modify meal plan generation, edit the Inngest function instead.
  */
 export async function generateMealPlanTwoStage(
   profile: UserProfile,
