@@ -134,6 +134,9 @@ export default function LogMealClient({
   // For adding new entry with pre-selected meal type
   const [addingToMealType, setAddingToMealType] = useState<MealType | null>(null);
 
+  // Track which meal type was just logged to (for auto-expanding that section)
+  const [recentlyLoggedToMealType, setRecentlyLoggedToMealType] = useState<MealType | null>(null);
+
   // Produce extraction modal state (for 800g tracking after meal log)
   const [showProduceModal, setShowProduceModal] = useState(false);
   const [pendingProduceMealId, setPendingProduceMealId] = useState<string | null>(null);
@@ -249,6 +252,9 @@ export default function LogMealClient({
     // Apply optimistic updates to cache
     optimisticallyAddEntry(queryClient, selectedDate, optimisticEntry);
     updateMealLoggedStatusInCache(queryClient, selectedDate, meal.id, meal.source, true, optimisticEntry.id);
+
+    // Auto-expand the meal section that was just logged to
+    setRecentlyLoggedToMealType(mealType);
 
     // Build request payload
     const payload: { type: string; source_id: string; meal_id?: string; meal_type: MealType; consumed_at: string } = {
@@ -403,6 +409,9 @@ export default function LogMealClient({
       }
     );
 
+    // Auto-expand the meal section that was just logged to
+    setRecentlyLoggedToMealType(mealType);
+
     setSelectedIngredient(null);
 
     try {
@@ -449,6 +458,8 @@ export default function LogMealClient({
         sourceDate,
         targetDate: selectedDate,
       });
+      // Auto-expand the meal section that was just logged to
+      setRecentlyLoggedToMealType(mealType);
       // Mutation hook handles cache invalidation
     } catch (error) {
       console.error('Error repeating meal type:', error);
@@ -811,6 +822,8 @@ export default function LogMealClient({
                     entries={entriesForType}
                     previousEntries={prevEntriesInfo}
                     initialCollapsed={entriesForType.length === 0}
+                    forceExpand={recentlyLoggedToMealType === mealType}
+                    onForceExpandHandled={() => setRecentlyLoggedToMealType(null)}
                     onAddEntry={handleAddFromSection}
                     onRemoveEntry={(entryId) => {
                       const entry = summary.entries.find((e) => e.id === entryId);
@@ -1053,6 +1066,10 @@ export default function LogMealClient({
           onMealLogged={(entry) => {
             // Optimistically add the new entry to cache
             optimisticallyAddEntry(queryClient, selectedDate, entry);
+            // Auto-expand the meal section that was just logged to
+            if (entry.meal_type) {
+              setRecentlyLoggedToMealType(entry.meal_type);
+            }
             // Invalidate to get accurate totals from server
             queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
           }}
