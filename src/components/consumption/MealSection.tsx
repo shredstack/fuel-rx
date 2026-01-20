@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ConsumptionEntry, MealType } from '@/lib/types';
 import { MEAL_TYPE_LABELS, MEAL_TYPE_CONFIG } from '@/lib/types';
 import LoggedEntryRow from './LoggedEntryRow';
@@ -15,6 +15,8 @@ interface MealSectionProps {
   entries: ConsumptionEntry[];
   previousEntries: PreviousEntriesInfo | null;
   initialCollapsed?: boolean;
+  forceExpand?: boolean;
+  onForceExpandHandled?: () => void;
   onAddEntry: (mealType: MealType) => void;
   onRemoveEntry: (entryId: string) => void;
   onMoveEntry: (entryId: string, newMealType: MealType) => void;
@@ -58,6 +60,8 @@ export default function MealSection({
   entries,
   previousEntries,
   initialCollapsed = false,
+  forceExpand,
+  onForceExpandHandled,
   onAddEntry,
   onRemoveEntry,
   onMoveEntry,
@@ -67,6 +71,14 @@ export default function MealSection({
   // Start expanded if there are entries OR if there are previous entries to show the "Log same" hint
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed && entries.length === 0 && !previousEntries);
   const [isRepeating, setIsRepeating] = useState(false);
+
+  // Auto-expand when forceExpand is true (e.g., when an item was just logged to this section)
+  useEffect(() => {
+    if (forceExpand && isCollapsed) {
+      setIsCollapsed(false);
+      onForceExpandHandled?.();
+    }
+  }, [forceExpand, isCollapsed, onForceExpandHandled]);
 
   const config = MEAL_TYPE_CONFIG[mealType];
   const label = MEAL_TYPE_LABELS[mealType];
