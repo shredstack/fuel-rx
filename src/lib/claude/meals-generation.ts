@@ -37,7 +37,8 @@ export async function generateMealsFromCoreIngredients(
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
   theme?: MealPlanTheme,
-  proteinFocus?: ProteinFocusConstraint | null
+  proteinFocus?: ProteinFocusConstraint | null,
+  jobId?: string
 ): Promise<{ title: string; meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -428,6 +429,7 @@ Use the generate_meals tool to provide your meal plan with a title.`;
     maxTokens: 32000,
     userId,
     promptType: 'two_stage_meals_from_ingredients',
+    jobId,
   });
 
   // Cache all unique ingredients to ingredient_nutrition table

@@ -22,7 +22,8 @@ export async function generateCoreIngredients(
   mealPreferences?: { liked: string[]; disliked: string[] },
   ingredientPreferences?: { liked: string[]; disliked: string[] },
   theme?: MealPlanTheme,
-  proteinFocus?: ProteinFocusConstraint | null
+  proteinFocus?: ProteinFocusConstraint | null,
+  jobId?: string
 ): Promise<CoreIngredients> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -264,6 +265,7 @@ Use the select_core_ingredients tool to provide your selection.`;
     maxTokens: 8000,
     userId,
     promptType: 'two_stage_core_ingredients',
+    jobId,
   });
 
   // Normalize to handle any legacy 'pantry' responses

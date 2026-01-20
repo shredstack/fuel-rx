@@ -48,6 +48,7 @@ interface LLMLogEntry {
   prompt_type: string;
   tokens_used?: number;
   duration_ms?: number;
+  inngest_job_id?: string;
 }
 
 export async function logLLMCall(entry: LLMLogEntry): Promise<void> {
@@ -96,6 +97,7 @@ export async function callLLMWithToolUse<T>(options: {
   maxRetries?: number;
   userId: string;
   promptType: string;
+  jobId?: string;
 }): Promise<{ result: T; usage: { outputTokens: number }; durationMs: number }> {
   const {
     prompt,
@@ -105,6 +107,7 @@ export async function callLLMWithToolUse<T>(options: {
     maxRetries = 2,
     userId,
     promptType,
+    jobId,
   } = options;
 
   // ===== TEST MODE INTEGRATION =====
@@ -186,6 +189,7 @@ export async function callLLMWithToolUse<T>(options: {
         prompt_type: promptType,
         tokens_used: message.usage?.output_tokens,
         duration_ms: duration,
+        inngest_job_id: jobId,
       });
 
       // Check for max_tokens stop reason (truncation)
