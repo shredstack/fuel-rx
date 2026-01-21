@@ -84,7 +84,7 @@ export default function MealPlanMealsSection({
           </span>
           Meal Plan Meals
           <span className="text-sm font-normal text-gray-500">
-            ({latestPlanMeals.length} in latest)
+            ({latestPlanMeals.length} in latest and favorited)
           </span>
         </h3>
         <svg

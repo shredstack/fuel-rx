@@ -707,24 +707,44 @@ async function getLatestPlanMeals(
 ): Promise<MealPlanMealToLog[]> {
   const supabase = await createClient();
 
-  // Get only the most recent meal plan (by creation date)
-  const { data: userPlans, error: plansError } = await supabase
-    .from('meal_plans')
-    .select('id, week_start_date, title, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1);
+  // Get the most recent meal plan and all favorited meal plans
+  const [latestPlanResult, favoritePlansResult] = await Promise.all([
+    supabase
+      .from('meal_plans')
+      .select('id, week_start_date, title, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1),
+    supabase
+      .from('meal_plans')
+      .select('id, week_start_date, title, created_at')
+      .eq('user_id', userId)
+      .eq('is_favorite', true)
+      .order('created_at', { ascending: false }),
+  ]);
 
-  if (!userPlans || userPlans.length === 0) {
+  const latestPlan = latestPlanResult.data?.[0];
+  const favoritePlans = favoritePlansResult.data || [];
+
+  // Combine latest plan with favorites, avoiding duplicates
+  const planMap = new Map<string, { id: string; week_start_date: string; title: string | null; created_at: string }>();
+
+  if (latestPlan) {
+    planMap.set(latestPlan.id, latestPlan);
+  }
+  for (const plan of favoritePlans) {
+    if (!planMap.has(plan.id)) {
+      planMap.set(plan.id, plan);
+    }
+  }
+
+  if (planMap.size === 0) {
     return [];
   }
 
-  // Only fetch meals from the latest plan
-  const latestPlan = userPlans[0];
-  const planIds = [latestPlan.id];
-  const planMap = new Map([[latestPlan.id, latestPlan]]);
+  const planIds = Array.from(planMap.keys());
 
-  // Fetch all meals from the latest plan
+  // Fetch all meals from the latest plan and favorited plans
   // Use meals!meal_id to specify the foreign key (there's also swapped_from_meal_id)
   const { data: planMeals, error: mealsError } = await supabase
     .from('meal_plan_meals')
@@ -765,7 +785,7 @@ async function getLatestPlanMeals(
     };
   };
 
-  // Build results from the filtered meals (all from the single latest plan)
+  // Build results from the filtered meals (from latest plan and favorited plans)
   const results: MealPlanMealToLog[] = [];
 
   for (const pm of filteredPlanMeals) {
@@ -796,7 +816,7 @@ async function getLatestPlanMeals(
       carbs: Math.round(meal.carbs),
       fat: Math.round(meal.fat),
       plan_week_start: plan.week_start_date,
-      plan_title: plan.title,
+      plan_title: plan.title ?? undefined,
       day_of_week: pm.day,
       day_label: dayLabels[pm.day] || pm.day,
       meal_id: pm.meal_id,
