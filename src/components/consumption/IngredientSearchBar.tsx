@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IngredientToLog } from '@/lib/types';
+import { useKeyboard } from '@/hooks/useKeyboard';
+import { usePlatform } from '@/hooks/usePlatform';
 
 interface Props {
   frequentIngredients: IngredientToLog[];
@@ -26,6 +28,8 @@ export default function IngredientSearchBar({
   const [showDropdown, setShowDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { isKeyboardVisible, keyboardHeight } = useKeyboard();
+  const { isNative } = usePlatform();
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
@@ -186,7 +190,14 @@ export default function IngredientSearchBar({
           <div
             ref={dropdownRef}
             className="absolute z-10 w-full mt-1 bg-white border border-gray-200
-                       rounded-lg shadow-lg max-h-64 overflow-y-auto"
+                       rounded-lg shadow-lg overflow-y-auto"
+            style={{
+              // When keyboard is visible on native, calculate available space
+              // Leave some padding (100px) for the input and header above
+              maxHeight: isNative && isKeyboardVisible && keyboardHeight > 0
+                ? `calc(100vh - ${keyboardHeight}px - 200px)`
+                : '16rem', // 256px = max-h-64
+            }}
           >
             {results.map((ingredient, index) => (
               <button
@@ -218,6 +229,12 @@ export default function IngredientSearchBar({
             ref={dropdownRef}
             className="absolute z-10 w-full mt-1 bg-white border border-gray-200
                        rounded-lg shadow-lg p-4 text-center"
+            style={{
+              // Keep visible above keyboard on native
+              maxHeight: isNative && isKeyboardVisible && keyboardHeight > 0
+                ? `calc(100vh - ${keyboardHeight}px - 200px)`
+                : undefined,
+            }}
           >
             <p className="text-gray-500 text-sm">No ingredients found</p>
             <button
