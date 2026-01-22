@@ -137,8 +137,27 @@ export async function POST() {
     const data: RevenueCatSubscriberResponse = await response.json();
     const subscriber = data.subscriber;
 
+    // Log the full response for debugging
+    console.log(`[Subscription Sync] RevenueCat response for user ${user.id}:`, {
+      entitlements: subscriber.entitlements,
+      subscriptions: subscriber.subscriptions,
+      original_app_user_id: subscriber.original_app_user_id,
+    });
+
     // Check if user has the FuelRx Pro entitlement
-    const fuelRxProEntitlement = subscriber.entitlements['FuelRx Pro'];
+    // Also check for variations in entitlement naming
+    const fuelRxProEntitlement =
+      subscriber.entitlements['FuelRx Pro'] ||
+      subscriber.entitlements['fuelrx_pro'] ||
+      subscriber.entitlements['pro'];
+
+    // If no known entitlement found, check if there are ANY active entitlements
+    const allEntitlementKeys = Object.keys(subscriber.entitlements);
+    const allSubscriptionKeys = Object.keys(subscriber.subscriptions);
+
+    console.log(`[Subscription Sync] Found entitlements: ${allEntitlementKeys.join(', ') || 'none'}`);
+    console.log(`[Subscription Sync] Found subscriptions: ${allSubscriptionKeys.join(', ') || 'none'}`);
+
     const now = new Date();
 
     let isActive = false;
@@ -177,6 +196,69 @@ export async function POST() {
       } else if (isActive) {
         status = 'active';
       }
+    } else if (allEntitlementKeys.length > 0) {
+      // Fallback: Use the first available entitlement if 'FuelRx Pro' not found
+      const firstEntitlementKey = allEntitlementKeys[0];
+      const firstEntitlement = subscriber.entitlements[firstEntitlementKey];
+
+      console.log(`[Subscription Sync] Using fallback entitlement: ${firstEntitlementKey}`);
+
+      const expiresDate = firstEntitlement.expires_date
+        ? new Date(firstEntitlement.expires_date)
+        : null;
+
+      isActive = expiresDate === null || expiresDate > now;
+      tier = getTierFromProductId(firstEntitlement.product_identifier);
+      currentPeriodEnd = firstEntitlement.expires_date;
+      currentPeriodStart = firstEntitlement.purchase_date;
+
+      const subscription = subscriber.subscriptions[firstEntitlement.product_identifier];
+      if (subscription) {
+        originalPurchaseDate = subscription.original_purchase_date;
+
+        if (subscription.billing_issues_detected_at) {
+          status = 'billing_retry';
+        } else if (subscription.grace_period_expires_date) {
+          status = 'grace_period';
+        } else if (subscription.unsubscribe_detected_at) {
+          status = isActive ? 'cancelled' : 'expired';
+        } else if (isActive) {
+          status = 'active';
+        } else {
+          status = 'expired';
+        }
+      } else if (isActive) {
+        status = 'active';
+      }
+    } else if (allSubscriptionKeys.length > 0) {
+      // Last resort: Check subscriptions directly if no entitlements found
+      // This can happen if entitlements aren't configured in RevenueCat
+      const firstSubscriptionKey = allSubscriptionKeys[0];
+      const firstSubscription = subscriber.subscriptions[firstSubscriptionKey];
+
+      console.log(`[Subscription Sync] No entitlements found, checking subscription directly: ${firstSubscriptionKey}`);
+
+      const expiresDate = firstSubscription.expires_date
+        ? new Date(firstSubscription.expires_date)
+        : null;
+
+      isActive = expiresDate === null || expiresDate > now;
+      tier = getTierFromProductId(firstSubscriptionKey);
+      currentPeriodEnd = firstSubscription.expires_date;
+      currentPeriodStart = firstSubscription.purchase_date;
+      originalPurchaseDate = firstSubscription.original_purchase_date;
+
+      if (firstSubscription.billing_issues_detected_at) {
+        status = 'billing_retry';
+      } else if (firstSubscription.grace_period_expires_date) {
+        status = 'grace_period';
+      } else if (firstSubscription.unsubscribe_detected_at) {
+        status = isActive ? 'cancelled' : 'expired';
+      } else if (isActive) {
+        status = 'active';
+      } else {
+        status = 'expired';
+      }
     }
 
     // Get feature access
@@ -214,7 +296,7 @@ export async function POST() {
       status,
     });
 
-    return Response.json({
+    const syncResult = {
       synced: true,
       isSubscribed: isActive,
       subscriptionTier: tier,
@@ -222,7 +304,16 @@ export async function POST() {
       currentPeriodEnd,
       hasAiFeatures,
       hasMealPlanGeneration,
-    });
+      // Include debug info in response for troubleshooting
+      debug: {
+        foundEntitlements: allEntitlementKeys,
+        foundSubscriptions: allSubscriptionKeys,
+      },
+    };
+
+    console.log(`[Subscription Sync] Returning result:`, syncResult);
+
+    return Response.json(syncResult);
   } catch (error) {
     console.error('[Subscription Sync] Unexpected error:', error);
     return Response.json(
