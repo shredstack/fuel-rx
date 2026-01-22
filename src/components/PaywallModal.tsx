@@ -7,14 +7,18 @@ import { purchasePackage } from '@/lib/revenuecat';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  /** Pre-select a specific plan and show upgrade messaging */
+  upgradeTo?: 'yearly';
 }
 
-export default function PaywallModal({ isOpen, onClose }: Props) {
+export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
   const { status, restore, canPurchase, refresh } = useSubscription();
   const [restoring, setRestoring] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>(upgradeTo || 'yearly');
+
+  const isUpgrade = !!upgradeTo;
 
   if (!isOpen) return null;
 
@@ -87,15 +91,15 @@ export default function PaywallModal({ isOpen, onClose }: Props) {
           </div>
 
           <h2 className="text-xl font-bold text-gray-900 text-center mb-1">
-            Upgrade to Pro
+            {isUpgrade ? 'Switch to Yearly' : 'Upgrade to Pro'}
           </h2>
 
           <p className="text-sm text-gray-500 text-center mb-4">
-            Unlock unlimited meal planning
+            {isUpgrade ? 'Save 17% with an annual subscription' : 'Unlock unlimited meal planning'}
           </p>
 
           {/* Plan selection - horizontal on larger screens */}
-          {canPurchase && (
+          {canPurchase && !isUpgrade && (
             <div className="flex gap-2 mb-4">
               <button
                 onClick={() => setSelectedPlan('yearly')}
@@ -123,6 +127,22 @@ export default function PaywallModal({ isOpen, onClose }: Props) {
                 <div className="font-semibold text-gray-900 text-sm">Monthly</div>
                 <div className="text-xs text-gray-500">$3.99/mo</div>
               </button>
+            </div>
+          )}
+
+          {/* Show yearly plan info for upgrade flow */}
+          {canPurchase && isUpgrade && (
+            <div className="mb-4 p-3 rounded-xl border-2 border-primary-500 bg-primary-50">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-semibold text-gray-900 text-sm">Pro Yearly</div>
+                  <div className="text-xs text-gray-500">$39.99/year</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-green-600 font-medium">Save 17%</div>
+                  <div className="text-[10px] text-gray-400">vs monthly</div>
+                </div>
+              </div>
             </div>
           )}
 
