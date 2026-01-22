@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import type { IngredientToLog, BarcodeProduct, IngredientCategoryType } from '@/lib/types';
 import BarcodeScanner from './BarcodeScanner';
 import { MacroInput } from '@/components/ui';
+import { useKeyboard } from '@/hooks/useKeyboard';
+import { usePlatform } from '@/hooks/usePlatform';
 
 type TabType = 'search' | 'barcode' | 'manual';
 
@@ -29,6 +31,8 @@ export default function AddIngredientModal({
   onClose,
   onSelectIngredient,
 }: AddIngredientModalProps) {
+  const { isKeyboardVisible, keyboardHeight } = useKeyboard();
+  const { isNative } = usePlatform();
   const [activeTab, setActiveTab] = useState<TabType>('search');
 
   // Search state
@@ -213,8 +217,17 @@ export default function AddIngredientModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full shadow-xl max-h-[90vh] flex flex-col">
+    <div className={`fixed inset-0 bg-black bg-opacity-50 flex justify-center z-50 p-4 ${
+      isNative && isKeyboardVisible ? 'items-start pt-8' : 'items-center'
+    }`}>
+      <div
+        className="bg-white rounded-xl max-w-md w-full shadow-xl flex flex-col"
+        style={{
+          maxHeight: isNative && isKeyboardVisible
+            ? `calc(100vh - ${keyboardHeight}px - 4rem)`
+            : '90vh',
+        }}
+      >
         {/* Header */}
         <div className="p-4 border-b">
           <div className="flex justify-between items-center mb-4">
