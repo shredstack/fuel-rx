@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
 import PaywallModal from '@/components/PaywallModal';
+import { openExternalUrl } from '@/lib/browser';
 
 export default function SubscriptionSettings() {
   const {
@@ -84,7 +85,7 @@ export default function SubscriptionSettings() {
       }
 
       if (data.managementUrl) {
-        window.open(data.managementUrl, '_blank');
+        await openExternalUrl(data.managementUrl);
       } else if (data.supportEmail) {
         setRestoreMessage(`Please contact ${data.supportEmail} to manage your subscription`);
       } else {
