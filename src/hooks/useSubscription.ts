@@ -29,6 +29,7 @@ interface UseSubscriptionReturn {
   refresh: () => Promise<void>;
   showPaywall: () => Promise<{ success: boolean; purchased?: boolean; cancelled?: boolean; error?: string }>;
   restore: () => Promise<{ success: boolean; error?: string }>;
+  sync: () => Promise<{ success: boolean; error?: string }>;
 
   // Platform check
   canPurchase: boolean;
@@ -120,6 +121,27 @@ export function useSubscription(): UseSubscriptionReturn {
     return result;
   }, [fetchStatus]);
 
+  // Manually sync subscription status from RevenueCat
+  // This is useful when the webhook fails or for troubleshooting
+  const sync = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch('/api/subscription/sync', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        return { success: false, error: data.error || 'Sync failed' };
+      }
+
+      // Refresh local status after sync
+      await fetchStatus();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Sync failed' };
+    }
+  }, [fetchStatus]);
+
   // Computed values
   const isSubscribed = status?.isSubscribed ?? false;
   const canGeneratePlan = status?.canGeneratePlan ?? true;
@@ -142,6 +164,7 @@ export function useSubscription(): UseSubscriptionReturn {
     refresh: fetchStatus,
     showPaywall,
     restore,
+    sync,
     canPurchase,
   };
 }

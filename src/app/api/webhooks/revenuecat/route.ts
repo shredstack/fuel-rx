@@ -176,6 +176,7 @@ export async function POST(request: Request) {
   console.log(`RevenueCat webhook: Processing ${event.type} for user ${userId}`);
 
   // Check if user has the FuelRx Pro entitlement from the event
+  // Note: entitlement_ids may not always be populated, especially for INITIAL_PURCHASE
   const hasProEntitlement = event.entitlement_ids?.includes('FuelRx Pro') ?? false;
 
   // Determine if subscription is active based on event type and entitlement
@@ -184,10 +185,17 @@ export async function POST(request: Request) {
     ? new Date(event.expiration_at_ms)
     : null;
 
-  // Active if: has entitlement AND (no expiration OR not yet expired) AND not a cancellation/expiration event
+  // Determine event classification
   const isActiveEvent = ['INITIAL_PURCHASE', 'RENEWAL', 'NON_RENEWING_PURCHASE', 'UNCANCELLATION', 'PRODUCT_CHANGE'].includes(event.type);
   const isExpiredEvent = ['CANCELLATION', 'EXPIRATION'].includes(event.type);
-  const isActive = hasProEntitlement && isActiveEvent && !isExpiredEvent && (expiresDate === null || expiresDate > now);
+
+  // Active if:
+  // 1. It's an active event type (purchase, renewal, etc.) AND
+  // 2. Not an expiration/cancellation event AND
+  // 3. Either no expiration date OR expiration is in the future
+  // Note: We trust the event type rather than requiring entitlement_ids to be populated,
+  // since RevenueCat may not always include entitlement_ids in webhook payloads
+  const isActive = isActiveEvent && !isExpiredEvent && (expiresDate === null || expiresDate > now);
 
   // Get tier from product identifier
   const tier = getTierFromProductId(event.product_id);

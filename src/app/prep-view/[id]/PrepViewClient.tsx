@@ -160,10 +160,10 @@ export default function PrepViewClient({
         {/* Header */}
         <div className="mb-8">
           <Link href={`/meal-plan/${mealPlan.id}`} className="text-primary-600 hover:text-primary-800 text-sm mb-2 inline-block">
-            &larr; Back to Meal Plan
+            &larr; View Meal Plan
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Prep View
+            Start Cooking
           </h1>
           <p className="text-gray-600">
             Week of {new Date(mealPlan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', {
@@ -175,6 +175,34 @@ export default function PrepViewClient({
           <p className="text-sm text-gray-500 mt-1">
             Prep Style: <span className="font-medium">{PREP_STYLE_LABELS[prepStyle as PrepStyle]?.title || prepStyle}</span>
           </p>
+        </div>
+
+        {/* How to Use This Page */}
+        <div className="card mb-6 bg-gradient-to-r from-primary-50 to-teal-50 border-primary-200">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-900 mb-2">How to use this page</h3>
+              <ul className="text-sm text-gray-600 space-y-2">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary-500 font-bold mt-0.5">1.</span>
+                  <span><strong>Expand any meal</strong> to see step-by-step cooking instructions with temperatures, times, and tips.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary-500 font-bold mt-0.5">2.</span>
+                  <span><strong>Check off steps</strong> as you complete them to track your progress.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary-500 font-bold mt-0.5">3.</span>
+                  <span><strong>Need help?</strong> Tap the chat icon on any meal to ask the AI Cooking Assistant questions about substitutions, timing, technique, or anything else.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Overall Progress */}
@@ -246,7 +274,7 @@ export default function PrepViewClient({
             href={`/meal-plan/${mealPlan.id}`}
             className="btn-outline flex-1 text-center"
           >
-            &larr; Back to Meal Plan
+            &larr; View Meal Plan
           </Link>
           <Link
             href={`/grocery-list/${mealPlan.id}`}
