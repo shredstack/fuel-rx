@@ -127,8 +127,8 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
         <div className="space-y-4">
           {filteredPlans.map(plan => (
             <div key={plan.id} className="card">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg font-semibold text-gray-900">
                       {getMealPlanTitle(plan)}
@@ -162,7 +162,7 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => toggleFavorite(plan.id, plan.is_favorite)}
                     className="p-2 text-gray-400 hover:text-yellow-500 transition-colors"
