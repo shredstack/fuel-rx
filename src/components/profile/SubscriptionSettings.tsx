@@ -20,6 +20,7 @@ export default function SubscriptionSettings() {
   const [restoring, setRestoring] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+  const [managingSubscription, setManagingSubscription] = useState(false);
 
   const handleUpgrade = () => {
     // Always show the PaywallModal which handles both web and native purchases
@@ -58,10 +59,31 @@ export default function SubscriptionSettings() {
     }
   };
 
-  const handleManageSubscription = () => {
-    // On iOS, this opens the subscription management in Settings
-    // The URL scheme works on both iOS and web (web will just open App Store)
-    window.open('https://apps.apple.com/account/subscriptions', '_blank');
+  const handleManageSubscription = async () => {
+    setManagingSubscription(true);
+    setRestoreMessage(null);
+
+    try {
+      const response = await fetch('/api/subscription/manage');
+      const data = await response.json();
+
+      if (!response.ok) {
+        setRestoreMessage(data.error || 'Unable to open subscription management');
+        return;
+      }
+
+      if (data.managementUrl) {
+        window.open(data.managementUrl, '_blank');
+      } else if (data.supportEmail) {
+        setRestoreMessage(`Please contact ${data.supportEmail} to manage your subscription`);
+      } else {
+        setRestoreMessage('Unable to open subscription management. Please try again.');
+      }
+    } catch {
+      setRestoreMessage('Unable to open subscription management. Please try again.');
+    } finally {
+      setManagingSubscription(false);
+    }
   };
 
   if (loading) {
@@ -193,9 +215,10 @@ export default function SubscriptionSettings() {
             {isSubscribed && !isOverride && (
               <button
                 onClick={handleManageSubscription}
-                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                disabled={managingSubscription}
+                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors disabled:opacity-50"
               >
-                Manage Subscription
+                {managingSubscription ? 'Loading...' : 'Manage Subscription'}
               </button>
             )}
 
