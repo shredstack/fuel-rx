@@ -36,6 +36,7 @@ import { FIRST_PLAN_TOUR_STEPS } from '@/lib/types'
 import Logo from '@/components/Logo'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
+import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 
 interface Props {
   mealPlan: MealPlanNormalized & {
@@ -843,6 +844,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             <CoreIngredientsCard coreIngredients={normalizeCoreIngredients(mealPlan.core_ingredients)!} />
           </div>
         )}
+
+        {/* Nutrition Disclaimer - Required by Apple App Store Guideline 1.4.1 */}
+        <NutritionDisclaimer className="mb-6" />
 
         {/* Mobile sticky action bar - key actions always visible */}
         <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex gap-3 shadow-lg">

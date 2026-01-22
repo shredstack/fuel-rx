@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { GeneratedMeal } from '@/lib/types'
 import { MEAL_TYPE_LABELS } from '@/lib/types'
+import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 
 interface Props {
   meal: GeneratedMeal
@@ -58,12 +59,15 @@ export default function SingleMealResult({
       </div>
 
       {/* Macros */}
-      <div className="grid grid-cols-4 gap-4 p-4 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg mb-6">
+      <div className="grid grid-cols-4 gap-4 p-4 bg-gradient-to-r from-primary-50 to-blue-50 rounded-lg mb-4">
         <MacroDisplay label="Calories" value={meal.macros.calories} unit="kcal" />
         <MacroDisplay label="Protein" value={meal.macros.protein} unit="g" />
         <MacroDisplay label="Carbs" value={meal.macros.carbs} unit="g" />
         <MacroDisplay label="Fat" value={meal.macros.fat} unit="g" />
       </div>
+
+      {/* Nutrition Disclaimer - Required by Apple App Store Guideline 1.4.1 */}
+      <NutritionDisclaimer variant="compact" className="mb-6" />
 
       {/* Time and Servings */}
       <div className="flex gap-6 mb-6 text-sm text-gray-600">

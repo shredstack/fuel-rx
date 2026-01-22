@@ -17,10 +17,10 @@ export default function SupportPage() {
                 For general inquiries and support requests:
               </p>
               <a
-                href="mailto:support@fuelrx.app"
+                href="mailto:shredstacksarah@gmail.com"
                 className="text-primary-600 hover:text-primary-700 font-medium"
               >
-                support@fuelrx.app
+                shredstacksarah@gmail.com
               </a>
             </div>
 

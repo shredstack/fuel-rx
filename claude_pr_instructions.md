@@ -91,3 +91,38 @@ Choose one:
 - `src/app/api/**` - API routes
 - `src/lib/inngest/**` - Background job logic
 - Any files touching authentication or subscriptions
+
+---
+
+## Review Quality Guidelines
+
+### Avoid False Alarms
+
+Before flagging an issue, verify it's a real problem:
+
+1. **Check for existing fallback handling**: If code has a fallback path (e.g., try method A, then fall back to method B), don't flag method B as "fragile" if method A is the primary approach.
+
+2. **On-demand initialization is often intentional**: For client-side SDKs (RevenueCat, analytics, etc.), lazy/on-demand initialization during user actions is a valid pattern - it doesn't need to be "explicit" at app startup if the code handles the uninitialized case gracefully.
+
+3. **SDK error codes**: When code checks for specific error codes from third-party SDKs, this is usually based on SDK documentation. Flag only if there's no error handling at all, not just because error codes "might change."
+
+4. **String matching with documented identifiers**: If fallback code matches against well-known identifiers (like RevenueCat's `$rc_monthly`, `$rc_annual`), this is based on documented SDK conventions, not arbitrary strings.
+
+### What to Actually Flag
+
+Focus on issues that cause real problems:
+
+- **Missing error handling**: No try/catch, errors swallowed silently, user sees nothing
+- **Data loss risk**: Operations that can't be undone or recovered
+- **Security issues**: Auth bypasses, data exposure, injection vulnerabilities
+- **Breaking changes**: API contract changes, removed functionality
+- **Race conditions**: Actual concurrent access issues, not theoretical ones
+
+### RevenueCat Integration
+
+The app uses RevenueCat for subscription management across platforms:
+
+- **Native (iOS)**: Uses `@revenuecat/purchases-capacitor` - initialized at app startup via `useSubscription` hook
+- **Web**: Uses `@revenuecat/purchases-js` - can initialize on-demand during purchase flow (this is intentional)
+- **Package lookup**: Always tries SDK convenience properties (`.monthly`, `.annual`) first, with fallback to identifier matching
+- **Debug logging**: Package lookup issues are logged to `/api/debug/revenuecat` for troubleshooting

@@ -116,7 +116,7 @@ export default function TermsOfServicePage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">11. Contact</h2>
             <p className="text-gray-700">
-              For questions about these Terms, contact us at support@fuelrx.app.
+              For questions about these Terms, contact us at shredstacksarah@gmail.com.
             </p>
           </section>
         </div>

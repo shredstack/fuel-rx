@@ -9,6 +9,7 @@ import MobileTabBar from '@/components/MobileTabBar'
 import ProfileHeader from '@/components/profile/ProfileHeader'
 import NutritionGoalsCard from '@/components/profile/NutritionGoalsCard'
 import WinsCard from '@/components/profile/WinsCard'
+import SubscriptionSettings from '@/components/profile/SubscriptionSettings'
 import type {
   UserProfile,
   IngredientPreferenceWithDetails,
@@ -300,6 +301,23 @@ export default function ProfileClient({
           </h2>
           <div className="space-y-2">
             <Link
+              href="/nutrition-info"
+              className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-medium text-gray-900">Nutrition Sources</h3>
+                <p className="text-sm text-gray-500">How we calculate nutrition info</p>
+              </div>
+              <ChevronRightIcon />
+            </Link>
+
+            <Link
               href="/settings/tutorial"
               className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
             >
@@ -315,6 +333,14 @@ export default function ProfileClient({
               <ChevronRightIcon />
             </Link>
           </div>
+        </div>
+
+        {/* Subscription */}
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span>💳</span> Subscription
+          </h2>
+          <SubscriptionSettings />
         </div>
 
         {/* Account Actions */}
