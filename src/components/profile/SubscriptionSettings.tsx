@@ -13,10 +13,12 @@ export default function SubscriptionSettings() {
     freePlansRemaining,
     isOverride,
     restore,
+    sync,
   } = useSubscription();
 
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
 
   const handleUpgrade = () => {
@@ -37,6 +39,22 @@ export default function SubscriptionSettings() {
       }
     } finally {
       setRestoring(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setRestoreMessage(null);
+
+    try {
+      const result = await sync();
+      if (result.success) {
+        setRestoreMessage('Subscription synced successfully!');
+      } else {
+        setRestoreMessage(result.error || 'Unable to sync subscription');
+      }
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -184,12 +202,20 @@ export default function SubscriptionSettings() {
             {canPurchase && (
               <button
                 onClick={handleRestore}
-                disabled={restoring}
+                disabled={restoring || syncing}
                 className="w-full py-2 text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors disabled:opacity-50"
               >
                 {restoring ? 'Restoring...' : 'Restore Purchases'}
               </button>
             )}
+
+            <button
+              onClick={handleSync}
+              disabled={syncing || restoring}
+              className="w-full py-2 text-gray-500 hover:text-gray-600 text-sm transition-colors disabled:opacity-50"
+            >
+              {syncing ? 'Syncing...' : 'Sync Subscription Status'}
+            </button>
           </div>
         </div>
       </div>
