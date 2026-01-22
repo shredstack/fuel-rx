@@ -17,6 +17,7 @@ export default function SubscriptionSettings() {
   } = useSubscription();
 
   const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
@@ -26,6 +27,16 @@ export default function SubscriptionSettings() {
     // Always show the PaywallModal which handles both web and native purchases
     setShowPaywallModal(true);
   };
+
+  const handleUpgradeToYearly = () => {
+    setShowUpgradeModal(true);
+  };
+
+  // Check if user can upgrade from monthly to yearly
+  const canUpgradeToYearly = isSubscribed &&
+    !isOverride &&
+    status?.subscriptionTier === 'pro_monthly' &&
+    status?.subscriptionStatus !== 'cancelled';
 
   const handleRestore = async () => {
     setRestoring(true);
@@ -213,13 +224,23 @@ export default function SubscriptionSettings() {
             )}
 
             {isSubscribed && !isOverride && (
-              <button
-                onClick={handleManageSubscription}
-                disabled={managingSubscription}
-                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors disabled:opacity-50"
-              >
-                {managingSubscription ? 'Loading...' : 'Manage Subscription'}
-              </button>
+              <>
+                {canUpgradeToYearly && (
+                  <button
+                    onClick={handleUpgradeToYearly}
+                    className="w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors"
+                  >
+                    Switch to Yearly (Save 17%)
+                  </button>
+                )}
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={managingSubscription}
+                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {managingSubscription ? 'Loading...' : 'Manage Subscription'}
+                </button>
+              </>
             )}
 
             {canPurchase && (
@@ -243,10 +264,17 @@ export default function SubscriptionSettings() {
         </div>
       </div>
 
-      {/* Paywall Modal for web users */}
+      {/* Paywall Modal for new subscribers */}
       <PaywallModal
         isOpen={showPaywallModal}
         onClose={() => setShowPaywallModal(false)}
+      />
+
+      {/* Upgrade Modal for monthly -> yearly */}
+      <PaywallModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        upgradeTo="yearly"
       />
     </>
   );

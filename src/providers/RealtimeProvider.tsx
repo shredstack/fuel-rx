@@ -18,6 +18,7 @@ import type { RealtimeChannel, User } from '@supabase/supabase-js';
  * - meal_plan_meals: Individual meals within plans
  * - social_feed_posts: Community posts
  * - user_grocery_staples: Grocery staples
+ * - user_subscriptions: Subscription status (updated via RevenueCat webhooks)
  * - ingredients: Admin ingredient updates
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
@@ -123,6 +124,21 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           () => {
             queryClient.invalidateQueries({
               queryKey: queryKeys.groceryStaples.all,
+            });
+          }
+        )
+        // User subscription changes (from RevenueCat webhooks)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_subscriptions',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.user.subscription(),
             });
           }
         )
