@@ -33,10 +33,10 @@ export default function SubscriptionSettings() {
   };
 
   // Check if user can upgrade from monthly to yearly
+  // Allow even if cancelled - user may want to switch plans before expiration
   const canUpgradeToYearly = isSubscribed &&
     !isOverride &&
-    status?.subscriptionTier === 'pro_monthly' &&
-    status?.subscriptionStatus !== 'cancelled';
+    status?.subscriptionTier === 'pro_monthly';
 
   const handleRestore = async () => {
     setRestoring(true);
