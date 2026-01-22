@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSubscription } from '@/hooks/useSubscription';
+import { purchasePackage } from '@/lib/revenuecat';
 
 interface Props {
   isOpen: boolean;
@@ -9,9 +10,11 @@ interface Props {
 }
 
 export default function PaywallModal({ isOpen, onClose }: Props) {
-  const { status, showPaywall, restore, canPurchase } = useSubscription();
+  const { status, restore, canPurchase, refresh } = useSubscription();
   const [restoring, setRestoring] = useState(false);
+  const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
 
   if (!isOpen) return null;
 
@@ -20,18 +23,26 @@ export default function PaywallModal({ isOpen, onClose }: Props) {
 
   const handleUpgrade = async () => {
     setError(null);
+    setPurchasing(true);
 
-    if (canPurchase) {
-      // Use RevenueCat native paywall on mobile
-      const result = await showPaywall();
-      if (result.purchased) {
+    try {
+      if (!canPurchase) {
+        setError('Purchases are not available on this platform.');
+        return;
+      }
+
+      const result = await purchasePackage(selectedPlan);
+      if (result.success) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await refresh();
         onClose();
+      } else if (result.cancelled) {
+        // User cancelled - no error to show
       } else if (result.error) {
         setError(result.error);
       }
-    } else {
-      // Web fallback - show message about mobile app
-      setError('Subscriptions are only available in the FuelRx mobile app. Please download the app to subscribe.');
+    } finally {
+      setPurchasing(false);
     }
   };
 
@@ -42,7 +53,7 @@ export default function PaywallModal({ isOpen, onClose }: Props) {
     try {
       const result = await restore();
       if (result.success) {
-        onClose();
+        await refresh();
       } else if (result.error) {
         setError(result.error);
       }
@@ -52,108 +63,129 @@ export default function PaywallModal({ isOpen, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary-500 to-primary-600">
-          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-
-        <h2 className="text-2xl font-bold text-gray-900 text-center mb-2">
-          Upgrade to FuelRx Pro
-        </h2>
-
-        <p className="text-gray-600 text-center mb-6">
-          You&apos;ve used all {freePlanLimit} free meal plans. Upgrade to Pro for unlimited meal planning!
-        </p>
-
-        {/* Progress indicator */}
-        <div className="bg-gray-100 rounded-full h-2 mb-6">
-          <div
-            className="bg-primary-500 h-2 rounded-full transition-all"
-            style={{ width: `${Math.min(100, (freePlansUsed / freePlanLimit) * 100)}%` }}
-          />
-        </div>
-        <p className="text-sm text-gray-500 text-center mb-6">
-          {freePlansUsed} of {freePlanLimit} free plans used
-        </p>
-
-        {/* Features list */}
-        <ul className="space-y-3 mb-6">
-          <li className="flex items-center gap-3">
-            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </span>
-            <span className="text-gray-700">Unlimited meal plan generations</span>
-          </li>
-          <li className="flex items-center gap-3">
-            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </span>
-            <span className="text-gray-700">Full grocery lists & prep schedules</span>
-          </li>
-          <li className="flex items-center gap-3">
-            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </span>
-            <span className="text-gray-700">AI-powered Quick Cook meals</span>
-          </li>
-          <li className="flex items-center gap-3">
-            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </span>
-            <span className="text-gray-700">Community sharing features</span>
-          </li>
-        </ul>
-
-        {/* Error message */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
-        )}
-
-        {/* CTA Button */}
-        <button
-          onClick={handleUpgrade}
-          className="w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl transition-colors mb-3"
-        >
-          Upgrade to Pro
-        </button>
-
-        {/* Restore purchases */}
-        {canPurchase && (
-          <button
-            onClick={handleRestore}
-            disabled={restoring}
-            className="w-full py-2 text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            {restoring ? 'Restoring...' : 'Restore purchases'}
-          </button>
-        )}
-
-        {/* Close button */}
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+      <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-xl max-h-[90vh] overflow-y-auto relative">
+        {/* Close button - top right */}
         <button
           onClick={onClose}
-          className="w-full py-2 text-gray-500 hover:text-gray-600 text-sm transition-colors mt-2"
+          disabled={purchasing}
+          className="absolute top-3 right-3 p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 z-10"
+          aria-label="Close"
         >
-          Maybe later
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
 
-        {/* Legal text */}
-        <p className="text-xs text-gray-400 text-center mt-4">
-          Cancel anytime. Subscriptions auto-renew until cancelled.
-        </p>
+        <div className="p-5 pt-10">
+
+          {/* Header */}
+          <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-primary-500 to-primary-600">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+
+          <h2 className="text-xl font-bold text-gray-900 text-center mb-1">
+            Upgrade to Pro
+          </h2>
+
+          <p className="text-sm text-gray-500 text-center mb-4">
+            Unlock unlimited meal planning
+          </p>
+
+          {/* Plan selection - horizontal on larger screens */}
+          {canPurchase && (
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setSelectedPlan('yearly')}
+                className={`flex-1 p-3 rounded-xl border-2 transition-all text-left relative ${
+                  selectedPlan === 'yearly'
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-gray-200'
+                }`}
+              >
+                <div className="absolute -top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  BEST
+                </div>
+                <div className="font-semibold text-gray-900 text-sm">Yearly</div>
+                <div className="text-xs text-gray-500">$39.99/yr</div>
+                <div className="text-[10px] text-green-600 font-medium">Save 17%</div>
+              </button>
+              <button
+                onClick={() => setSelectedPlan('monthly')}
+                className={`flex-1 p-3 rounded-xl border-2 transition-all text-left ${
+                  selectedPlan === 'monthly'
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-gray-200'
+                }`}
+              >
+                <div className="font-semibold text-gray-900 text-sm">Monthly</div>
+                <div className="text-xs text-gray-500">$3.99/mo</div>
+              </button>
+            </div>
+          )}
+
+          {/* Features list - compact */}
+          <div className="bg-gray-50 rounded-xl p-3 mb-4">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {[
+                'Unlimited meal plans',
+                'Grocery lists',
+                'AI Quick Cook',
+                'Community features',
+              ].map((feature) => (
+                <div key={feature} className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-gray-600">{feature}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Error message */}
+          {error && (
+            <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+
+          {/* CTA Button */}
+          <button
+            onClick={handleUpgrade}
+            disabled={purchasing}
+            className="w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {purchasing ? 'Processing...' : `Subscribe ${selectedPlan === 'yearly' ? 'Yearly' : 'Monthly'}`}
+          </button>
+
+          {/* Secondary actions */}
+          <div className="flex items-center justify-center gap-4 mt-3">
+            {canPurchase && (
+              <button
+                onClick={handleRestore}
+                disabled={restoring || purchasing}
+                className="text-xs text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50"
+              >
+                {restoring ? 'Restoring...' : 'Restore purchases'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              disabled={purchasing}
+              className="text-xs text-gray-500 hover:text-gray-600 disabled:opacity-50"
+            >
+              Maybe later
+            </button>
+          </div>
+
+          {/* Legal text */}
+          <p className="text-[10px] text-gray-400 text-center mt-3">
+            Cancel anytime. Auto-renews until cancelled.
+          </p>
+        </div>
       </div>
     </div>
   );

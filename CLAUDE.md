@@ -12,6 +12,8 @@ When a new user signs up, we use Resend to send the email verification to their 
 
 All email notifications for FuelRx should use Resend (and not Supabase email integration). This gives us more control on who sends it as well as flow (we can send emails for various things that the user does on the app).
 
+For support, customers should email shredstacksarah@gmail.com.
+
 ## App Development Best Practices
 
 ### Reusable Components

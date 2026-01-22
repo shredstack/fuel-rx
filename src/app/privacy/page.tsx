@@ -87,7 +87,7 @@ export default function PrivacyPolicyPage() {
               <li>Opt out of marketing communications</li>
             </ul>
             <p className="text-gray-700">
-              To exercise these rights, contact us at support@fuelrx.app.
+              To exercise these rights, contact us at shredstacksarah@gmail.com.
             </p>
           </section>
 
@@ -114,7 +114,7 @@ export default function PrivacyPolicyPage() {
               If you have questions about this Privacy Policy, please contact us at:
             </p>
             <p className="text-gray-700 mt-2">
-              Email: support@fuelrx.app
+              Email: shredstacksarah@gmail.com
             </p>
           </section>
         </div>

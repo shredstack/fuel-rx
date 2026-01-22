@@ -12,6 +12,7 @@ import {
 import MealTypeSection from '@/components/prep/MealTypeSection'
 import BatchPrepSection from '@/components/prep/BatchPrepSection'
 import { MealIdProvider } from '@/components/prep/MealIdContext'
+import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 
 interface PrepViewClientProps {
   mealPlan: {
@@ -193,6 +194,9 @@ export default function PrepViewClient({
             </div>
           </div>
         )}
+
+        {/* Nutrition Disclaimer - Required by Apple App Store Guideline 1.4.1 */}
+        <NutritionDisclaimer className="mb-6" />
 
         {/* Main Content */}
         <div className="space-y-4">
