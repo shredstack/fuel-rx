@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import type { SubscriptionStatusResponse, SubscriptionTier } from '@/lib/types';
+import type { SubscriptionStatusResponse, SubscriptionTier, SubscriptionStore } from '@/lib/types';
 
 export async function GET() {
   const supabase = await createClient();
@@ -16,6 +16,7 @@ export async function GET() {
       subscription_tier,
       subscription_status,
       current_period_end,
+      store,
       has_ai_features,
       has_meal_plan_generation,
       free_plans_used,
@@ -61,6 +62,7 @@ export async function GET() {
     subscriptionTier: tier,
     subscriptionStatus: subscription?.subscription_status ?? null,
     currentPeriodEnd: subscription?.current_period_end ?? null,
+    store: (subscription?.store as SubscriptionStore) ?? null,
     hasAiFeatures,
     hasMealPlanGeneration,
     freePlansUsed,

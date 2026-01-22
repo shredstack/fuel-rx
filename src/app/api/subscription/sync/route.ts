@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import type { SubscriptionTier, SubscriptionStatus } from '@/lib/types';
+import type { SubscriptionTier, SubscriptionStatus, SubscriptionStore } from '@/lib/types';
 
 /**
  * RevenueCat REST API response types
@@ -16,6 +16,7 @@ interface RevenueCatSubscription {
   grace_period_expires_date: string | null;
   refunded_at: string | null;
   auto_resume_date: string | null;
+  store: 'app_store' | 'play_store' | 'stripe' | 'promotional';
 }
 
 interface RevenueCatEntitlement {
@@ -166,6 +167,18 @@ export async function POST() {
     let currentPeriodEnd: string | null = null;
     let currentPeriodStart: string | null = null;
     let originalPurchaseDate: string | null = null;
+    let store: SubscriptionStore | null = null;
+
+    // Helper to normalize store value from RevenueCat API (lowercase) to our format (uppercase)
+    const normalizeStore = (rcStore: string): SubscriptionStore => {
+      const storeMap: Record<string, SubscriptionStore> = {
+        'app_store': 'APP_STORE',
+        'play_store': 'PLAY_STORE',
+        'stripe': 'STRIPE',
+        'promotional': 'PROMOTIONAL',
+      };
+      return storeMap[rcStore] || 'STRIPE';
+    };
 
     if (fuelRxProEntitlement) {
       const expiresDate = fuelRxProEntitlement.expires_date
@@ -181,6 +194,7 @@ export async function POST() {
       const subscription = subscriber.subscriptions[fuelRxProEntitlement.product_identifier];
       if (subscription) {
         originalPurchaseDate = subscription.original_purchase_date;
+        store = normalizeStore(subscription.store);
 
         if (subscription.billing_issues_detected_at) {
           status = 'billing_retry';
@@ -215,6 +229,7 @@ export async function POST() {
       const subscription = subscriber.subscriptions[firstEntitlement.product_identifier];
       if (subscription) {
         originalPurchaseDate = subscription.original_purchase_date;
+        store = normalizeStore(subscription.store);
 
         if (subscription.billing_issues_detected_at) {
           status = 'billing_retry';
@@ -247,6 +262,7 @@ export async function POST() {
       currentPeriodEnd = firstSubscription.expires_date;
       currentPeriodStart = firstSubscription.purchase_date;
       originalPurchaseDate = firstSubscription.original_purchase_date;
+      store = normalizeStore(firstSubscription.store);
 
       if (firstSubscription.billing_issues_detected_at) {
         status = 'billing_retry';
@@ -279,6 +295,7 @@ export async function POST() {
         current_period_start: currentPeriodStart,
         current_period_end: currentPeriodEnd,
         original_purchase_date: originalPurchaseDate,
+        store,
         last_synced_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
 

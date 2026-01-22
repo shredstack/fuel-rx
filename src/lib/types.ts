@@ -2226,6 +2226,11 @@ export type SubscriptionStatus =
   | 'billing_retry';
 
 /**
+ * Payment store/provider where the subscription was purchased
+ */
+export type SubscriptionStore = 'APP_STORE' | 'PLAY_STORE' | 'STRIPE' | 'PROMOTIONAL';
+
+/**
  * User subscription record from database
  */
 export interface UserSubscription {
@@ -2257,6 +2262,8 @@ export interface SubscriptionStatusResponse {
   subscriptionTier: SubscriptionTier | null;
   subscriptionStatus: SubscriptionStatus | null;
   currentPeriodEnd: string | null;
+  // Payment provider (for routing to correct management portal)
+  store: SubscriptionStore | null;
   // Feature access
   hasAiFeatures: boolean;
   hasMealPlanGeneration: boolean;

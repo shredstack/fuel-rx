@@ -225,6 +225,7 @@ export async function POST(request: Request) {
     current_period_start: event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null,
     current_period_end: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
     original_purchase_date: event.purchased_at_ms ? new Date(event.purchased_at_ms).toISOString() : null,
+    store: event.store,
     last_synced_at: new Date().toISOString(),
   };
 
