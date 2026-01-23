@@ -18,8 +18,11 @@ import type {
   MealType,
   IngredientCategoryType,
   SelectableMealType,
+  EditableIngredient,
+  IngredientWithNutrition,
 } from '@/lib/types';
 import { useLogMealData, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
+import { useMealIngredients } from '@/hooks/queries/useMealIngredients';
 import {
   useLogMeal,
   useDeleteConsumptionEntry,
@@ -45,6 +48,7 @@ import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TrendChart from '@/components/consumption/TrendChart';
 import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
+import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
 import ProduceExtractorModal from '@/components/consumption/ProduceExtractorModal';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Navbar from '@/components/Navbar';
@@ -74,6 +78,45 @@ function getLocalTodayString(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// Convert meal ingredients to editable format
+function ingredientsToEditable(ingredients: IngredientWithNutrition[]): EditableIngredient[] {
+  return ingredients.map((ing) => {
+    const amount = parseFloat(ing.amount) || 0;
+    return {
+      name: ing.name,
+      amount,
+      originalAmount: amount,
+      unit: ing.unit,
+      category: ing.category || 'other',
+      calories: ing.calories,
+      protein: ing.protein,
+      carbs: ing.carbs,
+      fat: ing.fat,
+      isIncluded: true,
+    };
+  });
+}
+
+// Calculate total macros from editable ingredients
+function calculateTotalMacros(ingredients: EditableIngredient[]): {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+} {
+  return ingredients
+    .filter((ing) => ing.isIncluded && ing.amount > 0)
+    .reduce(
+      (acc, ing) => ({
+        calories: acc.calories + ing.calories,
+        protein: acc.protein + ing.protein,
+        carbs: acc.carbs + ing.carbs,
+        fat: acc.fat + ing.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
 }
 
 export default function LogMealClient({
@@ -130,6 +173,18 @@ export default function LogMealClient({
   // Meal type selection state for logging
   const [pendingLogMeal, setPendingLogMeal] = useState<MealToLog | null>(null);
   const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
+
+  // Ingredient editing state for meal plan meals
+  const [showIngredientEditor, setShowIngredientEditor] = useState(false);
+  const [editedIngredients, setEditedIngredients] = useState<EditableIngredient[] | null>(null);
+
+  // Fetch meal ingredients when ingredient editor is shown
+  const pendingMealId = pendingLogMeal?.source === 'meal_plan' && 'meal_id' in pendingLogMeal
+    ? (pendingLogMeal as MealPlanMealToLog).meal_id
+    : null;
+  const { data: mealWithIngredients, isLoading: ingredientsLoading } = useMealIngredients(
+    showIngredientEditor ? pendingMealId : null
+  );
 
   // For adding new entry with pre-selected meal type
   const [addingToMealType, setAddingToMealType] = useState<MealType | null>(null);
@@ -207,6 +262,13 @@ export default function LogMealClient({
     fetchPeriodData();
   }, [selectedPeriod, selectedDate]);
 
+  // Initialize editable ingredients when meal data loads
+  useEffect(() => {
+    if (showIngredientEditor && mealWithIngredients?.ingredients && !editedIngredients) {
+      setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients));
+    }
+  }, [showIngredientEditor, mealWithIngredients, editedIngredients]);
+
   // Handle date change - React Query automatically fetches data for the new date
   const handleDateChange = (newDate: string) => {
     setSelectedDate(newDate);
@@ -228,21 +290,32 @@ export default function LogMealClient({
     const meal = pendingLogMeal;
     const mealType = pendingMealType;
 
-    // Clear pending state
+    // Calculate macros - use edited ingredients if modified, otherwise use original meal macros
+    const customMacros = editedIngredients ? calculateTotalMacros(editedIngredients) : null;
+    const macrosToLog = customMacros || {
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+    };
+
+    // Clear pending state and ingredient editor
     setPendingLogMeal(null);
     setPendingMealType(null);
+    setShowIngredientEditor(false);
+    setEditedIngredients(null);
 
-    // Optimistic update
+    // Optimistic update with potentially modified macros
     const optimisticEntry: ConsumptionEntry = {
       id: `temp-${Date.now()}`,
       user_id: '',
       entry_type: meal.source,
       display_name: meal.name,
       meal_type: mealType,
-      calories: meal.calories,
-      protein: meal.protein,
-      carbs: meal.carbs,
-      fat: meal.fat,
+      calories: Math.round(macrosToLog.calories),
+      protein: Math.round(macrosToLog.protein * 10) / 10,
+      carbs: Math.round(macrosToLog.carbs * 10) / 10,
+      fat: Math.round(macrosToLog.fat * 10) / 10,
       consumed_at: new Date().toISOString(),
       consumed_date: selectedDate,
       created_at: new Date().toISOString(),
@@ -257,7 +330,14 @@ export default function LogMealClient({
     setRecentlyLoggedToMealType(mealType);
 
     // Build request payload
-    const payload: { type: string; source_id: string; meal_id?: string; meal_type: MealType; consumed_at: string } = {
+    const payload: {
+      type: string;
+      source_id: string;
+      meal_id?: string;
+      meal_type: MealType;
+      consumed_at: string;
+      custom_macros?: { calories: number; protein: number; carbs: number; fat: number };
+    } = {
       type: meal.source,
       source_id: meal.source_id,
       meal_type: mealType,
@@ -266,6 +346,15 @@ export default function LogMealClient({
     // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
     if (meal.source === 'meal_plan' && 'meal_id' in meal) {
       payload.meal_id = (meal as MealPlanMealToLog).meal_id;
+    }
+    // Include custom macros if user modified portions
+    if (customMacros) {
+      payload.custom_macros = {
+        calories: Math.round(customMacros.calories),
+        protein: Math.round(customMacros.protein * 10) / 10,
+        carbs: Math.round(customMacros.carbs * 10) / 10,
+        fat: Math.round(customMacros.fat * 10) / 10,
+      };
     }
 
     try {
@@ -985,13 +1074,87 @@ export default function LogMealClient({
         {/* Meal Type Confirmation Modal */}
         {pendingLogMeal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-semibold text-gray-900 mb-1">
                 Log &ldquo;{pendingLogMeal.name}&rdquo;
               </h3>
-              <p className="text-sm text-gray-500 mb-4">
-                {pendingLogMeal.calories} cal | {pendingLogMeal.protein}g P | {pendingLogMeal.carbs}g C | {pendingLogMeal.fat}g F
-              </p>
+
+              {/* Macro summary - shows edited or original macros */}
+              {(() => {
+                const displayMacros = editedIngredients
+                  ? calculateTotalMacros(editedIngredients)
+                  : { calories: pendingLogMeal.calories, protein: pendingLogMeal.protein, carbs: pendingLogMeal.carbs, fat: pendingLogMeal.fat };
+                const isModified = editedIngredients && (
+                  displayMacros.calories !== pendingLogMeal.calories ||
+                  displayMacros.protein !== pendingLogMeal.protein ||
+                  displayMacros.carbs !== pendingLogMeal.carbs ||
+                  displayMacros.fat !== pendingLogMeal.fat
+                );
+                return (
+                  <div className={`text-sm mb-4 p-2 rounded ${isModified ? 'bg-amber-50 border border-amber-200' : 'text-gray-500'}`}>
+                    {isModified && <span className="text-amber-600 font-medium">Modified: </span>}
+                    {Math.round(displayMacros.calories)} cal | {Math.round(displayMacros.protein * 10) / 10}g P | {Math.round(displayMacros.carbs * 10) / 10}g C | {Math.round(displayMacros.fat * 10) / 10}g F
+                  </div>
+                );
+              })()}
+
+              {/* Adjust portions toggle - only for meal_plan meals with meal_id */}
+              {pendingLogMeal.source === 'meal_plan' && 'meal_id' in pendingLogMeal && (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (showIngredientEditor) {
+                        // Collapse and reset
+                        setShowIngredientEditor(false);
+                        setEditedIngredients(null);
+                      } else {
+                        // Expand
+                        setShowIngredientEditor(true);
+                        // Initialize editable ingredients when meal data is available
+                        if (mealWithIngredients?.ingredients) {
+                          setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients));
+                        }
+                      }
+                    }}
+                    className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                  >
+                    <svg
+                      className={`w-4 h-4 transition-transform ${showIngredientEditor ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    {showIngredientEditor ? 'Hide ingredients' : 'Adjust portions'}
+                  </button>
+
+                  {/* Ingredient editor section */}
+                  {showIngredientEditor && (
+                    <div className="mt-3 border-t border-gray-100 pt-3">
+                      {ingredientsLoading ? (
+                        <div className="text-center py-4 text-gray-500">
+                          <svg className="animate-spin h-5 w-5 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Loading ingredients...
+                        </div>
+                      ) : editedIngredients && editedIngredients.length > 0 ? (
+                        <MealIngredientEditor
+                          ingredients={editedIngredients}
+                          onChange={setEditedIngredients}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-500 text-center py-2">
+                          No ingredients available for this meal.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1009,6 +1172,8 @@ export default function LogMealClient({
                   onClick={() => {
                     setPendingLogMeal(null);
                     setPendingMealType(null);
+                    setShowIngredientEditor(false);
+                    setEditedIngredients(null);
                   }}
                   className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
                 >

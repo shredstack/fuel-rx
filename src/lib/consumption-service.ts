@@ -159,6 +159,14 @@ export async function logMealConsumed(
   const consumedAt = request.consumed_at || new Date().toISOString();
   const consumedDate = consumedAt.split('T')[0];
 
+  // Use custom macros if provided (user modified portions), otherwise use source meal's macros
+  const macros = request.custom_macros || {
+    calories: mealData.calories,
+    protein: mealData.protein,
+    carbs: mealData.carbs,
+    fat: mealData.fat,
+  };
+
   // Create consumption entry with macro snapshot
   // Use request.meal_type override if provided, otherwise use source meal's type
   const { data: entry, error: insertError } = await supabase
@@ -172,10 +180,10 @@ export async function logMealConsumed(
       consumed_date: consumedDate,
       display_name: mealData.name,
       meal_type: request.meal_type || mealData.meal_type,
-      calories: Math.round(mealData.calories),
-      protein: Math.round(mealData.protein * 10) / 10,
-      carbs: Math.round(mealData.carbs * 10) / 10,
-      fat: Math.round(mealData.fat * 10) / 10,
+      calories: Math.round(macros.calories),
+      protein: Math.round(macros.protein * 10) / 10,
+      carbs: Math.round(macros.carbs * 10) / 10,
+      fat: Math.round(macros.fat * 10) / 10,
       notes: request.notes,
     })
     .select()
