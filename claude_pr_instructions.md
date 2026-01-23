@@ -126,3 +126,18 @@ The app uses RevenueCat for subscription management across platforms:
 - **Web**: Uses `@revenuecat/purchases-js` - can initialize on-demand during purchase flow (this is intentional)
 - **Package lookup**: Always tries SDK convenience properties (`.monthly`, `.annual`) first, with fallback to identifier matching
 - **Debug logging**: Package lookup issues are logged to `/api/debug/revenuecat` for troubleshooting
+
+### RLS Policy Patterns
+
+The app uses an **API-gated architecture** where users interact with data through Next.js API routes, not direct database access. This affects how you should evaluate RLS policies:
+
+1. **Permissive RLS with API control is acceptable**: If an RLS policy appears permissive (e.g., `USING (TRUE)`), check whether all writes to that table go through API routes. API routes authenticate users and control exactly which columns/values can be modified. The RLS is a fallback safety net, not the primary access control.
+
+2. **Shared/system data patterns**: Some tables contain shared data that any authenticated user can read or contribute to:
+   - `ingredients` - System ingredients (USDA imports, admin-curated) are shared by all users. The policy `is_user_added = FALSE AND added_by_user_id IS NULL` intentionally allows users to import USDA foods as shared ingredients.
+   - Don't flag shared data inserts as "any user can create system data" if that's the intended design.
+
+3. **When to actually flag RLS issues**:
+   - User A can read/modify user B's private data (check for missing `user_id = auth.uid()` on user-owned tables)
+   - DELETE policies without proper ownership checks
+   - Policies that bypass intended access controls (not just permissive-looking policies with API gating)

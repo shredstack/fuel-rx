@@ -1813,6 +1813,51 @@ export interface IngredientToLog {
   // 800g Challenge tracking
   category?: IngredientCategoryType;
   default_grams?: number;
+  // USDA-specific fields
+  usda_fdc_id?: string | null;
+  health_score?: number | null;
+  usda_data_type?: string | null;
+  usda_brand_owner?: string | null;
+}
+
+/**
+ * Health category for USDA foods
+ */
+export type HealthCategory = 'whole' | 'minimally_processed' | 'healthy_processed' | 'heavily_processed';
+
+/**
+ * USDA search result with health score
+ */
+export interface USDASearchResultWithScore {
+  fdcId: number;
+  description: string;
+  dataType: string;
+  brandOwner?: string;
+  brandName?: string;
+  ingredients?: string;
+  servingSize?: number;
+  servingSizeUnit?: string;
+  health_score: number;
+  health_category: HealthCategory;
+  nutrition_per_100g: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    fiber: number | null;
+    sugar: number | null;
+  };
+}
+
+/**
+ * Enhanced search results with both FuelRx and USDA results
+ */
+export interface EnhancedSearchResults {
+  fuelrx_results: IngredientToLog[];
+  usda_results: USDASearchResultWithScore[];
+  fuelrx_count: number;
+  usda_count: number;
+  usda_total_available: number;
 }
 
 /**
