@@ -1,11 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { IngredientToLog, BarcodeProduct, IngredientCategoryType } from '@/lib/types';
+import type {
+  IngredientToLog,
+  BarcodeProduct,
+  IngredientCategoryType,
+  USDASearchResultWithScore,
+  EnhancedSearchResults,
+} from '@/lib/types';
 import BarcodeScanner from './BarcodeScanner';
 import { MacroInput } from '@/components/ui';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
+import HealthScoreBadge, { DataTypeLabel } from './HealthScoreBadge';
 
 type TabType = 'search' | 'barcode' | 'manual';
 
@@ -38,7 +45,10 @@ export default function AddIngredientModal({
   // Search state
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<IngredientToLog[]>([]);
+  const [usdaResults, setUsdaResults] = useState<USDASearchResultWithScore[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [includeUsda, setIncludeUsda] = useState(true);
+  const [importingFdcId, setImportingFdcId] = useState<number | null>(null);
 
   // Barcode state
   const [barcodeProduct, setBarcodeProduct] = useState<BarcodeProduct | null>(null);
@@ -68,20 +78,33 @@ export default function AddIngredientModal({
   const [manualSubmitting, setManualSubmitting] = useState(false);
 
   // Search for ingredients
-  const searchIngredients = useCallback(async (searchQuery: string) => {
+  const searchIngredients = useCallback(async (searchQuery: string, searchUsda: boolean) => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
+      setUsdaResults([]);
       return;
     }
 
     setSearchLoading(true);
     try {
-      const response = await fetch(
-        `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}`
-      );
+      const url = searchUsda
+        ? `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}&include_usda=true`
+        : `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}`;
+
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setSearchResults(data.results || []);
+
+        if (searchUsda) {
+          // Enhanced response with both FuelRx and USDA results
+          const enhanced = data as EnhancedSearchResults;
+          setSearchResults(enhanced.fuelrx_results || []);
+          setUsdaResults(enhanced.usda_results || []);
+        } else {
+          // Legacy response with just results array
+          setSearchResults(data.results || []);
+          setUsdaResults([]);
+        }
       }
     } catch (error) {
       console.error('Error searching ingredients:', error);
@@ -92,10 +115,10 @@ export default function AddIngredientModal({
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
-      searchIngredients(query);
+      searchIngredients(query, includeUsda);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, searchIngredients]);
+  }, [query, includeUsda, searchIngredients]);
 
   // Reset when closed
   useEffect(() => {
@@ -103,6 +126,8 @@ export default function AddIngredientModal({
       setActiveTab('search');
       setQuery('');
       setSearchResults([]);
+      setUsdaResults([]);
+      setImportingFdcId(null);
       setBarcodeProduct(null);
       setBarcodeError(null);
       setBarcodeEditedName('');
@@ -121,6 +146,28 @@ export default function AddIngredientModal({
       });
     }
   }, [isOpen]);
+
+  // Handle selecting a USDA food (imports it first)
+  const handleSelectUsdaFood = async (usdaFood: USDASearchResultWithScore) => {
+    setImportingFdcId(usdaFood.fdcId);
+    try {
+      const response = await fetch('/api/consumption/ingredients/import-usda', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fdcId: usdaFood.fdcId }),
+      });
+
+      if (response.ok) {
+        const ingredient: IngredientToLog = await response.json();
+        onSelectIngredient(ingredient);
+      } else {
+        console.error('Failed to import USDA food');
+      }
+    } catch (error) {
+      console.error('Error importing USDA food:', error);
+    }
+    setImportingFdcId(null);
+  };
 
   if (!isOpen) return null;
 
@@ -284,7 +331,7 @@ export default function AddIngredientModal({
           {/* Search Tab */}
           {activeTab === 'search' && (
             <div className="p-4">
-              <div className="relative mb-4">
+              <div className="relative mb-3">
                 <svg
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
                   fill="none"
@@ -308,21 +355,44 @@ export default function AddIngredientModal({
                 />
               </div>
 
+              {/* USDA Search Toggle */}
+              <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeUsda}
+                  onChange={(e) => setIncludeUsda(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-600">
+                  Search all foods (USDA Database)
+                </span>
+              </label>
+
               {searchLoading && (
                 <div className="flex items-center justify-center py-8">
-                  <div className="text-gray-500">Searching...</div>
+                  <div className="text-gray-500">
+                    {includeUsda ? 'Searching FuelRx & USDA...' : 'Searching...'}
+                  </div>
                 </div>
               )}
 
-              {!searchLoading && query.length >= 2 && searchResults.length === 0 && (
+              {!searchLoading && query.length >= 2 && searchResults.length === 0 && usdaResults.length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-gray-500">No ingredients found for &ldquo;{query}&rdquo;</p>
+                  {!includeUsda && (
+                    <button
+                      onClick={() => setIncludeUsda(true)}
+                      className="mt-2 text-primary-600 hover:text-primary-700 font-medium text-sm"
+                    >
+                      Try searching USDA database
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setManualForm((prev) => ({ ...prev, name: query }));
                       setActiveTab('manual');
                     }}
-                    className="mt-3 text-primary-600 hover:text-primary-700 font-medium"
+                    className="mt-3 block mx-auto text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Add &ldquo;{query}&rdquo; manually
                   </button>
@@ -335,35 +405,94 @@ export default function AddIngredientModal({
                 </div>
               )}
 
-              {!searchLoading && searchResults.length > 0 && (
-                <div className="space-y-2">
-                  {searchResults.map((ingredient, index) => (
-                    <button
-                      key={`${ingredient.name}-${index}`}
-                      onClick={() => {
-                        onSelectIngredient(ingredient);
-                        // Don't call onClose() here - let the parent handle closing
-                        // This preserves addingToMealType for IngredientAmountPicker
-                      }}
-                      className="w-full p-3 bg-gray-50 hover:bg-primary-50 rounded-lg text-left transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-gray-900">{ingredient.name}</p>
-                        {ingredient.is_user_added && (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
-                            User Added
-                          </span>
-                        )}
+              {!searchLoading && (searchResults.length > 0 || usdaResults.length > 0) && (
+                <div className="space-y-4">
+                  {/* FuelRx Results */}
+                  {searchResults.length > 0 && (
+                    <div>
+                      {includeUsda && (
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                          From FuelRx ({searchResults.length})
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        {searchResults.map((ingredient, index) => (
+                          <button
+                            key={`fuelrx-${ingredient.name}-${index}`}
+                            onClick={() => {
+                              onSelectIngredient(ingredient);
+                            }}
+                            className="w-full p-3 bg-gray-50 hover:bg-primary-50 rounded-lg text-left transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium text-gray-900">{ingredient.name}</p>
+                              {ingredient.is_user_added && (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
+                                  User Added
+                                </span>
+                              )}
+                              {ingredient.is_validated && !ingredient.is_user_added && (
+                                <span className="text-green-500" title="FuelRx Validated">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                  </svg>
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500">
+                              {ingredient.calories_per_serving} cal per {ingredient.default_amount}{' '}
+                              {ingredient.default_unit}
+                              <span className="mx-2">|</span>
+                              {ingredient.protein_per_serving}g P, {ingredient.carbs_per_serving}g C,{' '}
+                              {ingredient.fat_per_serving}g F
+                            </p>
+                          </button>
+                        ))}
                       </div>
-                      <p className="text-sm text-gray-500">
-                        {ingredient.calories_per_serving} cal per {ingredient.default_amount}{' '}
-                        {ingredient.default_unit}
-                        <span className="mx-2">|</span>
-                        {ingredient.protein_per_serving}g P, {ingredient.carbs_per_serving}g C,{' '}
-                        {ingredient.fat_per_serving}g F
+                    </div>
+                  )}
+
+                  {/* USDA Results */}
+                  {usdaResults.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                        From USDA Database ({usdaResults.length})
                       </p>
-                    </button>
-                  ))}
+                      <div className="space-y-2">
+                        {usdaResults.map((food) => (
+                          <button
+                            key={`usda-${food.fdcId}`}
+                            onClick={() => handleSelectUsdaFood(food)}
+                            disabled={importingFdcId === food.fdcId}
+                            className="w-full p-3 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition-colors disabled:opacity-50"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <HealthScoreBadge score={food.health_score} />
+                              <p className="font-medium text-gray-900 flex-1 truncate">
+                                {food.description}
+                              </p>
+                              {importingFdcId === food.fdcId && (
+                                <span className="text-xs text-primary-600">Adding...</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs mb-1">
+                              <DataTypeLabel
+                                dataType={food.dataType}
+                                brandOwner={food.brandOwner}
+                              />
+                            </div>
+                            <p className="text-sm text-gray-500">
+                              {Math.round(food.nutrition_per_100g.calories)} cal per 100g
+                              <span className="mx-2">|</span>
+                              {Math.round(food.nutrition_per_100g.protein)}g P,{' '}
+                              {Math.round(food.nutrition_per_100g.carbs)}g C,{' '}
+                              {Math.round(food.nutrition_per_100g.fat)}g F
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
