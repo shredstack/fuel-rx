@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { IngredientToLog } from '@/lib/types';
+import type { IngredientToLog, USDASearchResultWithScore, EnhancedSearchResults } from '@/lib/types';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
+import HealthScoreBadge, { DataTypeLabel } from './HealthScoreBadge';
 
 interface Props {
   frequentIngredients: IngredientToLog[];
@@ -24,8 +25,11 @@ export default function IngredientSearchBar({
 }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IngredientToLog[]>([]);
+  const [usdaResults, setUsdaResults] = useState<USDASearchResultWithScore[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [includeUsda, setIncludeUsda] = useState(true);
+  const [importingFdcId, setImportingFdcId] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isKeyboardVisible, keyboardHeight } = useKeyboard();
@@ -49,21 +53,34 @@ export default function IngredientSearchBar({
   }, []);
 
   // Search for ingredients
-  const searchIngredients = useCallback(async (searchQuery: string) => {
+  const searchIngredients = useCallback(async (searchQuery: string, searchUsda: boolean) => {
     if (searchQuery.length < 2) {
       setResults([]);
+      setUsdaResults([]);
       setShowDropdown(false);
       return;
     }
 
     setIsSearching(true);
     try {
-      const response = await fetch(
-        `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}`
-      );
+      const url = searchUsda
+        ? `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}&include_usda=true`
+        : `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}`;
+
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setResults(data.results || []);
+
+        if (searchUsda) {
+          // Enhanced response with both FuelRx and USDA results
+          const enhanced = data as EnhancedSearchResults;
+          setResults(enhanced.fuelrx_results || []);
+          setUsdaResults(enhanced.usda_results || []);
+        } else {
+          // Legacy response with just results array
+          setResults(data.results || []);
+          setUsdaResults([]);
+        }
         setShowDropdown(true);
       }
     } catch (error) {
@@ -75,10 +92,34 @@ export default function IngredientSearchBar({
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
-      searchIngredients(query);
+      searchIngredients(query, includeUsda);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, searchIngredients]);
+  }, [query, includeUsda, searchIngredients]);
+
+  // Handle selecting a USDA food (imports it first)
+  const handleSelectUsdaFood = async (usdaFood: USDASearchResultWithScore) => {
+    setImportingFdcId(usdaFood.fdcId);
+    try {
+      const response = await fetch('/api/consumption/ingredients/import-usda', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fdcId: usdaFood.fdcId }),
+      });
+
+      if (response.ok) {
+        const ingredient: IngredientToLog = await response.json();
+        onSelectIngredient(ingredient);
+        setQuery('');
+        setShowDropdown(false);
+      } else {
+        console.error('Failed to import USDA food');
+      }
+    } catch (error) {
+      console.error('Error importing USDA food:', error);
+    }
+    setImportingFdcId(null);
+  };
 
   const ValidationBadge = ({ ingredient }: { ingredient: IngredientToLog }) => {
     if (ingredient.is_validated) {
@@ -185,8 +226,21 @@ export default function IngredientSearchBar({
           </button>
         </div>
 
+        {/* USDA Search Toggle */}
+        <label className="flex items-center gap-2 mt-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeUsda}
+            onChange={(e) => setIncludeUsda(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span className="text-sm text-gray-600">
+            Search all foods (USDA Database)
+          </span>
+        </label>
+
         {/* Search Results Dropdown */}
-        {showDropdown && results.length > 0 && (
+        {showDropdown && (results.length > 0 || usdaResults.length > 0) && (
           <div
             ref={dropdownRef}
             className="absolute z-10 w-full mt-1 bg-white border border-gray-200
@@ -196,35 +250,107 @@ export default function IngredientSearchBar({
               // Leave some padding (100px) for the input and header above
               maxHeight: isNative && isKeyboardVisible && keyboardHeight > 0
                 ? `calc(100vh - ${keyboardHeight}px - 200px)`
-                : '16rem', // 256px = max-h-64
+                : '20rem', // Increased to accommodate both sections
             }}
           >
-            {results.map((ingredient, index) => (
-              <button
-                key={`${ingredient.name}-${index}`}
-                onClick={() => handleSelectIngredient(ingredient)}
-                className="w-full px-4 py-3 text-left hover:bg-gray-50
-                           border-b border-gray-100 last:border-b-0"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-gray-900">
-                    {ingredient.name}
-                    <ValidationBadge ingredient={ingredient} />
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {ingredient.calories_per_serving} cal
+            {/* FuelRx Results */}
+            {results.length > 0 && (
+              <div>
+                {includeUsda && (
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      From FuelRx ({results.length})
+                    </span>
+                  </div>
+                )}
+                {results.map((ingredient, index) => (
+                  <button
+                    key={`fuelrx-${ingredient.name}-${index}`}
+                    onClick={() => handleSelectIngredient(ingredient)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50
+                               border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-900">
+                        {ingredient.name}
+                        <ValidationBadge ingredient={ingredient} />
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {ingredient.calories_per_serving} cal
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      per {ingredient.default_amount} {ingredient.default_unit}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* USDA Results */}
+            {usdaResults.length > 0 && (
+              <div>
+                <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+                  <span className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+                    From USDA Database ({usdaResults.length})
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  per {ingredient.default_amount} {ingredient.default_unit}
-                </p>
+                {usdaResults.slice(0, 5).map((food) => (
+                  <button
+                    key={`usda-${food.fdcId}`}
+                    onClick={() => handleSelectUsdaFood(food)}
+                    disabled={importingFdcId === food.fdcId}
+                    className="w-full px-4 py-3 text-left hover:bg-blue-50
+                               border-b border-gray-100 last:border-b-0
+                               disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <HealthScoreBadge score={food.health_score} />
+                      <span className="font-medium text-gray-900 flex-1 truncate">
+                        {food.description}
+                      </span>
+                      {importingFdcId === food.fdcId && (
+                        <span className="text-xs text-primary-600 flex-shrink-0">Adding...</span>
+                      )}
+                      <span className="text-sm text-gray-500 flex-shrink-0">
+                        {Math.round(food.nutrition_per_100g.calories)} cal
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <DataTypeLabel dataType={food.dataType} brandOwner={food.brandOwner} />
+                      <span className="text-xs text-gray-400">
+                        per 100g | {Math.round(food.nutrition_per_100g.protein)}g P
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                {usdaResults.length > 5 && (
+                  <button
+                    onClick={onAddManually}
+                    className="w-full px-4 py-2 text-center text-sm text-blue-600 hover:bg-blue-50
+                               border-t border-gray-100"
+                  >
+                    Show {usdaResults.length - 5} more from USDA...
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Show USDA suggestion when no USDA results but USDA is disabled */}
+            {!includeUsda && results.length > 0 && results.length < 5 && (
+              <button
+                onClick={() => setIncludeUsda(true)}
+                className="w-full px-4 py-2 text-center text-sm text-blue-600 hover:bg-blue-50
+                           border-t border-gray-100"
+              >
+                Search USDA database for more options...
               </button>
-            ))}
+            )}
           </div>
         )}
 
         {/* No results message */}
-        {showDropdown && query.length >= 2 && results.length === 0 && !isSearching && (
+        {showDropdown && query.length >= 2 && results.length === 0 && usdaResults.length === 0 && !isSearching && (
           <div
             ref={dropdownRef}
             className="absolute z-10 w-full mt-1 bg-white border border-gray-200
@@ -237,6 +363,14 @@ export default function IngredientSearchBar({
             }}
           >
             <p className="text-gray-500 text-sm">No ingredients found</p>
+            {!includeUsda && (
+              <button
+                onClick={() => setIncludeUsda(true)}
+                className="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium block mx-auto"
+              >
+                Try searching USDA database
+              </button>
+            )}
             <button
               onClick={() => {
                 setShowDropdown(false);

@@ -126,9 +126,13 @@ export async function searchUSDA(
   }
 
   try {
+    // Add wildcard suffix for prefix matching (e.g., "kirklan" -> "kirklan*")
+    // This allows partial word matches like "kirklan" matching "kirkland"
+    const wildcardQuery = query.endsWith('*') ? query : `${query}*`;
+
     const params = new URLSearchParams({
       api_key: apiKey,
-      query: query,
+      query: wildcardQuery,
       pageSize: Math.min(pageSize, 50).toString(),
     });
 
