@@ -1839,6 +1839,29 @@ export interface LogMealRequest {
   meal_type?: MealType; // Override the meal's default type
   consumed_at?: string;
   notes?: string;
+  // Custom macros when user has modified ingredient portions
+  custom_macros?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+}
+
+/**
+ * Editable ingredient state for the portion editor modal
+ */
+export interface EditableIngredient {
+  name: string;
+  amount: number;
+  originalAmount: number;
+  unit: string;
+  category: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  isIncluded: boolean;
 }
 
 /**

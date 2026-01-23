@@ -60,4 +60,10 @@ export const queryKeys = {
     all: ['grocery-staples'] as const,
     list: (frequency?: string) => ['grocery-staples', 'list', frequency] as const,
   },
+
+  // Individual meals (for fetching ingredients)
+  meals: {
+    all: ['meals'] as const,
+    detail: (mealId: string) => ['meals', mealId] as const,
+  },
 } as const;
