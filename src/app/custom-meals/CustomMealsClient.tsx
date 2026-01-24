@@ -22,6 +22,7 @@ import { MacroInput } from '@/components/ui'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 import SavedSingleMealCard from '@/components/SavedSingleMealCard'
 import SavedPartyMealCard from '@/components/SavedPartyMealCard'
+import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 
@@ -1049,6 +1050,9 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
             )}
           </div>
         )}
+
+        {/* Nutrition disclaimer for Apple App Store compliance */}
+        <NutritionDisclaimer className="mt-8" />
       </main>
 
       <MobileTabBar />

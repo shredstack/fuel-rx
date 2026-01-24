@@ -16,6 +16,7 @@ import CommunityTeaser from '@/components/onboarding/CommunityTeaser'
 import MealLoggingTeaser from '@/components/onboarding/MealLoggingTeaser'
 import MotivationalToast from '@/components/onboarding/MotivationalToast'
 import PaywallModal from '@/components/PaywallModal'
+import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 import Navbar from '@/components/Navbar'
 import MobileTabBar from '@/components/MobileTabBar'
 
@@ -482,6 +483,11 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
               <MealLoggingTeaser onDismiss={() => discoverFeature('meal_logging')} />
             </div>
           )}
+
+          {/* Nutrition disclaimer for Apple App Store compliance */}
+          <div className="md:col-span-2 lg:col-span-3">
+            <NutritionDisclaimer />
+          </div>
         </div>
 
         {/* Milestone Toast */}
