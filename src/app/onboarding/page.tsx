@@ -31,6 +31,12 @@ export default function OnboardingPage() {
   const { isKeyboardVisible, keyboardHeight } = useKeyboard()
   const { isNative } = usePlatform()
   const contentRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(false)
+
+  // Prevent hydration mismatch by only applying client-specific styles after mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const [formData, setFormData] = useState<OnboardingData>({
     name: '',
@@ -207,7 +213,7 @@ export default function OnboardingPage() {
   return (
     <div
       className="min-h-screen bg-gray-50 py-12 px-4 safe-area-top safe-area-bottom"
-      style={isNative && isKeyboardVisible ? { paddingBottom: keyboardHeight } : undefined}
+      style={mounted && isNative && isKeyboardVisible ? { paddingBottom: keyboardHeight } : undefined}
     >
       <div className="max-w-2xl mx-auto" ref={contentRef}>
         <div className="text-center mb-8">
