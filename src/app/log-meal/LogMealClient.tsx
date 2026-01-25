@@ -30,6 +30,7 @@ import {
   useUpdateEntryAmount,
   useRepeatMealType,
   useRepeatYesterday,
+  useAddWater,
   optimisticallyAddEntry,
   optimisticallyRemoveEntry,
   updateMealLoggedStatusInCache,
@@ -158,6 +159,7 @@ export default function LogMealClient({
   const updateAmountMutation = useUpdateEntryAmount();
   const repeatMealTypeMutation = useRepeatMealType();
   const repeatYesterdayMutation = useRepeatYesterday();
+  const addWaterMutation = useAddWater();
 
   // Period view state
   const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
@@ -205,6 +207,10 @@ export default function LogMealClient({
   // Track previous fruit/veg percentage for 800g confetti trigger
   const prevFruitVegPercentageRef = useRef<number | null>(null);
   const hasShownFruitVegConfettiRef = useRef(false);
+
+  // Track previous water percentage for confetti trigger
+  const prevWaterPercentageRef = useRef<number | null>(null);
+  const hasShownWaterConfettiRef = useRef(false);
 
   // Ordered list of meal types based on user preferences
   // Section order: breakfast → lunch → dinner → pre_workout* → post_workout* → snack
@@ -676,6 +682,8 @@ export default function LogMealClient({
     prevCaloriePercentageRef.current = null;
     hasShownFruitVegConfettiRef.current = false;
     prevFruitVegPercentageRef.current = null;
+    hasShownWaterConfettiRef.current = false;
+    prevWaterPercentageRef.current = null;
   }, [selectedDate]);
 
   // Trigger confetti when hitting 800g fruit/veg goal
@@ -735,6 +743,64 @@ export default function LogMealClient({
 
     prevFruitVegPercentageRef.current = currentPercentage;
   }, [summary.fruitVeg, selectedDate]);
+
+  // Trigger confetti when hitting 100oz water goal
+  useEffect(() => {
+    if (!summary.water) return;
+
+    const currentPercentage = summary.water.percentage;
+    const prevPercentage = prevWaterPercentageRef.current;
+
+    // Only trigger if:
+    // 1. We have a previous value (not initial load)
+    // 2. We crossed the 100% threshold (was below, now at or above)
+    // 3. We haven't already shown confetti for this date
+    // 4. Server hasn't marked it as already celebrated
+    if (
+      prevPercentage !== null &&
+      prevPercentage < 100 &&
+      currentPercentage >= 100 &&
+      !hasShownWaterConfettiRef.current &&
+      !summary.water.goalCelebrated
+    ) {
+      hasShownWaterConfettiRef.current = true;
+
+      // Fire confetti with blue colors from both sides
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors: ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'],  // Blue palette
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors: ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'],
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      };
+      frame();
+
+      // Mark as celebrated on the server
+      fetch('/api/consumption/celebrate-water', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate }),
+      }).catch(console.error);
+    }
+
+    prevWaterPercentageRef.current = currentPercentage;
+  }, [summary.water, selectedDate]);
 
   // Get time-based suggested meals from today's plan
   const suggestedMealTypes = getTimeBasedMealTypes();
@@ -810,6 +876,9 @@ export default function LogMealClient({
               percentages={percentages}
               entryCount={summary.entry_count}
               fruitVeg={summary.fruitVeg}
+              water={summary.water}
+              onAddWater={(ounces) => addWaterMutation.mutate({ date: selectedDate, ounces })}
+              isAddingWater={addWaterMutation.isPending}
             />
 
             {/* Quick Actions: Same as Yesterday */}
