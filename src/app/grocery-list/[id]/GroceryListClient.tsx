@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import type { ContextualGroceryList, GroceryItemWithContext, CoreIngredients, GroceryCategory, MealType, MealPlanStapleWithDetails, GroceryStaple, MealPlanCustomItem } from '@/lib/types'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
@@ -19,6 +19,7 @@ interface Props {
   initialStaples: MealPlanStapleWithDetails[]
   availableStaples: GroceryStaple[]
   initialCustomItems: MealPlanCustomItem[]
+  initialCheckedItems: string[]
 }
 
 const CATEGORY_LABELS: Record<GroceryCategory, string> = {
@@ -41,8 +42,11 @@ const FILTERABLE_MEAL_TYPES: { type: MealType; label: string }[] = [
   { type: 'snack', label: 'Snacks' },
 ]
 
-export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients, initialStaples, availableStaples: initialAvailableStaples, initialCustomItems }: Props) {
-  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
+export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients, initialStaples, availableStaples: initialAvailableStaples, initialCustomItems, initialCheckedItems }: Props) {
+  // Initialize checked items from persisted data (normalized names from database)
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(
+    () => new Set(initialCheckedItems)
+  )
   const [selectedMealTypes, setSelectedMealTypes] = useState<Set<MealType>>(
     new Set(FILTERABLE_MEAL_TYPES.map(m => m.type))
   )
@@ -114,17 +118,56 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
   // Sort categories
   const sortedCategories = CATEGORY_ORDER.filter(cat => groupedItems[cat])
 
-  const toggleItem = (itemName: string) => {
+  // Toggle item check and persist to database
+  const toggleItem = useCallback(async (itemName: string) => {
+    const normalizedName = itemName.toLowerCase().trim()
+    const newChecked = !checkedItems.has(normalizedName)
+
+    // Optimistic update
     setCheckedItems(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(itemName)) {
-        newSet.delete(itemName)
+      const next = new Set(prev)
+      if (newChecked) {
+        next.add(normalizedName)
       } else {
-        newSet.add(itemName)
+        next.delete(normalizedName)
       }
-      return newSet
+      return next
     })
-  }
+
+    // Persist to database
+    try {
+      const response = await fetch(`/api/meal-plans/${mealPlanId}/grocery-checks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemName: normalizedName, isChecked: newChecked }),
+      })
+
+      if (!response.ok) {
+        // Revert on failure
+        setCheckedItems(prev => {
+          const next = new Set(prev)
+          if (newChecked) {
+            next.delete(normalizedName)
+          } else {
+            next.add(normalizedName)
+          }
+          return next
+        })
+      }
+    } catch (error) {
+      console.error('Error persisting check:', error)
+      // Revert on failure
+      setCheckedItems(prev => {
+        const next = new Set(prev)
+        if (newChecked) {
+          next.delete(normalizedName)
+        } else {
+          next.add(normalizedName)
+        }
+        return next
+      })
+    }
+  }, [checkedItems, mealPlanId])
 
   const toggleMealType = (mealType: MealType) => {
     setSelectedMealTypes(prev => {
@@ -145,9 +188,33 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
     setSelectedMealTypes(new Set(availableMealTypes.map(m => m.type)))
   }
 
+  // Clear all checked items and persist to database
+  const clearAllChecks = useCallback(async () => {
+    const previousChecked = checkedItems
+
+    // Optimistic update
+    setCheckedItems(new Set())
+
+    // Persist each unchecked item to database
+    try {
+      const promises = Array.from(previousChecked).map(normalizedName =>
+        fetch(`/api/meal-plans/${mealPlanId}/grocery-checks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemName: normalizedName, isChecked: false }),
+        })
+      )
+      await Promise.all(promises)
+    } catch (error) {
+      console.error('Error clearing checks:', error)
+      // Revert on failure
+      setCheckedItems(previousChecked)
+    }
+  }, [checkedItems, mealPlanId])
+
   const totalItems = filteredItems.length
-  const checkedCount = Array.from(checkedItems).filter(name =>
-    filteredItems.some(item => item.name === name)
+  const checkedCount = Array.from(checkedItems).filter(normalizedName =>
+    filteredItems.some(item => item.name.toLowerCase().trim() === normalizedName)
   ).length
 
   const isFiltered = selectedMealTypes.size < availableMealTypes.length
@@ -308,7 +375,7 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
                     <GroceryItemCard
                       key={item.name}
                       item={item}
-                      isChecked={checkedItems.has(item.name)}
+                      isChecked={checkedItems.has(item.name.toLowerCase().trim())}
                       onToggle={() => toggleItem(item.name)}
                       householdInfo={groceryList.householdInfo}
                     />
@@ -328,7 +395,7 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
             Back to Meal Plan
           </Link>
           <button
-            onClick={() => setCheckedItems(new Set())}
+            onClick={clearAllChecks}
             className="btn-secondary"
             disabled={checkedCount === 0}
           >
