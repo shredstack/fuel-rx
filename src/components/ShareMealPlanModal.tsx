@@ -23,6 +23,9 @@ export function ShareMealPlanModal({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [sharedUserIds, setSharedUserIds] = useState<Set<string>>(new Set());
+  const [includeGroceryItems, setIncludeGroceryItems] = useState(true);
+  const [hasGroceryItems, setHasGroceryItems] = useState(false);
+  const [checkingGroceryItems, setCheckingGroceryItems] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     if (!isOpen) return;
@@ -53,6 +56,28 @@ export function ShareMealPlanModal({
     fetchUsers();
   }, [fetchUsers]);
 
+  // Check if there are grocery items when modal opens
+  useEffect(() => {
+    const checkGroceryItems = async () => {
+      if (!isOpen) return;
+
+      setCheckingGroceryItems(true);
+      try {
+        const res = await fetch(`/api/meal-plans/${mealPlanId}/has-grocery-items`);
+        if (res.ok) {
+          const data = await res.json();
+          setHasGroceryItems(data.hasItems);
+        }
+      } catch (err) {
+        console.error('Error checking grocery items:', err);
+      } finally {
+        setCheckingGroceryItems(false);
+      }
+    };
+
+    checkGroceryItems();
+  }, [isOpen, mealPlanId]);
+
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
@@ -60,6 +85,8 @@ export function ShareMealPlanModal({
       setError(null);
       setSuccessMessage(null);
       setSharedUserIds(new Set());
+      setIncludeGroceryItems(true);
+      setHasGroceryItems(false);
     }
   }, [isOpen]);
 
@@ -72,7 +99,10 @@ export function ShareMealPlanModal({
       const res = await fetch(`/api/meal-plans/${mealPlanId}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientUserId: user.id }),
+        body: JSON.stringify({
+          recipientUserId: user.id,
+          includeGroceryItems: includeGroceryItems && hasGroceryItems,
+        }),
       });
 
       const data = await res.json();
@@ -122,6 +152,25 @@ export function ShareMealPlanModal({
               <span className="text-gray-500">Sharing: </span>
               <span className="font-medium">{mealPlanTitle}</span>
             </div>
+
+            {/* Include grocery items option - only show if user has items */}
+            {!checkingGroceryItems && hasGroceryItems && (
+              <div className="mt-3 flex items-start gap-3 p-3 bg-primary-50 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="include-grocery-items"
+                  checked={includeGroceryItems}
+                  onChange={(e) => setIncludeGroceryItems(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                />
+                <label htmlFor="include-grocery-items" className="flex-1 cursor-pointer">
+                  <span className="text-sm font-medium text-gray-900">Include my grocery list items</span>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Share your staples and custom items along with the meal plan
+                  </p>
+                </label>
+              </div>
+            )}
 
             {/* Search */}
             <div className="mt-3 relative">

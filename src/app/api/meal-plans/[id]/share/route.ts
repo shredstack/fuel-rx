@@ -5,6 +5,7 @@ import { sendMealPlanSharedEmail } from '@/lib/email/resend'
 
 interface ShareRequest {
   recipientUserId: string
+  includeGroceryItems?: boolean
 }
 
 // Create a service-role client that bypasses RLS for cross-user operations
@@ -38,7 +39,7 @@ export async function POST(
 
   try {
     const body: ShareRequest = await request.json()
-    const { recipientUserId } = body
+    const { recipientUserId, includeGroceryItems = false } = body
 
     if (!recipientUserId) {
       return NextResponse.json({ error: 'Recipient user ID is required' }, { status: 400 })
@@ -149,6 +150,86 @@ export async function POST(
         // Clean up the created plan
         await serviceClient.from('meal_plans').delete().eq('id', newMealPlan.id)
         return NextResponse.json({ error: 'Failed to share meal plan' }, { status: 500 })
+      }
+    }
+
+    // Conditionally copy grocery items if user opted in
+    if (includeGroceryItems) {
+      // Copy staples as custom items for recipient
+      const { data: sharerStaples } = await supabase
+        .from('meal_plan_staples')
+        .select(`
+          is_checked,
+          staple:user_grocery_staples(display_name)
+        `)
+        .eq('meal_plan_id', mealPlanId)
+
+      if (sharerStaples && sharerStaples.length > 0) {
+        const customItemsFromStaples = sharerStaples
+          .filter(s => s.staple) // Filter out any deleted staples
+          .map(s => ({
+            meal_plan_id: newMealPlan.id,
+            name: Array.isArray(s.staple) ? s.staple[0]?.display_name : (s.staple as { display_name: string })?.display_name,
+            is_checked: s.is_checked,
+          }))
+          .filter(item => item.name) // Ensure name exists
+
+        if (customItemsFromStaples.length > 0) {
+          const { error: staplesError } = await serviceClient
+            .from('meal_plan_custom_items')
+            .insert(customItemsFromStaples)
+
+          if (staplesError) {
+            console.error('Error copying staples as custom items:', staplesError)
+            // Non-blocking - continue with share
+          }
+        }
+      }
+
+      // Copy custom items
+      const { data: sharerCustomItems } = await supabase
+        .from('meal_plan_custom_items')
+        .select('name, is_checked')
+        .eq('meal_plan_id', mealPlanId)
+
+      if (sharerCustomItems && sharerCustomItems.length > 0) {
+        const recipientCustomItems = sharerCustomItems.map(item => ({
+          meal_plan_id: newMealPlan.id,
+          name: item.name,
+          is_checked: item.is_checked,
+        }))
+
+        const { error: customItemsError } = await serviceClient
+          .from('meal_plan_custom_items')
+          .insert(recipientCustomItems)
+
+        if (customItemsError) {
+          console.error('Error copying custom items:', customItemsError)
+          // Non-blocking - continue with share
+        }
+      }
+
+      // Copy grocery checks (checked state for AI-generated items)
+      const { data: sharerGroceryChecks } = await supabase
+        .from('meal_plan_grocery_checks')
+        .select('item_name_normalized, is_checked')
+        .eq('meal_plan_id', mealPlanId)
+
+      if (sharerGroceryChecks && sharerGroceryChecks.length > 0) {
+        const recipientGroceryChecks = sharerGroceryChecks.map(check => ({
+          meal_plan_id: newMealPlan.id,
+          item_name_normalized: check.item_name_normalized,
+          is_checked: check.is_checked,
+        }))
+
+        const { error: checksError } = await serviceClient
+          .from('meal_plan_grocery_checks')
+          .insert(recipientGroceryChecks)
+
+        if (checksError) {
+          console.error('Error copying grocery checks:', checksError)
+          // Non-blocking - continue with share
+        }
       }
     }
 

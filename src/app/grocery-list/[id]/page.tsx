@@ -78,6 +78,15 @@ export default async function GroceryListPage({ params }: Props) {
     .eq('meal_plan_id', id)
     .order('created_at', { ascending: true })
 
+  // Fetch checked items for this meal plan (for AI-generated grocery items)
+  const { data: groceryChecks } = await supabase
+    .from('meal_plan_grocery_checks')
+    .select('item_name_normalized')
+    .eq('meal_plan_id', id)
+    .eq('is_checked', true)
+
+  const initialCheckedItems = (groceryChecks || []).map(c => c.item_name_normalized)
+
   return (
     <GroceryListClient
       mealPlanId={mealPlan.id}
@@ -87,6 +96,7 @@ export default async function GroceryListPage({ params }: Props) {
       initialStaples={transformedStaples}
       availableStaples={(availableStaples || []) as GroceryStaple[]}
       initialCustomItems={(customItems || []) as MealPlanCustomItem[]}
+      initialCheckedItems={initialCheckedItems}
     />
   )
 }
