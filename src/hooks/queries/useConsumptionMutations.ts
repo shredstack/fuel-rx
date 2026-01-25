@@ -7,6 +7,7 @@ import type {
   MealType,
   MealToLog,
   MealPlanMealToLog,
+  WaterProgress,
 } from '@/lib/types';
 
 interface LogMealParams {
@@ -350,4 +351,86 @@ export function updateMealLoggedStatusInCache(
       };
     }
   );
+}
+
+/**
+ * Mutation hook for adding water intake.
+ * Uses optimistic updates for instant feedback.
+ */
+export function useAddWater() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      date,
+      ounces,
+    }: {
+      date: string;
+      ounces: number;
+    }): Promise<WaterProgress> => {
+      const response = await fetch('/api/consumption/water', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, ounces }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to add water');
+      }
+      return response.json();
+    },
+
+    // Optimistic update for instant feedback
+    onMutate: async ({ date, ounces }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: queryKeys.consumption.daily(date) });
+
+      // Snapshot the previous value
+      const previousSummary = queryClient.getQueryData<DailyConsumptionSummary>(
+        queryKeys.consumption.daily(date)
+      );
+
+      // Optimistically update the water progress
+      if (previousSummary) {
+        const currentWater = previousSummary.water || {
+          currentOunces: 0,
+          goalOunces: 100,
+          percentage: 0,
+          goalCelebrated: false,
+        };
+
+        const newOunces = currentWater.currentOunces + ounces;
+        const newPercentage = Math.round((newOunces / currentWater.goalOunces) * 100);
+
+        queryClient.setQueryData<DailyConsumptionSummary>(
+          queryKeys.consumption.daily(date),
+          {
+            ...previousSummary,
+            water: {
+              ...currentWater,
+              currentOunces: newOunces,
+              percentage: newPercentage,
+            },
+          }
+        );
+      }
+
+      return { previousSummary };
+    },
+
+    onError: (error, { date }, context) => {
+      // Roll back on error
+      if (context?.previousSummary) {
+        queryClient.setQueryData(
+          queryKeys.consumption.daily(date),
+          context.previousSummary
+        );
+      }
+      console.error('Error adding water:', error);
+    },
+
+    onSettled: (_, __, { date }) => {
+      // Refetch to ensure server state is in sync
+      queryClient.invalidateQueries({ queryKey: queryKeys.consumption.daily(date) });
+    },
+  });
 }

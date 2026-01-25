@@ -1,7 +1,8 @@
 'use client';
 
-import type { Macros, FruitVegProgress } from '@/lib/types';
+import type { Macros, FruitVegProgress, WaterProgress } from '@/lib/types';
 import FruitVegProgressBar from './FruitVegProgressBar';
+import WaterProgressBar from './WaterProgressBar';
 
 interface DailyProgressCardProps {
   date: string;
@@ -10,6 +11,9 @@ interface DailyProgressCardProps {
   percentages: Macros;
   entryCount: number;
   fruitVeg?: FruitVegProgress;
+  water?: WaterProgress;
+  onAddWater?: (ounces: number) => void;
+  isAddingWater?: boolean;
 }
 
 function ProgressBar({
@@ -56,7 +60,7 @@ function ProgressBar({
   );
 }
 
-export default function DailyProgressCard({ date, targets, consumed, percentages, entryCount, fruitVeg }: DailyProgressCardProps) {
+export default function DailyProgressCard({ date, targets, consumed, percentages, entryCount, fruitVeg, water, onAddWater, isAddingWater }: DailyProgressCardProps) {
   // Format date for display
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long',
@@ -105,6 +109,17 @@ export default function DailyProgressCard({ date, targets, consumed, percentages
           currentGrams={fruitVeg.currentGrams}
           goalGrams={fruitVeg.goalGrams}
           goalCelebrated={fruitVeg.goalCelebrated}
+        />
+      )}
+
+      {/* Water Intake Progress */}
+      {water && onAddWater && (
+        <WaterProgressBar
+          currentOunces={water.currentOunces}
+          goalOunces={water.goalOunces}
+          goalCelebrated={water.goalCelebrated}
+          onAddWater={onAddWater}
+          isLoading={isAddingWater}
         />
       )}
 

@@ -1751,6 +1751,16 @@ export interface FruitVegProgress {
 }
 
 /**
+ * Water intake tracking for CrossFit athletes
+ */
+export interface WaterProgress {
+  currentOunces: number;
+  goalOunces: number;  // 100 oz by default for CrossFit athletes
+  percentage: number;
+  goalCelebrated: boolean;
+}
+
+/**
  * Daily consumption summary with progress toward targets
  */
 export interface DailyConsumptionSummary {
@@ -1763,6 +1773,8 @@ export interface DailyConsumptionSummary {
   entry_count: number;
   // 800g Challenge tracking
   fruitVeg?: FruitVegProgress;
+  // Water intake tracking
+  water?: WaterProgress;
 }
 
 /**

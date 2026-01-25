@@ -14,6 +14,7 @@ import type { RealtimeChannel, User } from '@supabase/supabase-js';
  *
  * Tables subscribed to:
  * - meal_consumption_log: Consumption tracking
+ * - daily_water_log: Water intake tracking
  * - meal_plans: Meal plan data
  * - meal_plan_meals: Individual meals within plans
  * - social_feed_posts: Community posts
@@ -52,6 +53,21 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             event: '*',
             schema: 'public',
             table: 'meal_consumption_log',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.consumption.all,
+            });
+          }
+        )
+        // Water intake log changes
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'daily_water_log',
             filter: `user_id=eq.${user.id}`,
           },
           () => {

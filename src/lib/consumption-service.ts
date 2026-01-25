@@ -20,12 +20,16 @@ import type {
   ConsumptionEntryType,
   MealTypeBreakdown,
   FruitVegProgress,
+  WaterProgress,
   IngredientCategoryType,
 } from '@/lib/types';
 
 // Categories that count toward the 800g goal
 const FRUIT_VEG_CATEGORIES = ['fruit', 'vegetable'];
 const FRUIT_VEG_GOAL_GRAMS = 800;
+
+// Water intake goal for CrossFit athletes (in ounces)
+const WATER_GOAL_OUNCES = 100;
 
 // Helper to normalize ingredient names for matching
 function normalizeIngredientName(name: string): string {
@@ -650,6 +654,21 @@ export async function getDailyConsumptionByDateStr(userId: string, dateStr: stri
     goalCelebrated: celebration?.goal_celebrated || false,
   };
 
+  // Get water intake for the day
+  const { data: waterLog } = await supabase
+    .from('daily_water_log')
+    .select('ounces_consumed, goal_ounces, goal_celebrated')
+    .eq('user_id', userId)
+    .eq('date', dateStr)
+    .single();
+
+  const water: WaterProgress = {
+    currentOunces: waterLog?.ounces_consumed || 0,
+    goalOunces: waterLog?.goal_ounces || WATER_GOAL_OUNCES,
+    percentage: WATER_GOAL_OUNCES > 0 ? Math.round(((waterLog?.ounces_consumed || 0) / WATER_GOAL_OUNCES) * 100) : 0,
+    goalCelebrated: waterLog?.goal_celebrated || false,
+  };
+
   return {
     date: dateStr,
     targets,
@@ -659,6 +678,7 @@ export async function getDailyConsumptionByDateStr(userId: string, dateStr: stri
     entries: (entries || []) as ConsumptionEntry[],
     entry_count: entries?.length || 0,
     fruitVeg,
+    water,
   };
 }
 
@@ -1770,4 +1790,79 @@ export async function getMonthlyConsumption(
     entry_count: entryCount,
     byMealType,
   };
+}
+
+/**
+ * Get water progress for a specific date.
+ */
+export async function getWaterProgress(userId: string, dateStr: string): Promise<WaterProgress> {
+  const supabase = await createClient();
+
+  const { data: waterLog } = await supabase
+    .from('daily_water_log')
+    .select('ounces_consumed, goal_ounces, goal_celebrated')
+    .eq('user_id', userId)
+    .eq('date', dateStr)
+    .single();
+
+  return {
+    currentOunces: waterLog?.ounces_consumed || 0,
+    goalOunces: waterLog?.goal_ounces || WATER_GOAL_OUNCES,
+    percentage: WATER_GOAL_OUNCES > 0 ? Math.round(((waterLog?.ounces_consumed || 0) / WATER_GOAL_OUNCES) * 100) : 0,
+    goalCelebrated: waterLog?.goal_celebrated || false,
+  };
+}
+
+/**
+ * Add water intake for a specific date.
+ * Uses upsert to create or increment the daily water log.
+ */
+export async function addWater(userId: string, dateStr: string, ounces: number): Promise<WaterProgress> {
+  const supabase = await createClient();
+
+  // First, get existing water log for the day
+  const { data: existing } = await supabase
+    .from('daily_water_log')
+    .select('id, ounces_consumed, goal_ounces, goal_celebrated')
+    .eq('user_id', userId)
+    .eq('date', dateStr)
+    .single();
+
+  if (existing) {
+    // Update existing entry - increment ounces
+    const newOunces = existing.ounces_consumed + ounces;
+    await supabase
+      .from('daily_water_log')
+      .update({
+        ounces_consumed: newOunces,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+
+    return {
+      currentOunces: newOunces,
+      goalOunces: existing.goal_ounces,
+      percentage: WATER_GOAL_OUNCES > 0 ? Math.round((newOunces / WATER_GOAL_OUNCES) * 100) : 0,
+      goalCelebrated: existing.goal_celebrated,
+    };
+  } else {
+    // Insert new entry
+    const { data: newLog } = await supabase
+      .from('daily_water_log')
+      .insert({
+        user_id: userId,
+        date: dateStr,
+        ounces_consumed: ounces,
+        goal_ounces: WATER_GOAL_OUNCES,
+      })
+      .select()
+      .single();
+
+    return {
+      currentOunces: newLog?.ounces_consumed || ounces,
+      goalOunces: newLog?.goal_ounces || WATER_GOAL_OUNCES,
+      percentage: WATER_GOAL_OUNCES > 0 ? Math.round((ounces / WATER_GOAL_OUNCES) * 100) : 0,
+      goalCelebrated: false,
+    };
+  }
 }
