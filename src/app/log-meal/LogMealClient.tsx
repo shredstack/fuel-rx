@@ -303,13 +303,19 @@ export default function LogMealClient({
     setDetectedProduce([]);
     setIsLoadingProduce(false);
 
-    // For meal_plan meals with meal_id, fetch produce data for 800g tracking
-    // Access meal_id directly from MealToLog (added for from_todays_plan meals)
-    const mealIdForProduce = meal.source === 'meal_plan' ? meal.meal_id : null;
+    // Fetch produce data for 800g tracking
+    // - For meal_plan meals: use meal_id (the underlying meal ID from meals table)
+    // - For custom_meal and quick_cook meals: use id (which IS the meal ID)
+    const mealIdForProduce = meal.source === 'meal_plan'
+      ? meal.meal_id
+      : (meal.source === 'custom_meal' || meal.source === 'quick_cook')
+        ? meal.id
+        : null;
 
     console.log('[Produce Detection] Meal:', {
       name: meal.name,
       source: meal.source,
+      id: meal.id,
       meal_id: meal.meal_id,
       mealIdForProduce
     });
@@ -1351,7 +1357,7 @@ export default function LogMealClient({
               )}
 
               {/* Inline Produce Tracking for 800g Goal */}
-              {pendingLogMeal.source === 'meal_plan' && (
+              {(pendingLogMeal.source === 'meal_plan' || pendingLogMeal.source === 'custom_meal' || pendingLogMeal.source === 'quick_cook') && (
                 <div className="mb-4">
                   {isLoadingProduce ? (
                     <div className="bg-green-50 rounded-lg p-3 flex items-center gap-2">
