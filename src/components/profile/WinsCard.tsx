@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { UserStats } from '@/app/api/consumption/stats/route'
 
-type TimePeriod = 'week' | 'month' | 'year'
+type TimePeriod = 'week' | 'month' | 'year' | 'all'
 
 export default function WinsCard() {
   const [stats, setStats] = useState<UserStats | null>(null)
@@ -51,6 +51,7 @@ export default function WinsCard() {
       case 'week': return 'This Week'
       case 'month': return 'This Month'
       case 'year': return 'This Year'
+      case 'all': return 'All Time'
     }
   }
 
@@ -59,6 +60,7 @@ export default function WinsCard() {
       case 'week': return stat.daysHitThisWeek
       case 'month': return stat.daysHitThisMonth
       case 'year': return stat.daysHitThisYear
+      case 'all': return stat.daysHitThisYear // Use year as proxy for all-time (data only fetched for year)
     }
   }
 
@@ -67,10 +69,38 @@ export default function WinsCard() {
       case 'week': return stats.fruitVeg.daysThisWeek
       case 'month': return stats.fruitVeg.daysThisMonth
       case 'year': return stats.fruitVeg.daysThisYear
+      case 'all': return stats.fruitVeg.daysThisYear
     }
   }
 
-  const getDaysInPeriod = () => {
+  const getMealsLoggedForPeriod = () => {
+    switch (period) {
+      case 'week': return stats.logging.mealsLoggedThisWeek
+      case 'month': return stats.logging.mealsLoggedThisMonth
+      case 'year': return stats.logging.mealsLoggedThisYear
+      case 'all': return stats.logging.totalMealsLogged
+    }
+  }
+
+  const getDaysTrackedForPeriod = () => {
+    switch (period) {
+      case 'week': return stats.logging.daysLoggedThisWeek
+      case 'month': return stats.logging.daysLoggedThisMonth
+      case 'year': return stats.logging.daysLoggedThisYear
+      case 'all': return stats.logging.totalDaysLogged
+    }
+  }
+
+  const getFruitVegGramsForPeriod = () => {
+    switch (period) {
+      case 'week': return stats.fruitVeg.gramsThisWeek
+      case 'month': return stats.fruitVeg.gramsThisMonth
+      case 'year': return stats.fruitVeg.gramsThisYear
+      case 'all': return stats.fruitVeg.totalGramsAllTime
+    }
+  }
+
+  const getDaysInPeriod = (): number | null => {
     const today = new Date()
     switch (period) {
       case 'week': {
@@ -84,6 +114,8 @@ export default function WinsCard() {
         const diff = today.getTime() - start.getTime()
         return Math.floor(diff / (1000 * 60 * 60 * 24))
       }
+      case 'all':
+        return null // All-time doesn't have a denominator
     }
   }
 
@@ -108,7 +140,7 @@ export default function WinsCard() {
         </h2>
         {/* Period toggle */}
         <div className="flex bg-white/20 rounded-lg p-0.5 text-xs">
-          {(['week', 'month', 'year'] as TimePeriod[]).map((p) => (
+          {(['week', 'month', 'year', 'all'] as TimePeriod[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
@@ -133,7 +165,10 @@ export default function WinsCard() {
             <span className="text-xs text-white/80">800g Challenge</span>
           </div>
           <div className="text-2xl font-bold">
-            {fruitVegDays}<span className="text-sm font-normal text-white/70">/{daysInPeriod} days</span>
+            {fruitVegDays}
+            <span className="text-sm font-normal text-white/70">
+              {daysInPeriod !== null ? `/${daysInPeriod}` : ''} days
+            </span>
           </div>
           {stats.fruitVeg.currentStreak > 0 && (
             <div className="text-xs text-white/80 mt-1">
@@ -149,7 +184,10 @@ export default function WinsCard() {
             <span className="text-xs text-white/80">Calories Hit</span>
           </div>
           <div className="text-2xl font-bold">
-            {calorieDays}<span className="text-sm font-normal text-white/70">/{daysInPeriod} days</span>
+            {calorieDays}
+            <span className="text-sm font-normal text-white/70">
+              {daysInPeriod !== null ? `/${daysInPeriod}` : ''} days
+            </span>
           </div>
           {stats.personalBests.longestCalorieStreak > 1 && (
             <div className="text-xs text-white/80 mt-1">
@@ -165,7 +203,10 @@ export default function WinsCard() {
             <span className="text-xs text-white/80">Protein Goals</span>
           </div>
           <div className="text-2xl font-bold">
-            {proteinDays}<span className="text-sm font-normal text-white/70">/{daysInPeriod} days</span>
+            {proteinDays}
+            <span className="text-sm font-normal text-white/70">
+              {daysInPeriod !== null ? `/${daysInPeriod}` : ''} days
+            </span>
           </div>
           {stats.personalBests.mostProteinInADay > 0 && (
             <div className="text-xs text-white/80 mt-1">
@@ -195,15 +236,15 @@ export default function WinsCard() {
       <div className="border-t border-white/20 pt-3">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>
-            <div className="text-lg font-bold">{stats.logging.totalMealsLogged}</div>
+            <div className="text-lg font-bold">{getMealsLoggedForPeriod()}</div>
             <div className="text-xs text-white/70">Meals Logged</div>
           </div>
           <div>
-            <div className="text-lg font-bold">{stats.logging.totalDaysLogged}</div>
+            <div className="text-lg font-bold">{getDaysTrackedForPeriod()}</div>
             <div className="text-xs text-white/70">Days Tracked</div>
           </div>
           <div>
-            <div className="text-lg font-bold">{formatGrams(stats.fruitVeg.totalGramsAllTime)}</div>
+            <div className="text-lg font-bold">{formatGrams(getFruitVegGramsForPeriod())}</div>
             <div className="text-xs text-white/70">Fruits & Veggies</div>
           </div>
         </div>
