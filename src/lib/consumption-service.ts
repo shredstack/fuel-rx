@@ -1138,6 +1138,7 @@ export async function getAvailableMealsToLog(userId: string, date: Date): Promis
           protein: Math.round(meal.protein),
           carbs: Math.round(meal.carbs),
           fat: Math.round(meal.fat),
+          meal_id: pm.meal_id,
           ...logInfo,
         };
 
@@ -1339,6 +1340,7 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
           protein: Math.round(meal.protein),
           carbs: Math.round(meal.carbs),
           fat: Math.round(meal.fat),
+          meal_id: pm.meal_id,
           ...logInfo,
         };
 

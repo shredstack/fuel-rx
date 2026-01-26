@@ -1793,6 +1793,7 @@ export interface MealToLog {
   is_logged: boolean;
   logged_entry_id?: string;
   logged_at?: string;
+  meal_id?: string;  // For meal_plan meals, the underlying meal id (fallback if meal_plan_meals record is deleted)
 }
 
 /**

@@ -50,7 +50,6 @@ import TrendChart from '@/components/consumption/TrendChart';
 import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
 import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
-import ProduceExtractorModal from '@/components/consumption/ProduceExtractorModal';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Navbar from '@/components/Navbar';
 import MobileTabBar from '@/components/MobileTabBar';
@@ -79,6 +78,17 @@ function getLocalTodayString(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// Type for produce tracking in the meal log modal
+interface DetectedProduceItem {
+  name: string;
+  amount: string;
+  unit: string;
+  category: 'fruit' | 'vegetable';
+  estimatedGrams: number;
+  isSelected: boolean;
+  adjustedGrams: number;
 }
 
 // Convert meal ingredients to editable format
@@ -194,11 +204,12 @@ export default function LogMealClient({
   // Track which meal type was just logged to (for auto-expanding that section)
   const [recentlyLoggedToMealType, setRecentlyLoggedToMealType] = useState<MealType | null>(null);
 
-  // Produce extraction modal state (for 800g tracking after meal log)
-  const [showProduceModal, setShowProduceModal] = useState(false);
-  const [pendingProduceMealId, setPendingProduceMealId] = useState<string | null>(null);
-  const [pendingProduceMealName, setPendingProduceMealName] = useState<string>('');
-  const [pendingProduceMealType, setPendingProduceMealType] = useState<MealType | null>(null);
+  // Inline produce tracking state (for 800g tracking in meal log modal)
+  const [detectedProduce, setDetectedProduce] = useState<DetectedProduceItem[]>([]);
+  const [isLoadingProduce, setIsLoadingProduce] = useState(false);
+
+  // Today's Meals section collapse state (expanded by default)
+  const [isTodaysMealsCollapsed, setIsTodaysMealsCollapsed] = useState(false);
 
   // Track previous calorie percentage for confetti trigger
   const prevCaloriePercentageRef = useRef<number | null>(null);
@@ -287,6 +298,63 @@ export default function LogMealClient({
     // Set pending meal and default to meal's original type
     setPendingLogMeal(meal);
     setPendingMealType(meal.meal_type || getTimeBasedMealTypes()[0]);
+
+    // Reset produce state
+    setDetectedProduce([]);
+    setIsLoadingProduce(false);
+
+    // For meal_plan meals with meal_id, fetch produce data for 800g tracking
+    // Access meal_id directly from MealToLog (added for from_todays_plan meals)
+    const mealIdForProduce = meal.source === 'meal_plan' ? meal.meal_id : null;
+
+    console.log('[Produce Detection] Meal:', {
+      name: meal.name,
+      source: meal.source,
+      meal_id: meal.meal_id,
+      mealIdForProduce
+    });
+
+    if (mealIdForProduce) {
+      setIsLoadingProduce(true);
+      try {
+        const response = await fetch('/api/consumption/extract-produce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meal_id: mealIdForProduce }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const items = data.produceIngredients || [];
+
+          // Initialize produce items with selection state
+          const initializedItems: DetectedProduceItem[] = items.map((item: {
+            name: string;
+            amount: string;
+            unit: string;
+            category: 'fruit' | 'vegetable';
+            estimatedGrams: number;
+          }) => ({
+            ...item,
+            isSelected: true,
+            adjustedGrams: item.estimatedGrams,
+          }));
+
+          setDetectedProduce(initializedItems);
+        } else {
+          // Log API errors for debugging
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Produce extraction API error:', response.status, errorData);
+        }
+      } catch (error) {
+        console.error('Error fetching produce:', error);
+      } finally {
+        setIsLoadingProduce(false);
+      }
+    } else if (meal.source === 'meal_plan') {
+      // Log when produce detection is skipped for meal_plan meals (missing meal_id)
+      console.warn('Produce detection skipped: meal_plan meal missing meal_id', { mealId: meal.id, mealName: meal.name });
+    }
   };
 
   // Actually log the meal after type confirmation
@@ -305,11 +373,15 @@ export default function LogMealClient({
       fat: meal.fat,
     };
 
+    // Capture selected produce items before clearing state
+    const selectedProduceItems = detectedProduce.filter(p => p.isSelected && p.adjustedGrams > 0);
+
     // Clear pending state and ingredient editor
     setPendingLogMeal(null);
     setPendingMealType(null);
     setShowIngredientEditor(false);
     setEditedIngredients(null);
+    setDetectedProduce([]);
 
     // Optimistic update with potentially modified macros
     const optimisticEntry: ConsumptionEntry = {
@@ -334,6 +406,8 @@ export default function LogMealClient({
 
     // Auto-expand the meal section that was just logged to
     setRecentlyLoggedToMealType(mealType);
+    // Also expand the "Today's Meals" section if collapsed
+    setIsTodaysMealsCollapsed(false);
 
     // Build request payload
     const payload: {
@@ -364,27 +438,55 @@ export default function LogMealClient({
     }
 
     try {
-      const entry = await logMealMutation.mutateAsync(payload as Parameters<typeof logMealMutation.mutateAsync>[0]);
+      await logMealMutation.mutateAsync(payload as Parameters<typeof logMealMutation.mutateAsync>[0]);
 
-      // Check if this meal has a meal_id (meaning it has ingredients we can extract)
-      // Trigger produce extraction modal for 800g tracking
-      const mealIdForProduce = entry.meal_id || ('meal_id' in meal ? (meal as MealPlanMealToLog).meal_id : null);
-      if (mealIdForProduce) {
-        // Check if meal has produce before showing modal
+      // Log selected produce items for 800g tracking (inline, no modal)
+      if (selectedProduceItems.length > 0) {
         try {
-          const checkResponse = await fetch(`/api/consumption/extract-produce?meal_id=${mealIdForProduce}`);
-          if (checkResponse.ok) {
-            const checkData = await checkResponse.json();
-            if (checkData.hasProduce) {
-              setPendingProduceMealId(mealIdForProduce);
-              setPendingProduceMealName(meal.name);
-              setPendingProduceMealType(mealType);
-              setShowProduceModal(true);
+          const produceResponse = await fetch('/api/consumption/log-produce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ingredients: selectedProduceItems.map((item) => ({
+                name: item.name,
+                category: item.category,
+                grams: item.adjustedGrams,
+              })),
+              meal_type: mealType,
+              consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+            }),
+          });
+
+          if (produceResponse.ok) {
+            const produceData = await produceResponse.json();
+            const produceEntries = produceData.entries || [];
+
+            // Optimistically update fruit/veg progress
+            if (produceEntries.length > 0) {
+              const totalGrams = selectedProduceItems.reduce((sum, p) => sum + p.adjustedGrams, 0);
+              queryClient.setQueryData<DailyConsumptionSummary>(
+                queryKeys.consumption.daily(selectedDate),
+                (prev) => {
+                  if (!prev) return prev;
+                  const currentFruitVegGrams = prev.fruitVeg?.currentGrams || 0;
+                  const goalGrams = prev.fruitVeg?.goalGrams || 800;
+                  return {
+                    ...prev,
+                    entries: [...prev.entries, ...produceEntries],
+                    entry_count: prev.entry_count + produceEntries.length,
+                    fruitVeg: prev.fruitVeg ? {
+                      ...prev.fruitVeg,
+                      currentGrams: currentFruitVegGrams + totalGrams,
+                      percentage: Math.round(((currentFruitVegGrams + totalGrams) / goalGrams) * 100),
+                    } : undefined,
+                  };
+                }
+              );
             }
           }
         } catch (e) {
           // Silently fail - don't block the main logging flow
-          console.error('Error checking for produce:', e);
+          console.error('Error logging produce:', e);
         }
       }
     } catch (error) {
@@ -506,6 +608,8 @@ export default function LogMealClient({
 
     // Auto-expand the meal section that was just logged to
     setRecentlyLoggedToMealType(mealType);
+    // Also expand the "Today's Meals" section if collapsed
+    setIsTodaysMealsCollapsed(false);
 
     setSelectedIngredient(null);
 
@@ -555,6 +659,8 @@ export default function LogMealClient({
       });
       // Auto-expand the meal section that was just logged to
       setRecentlyLoggedToMealType(mealType);
+      // Also expand the "Today's Meals" section if collapsed
+      setIsTodaysMealsCollapsed(false);
       // Mutation hook handles cache invalidation
     } catch (error) {
       console.error('Error repeating meal type:', error);
@@ -905,6 +1011,8 @@ export default function LogMealClient({
                   meals={available.from_todays_plan}
                   onLogMeal={handleLogMeal}
                   onUndoLog={handleUndoLog}
+                  collapsible
+                  initialCollapsed
                 />
                 {/* Time-based suggestion badge */}
                 {suggestedMeals.length > 0 && (
@@ -956,19 +1064,34 @@ export default function LogMealClient({
 
             {/* Meal Type Sections */}
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <span className="text-green-500">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </span>
-                Today&apos;s Meals
-                <span className="text-sm font-normal text-gray-500">
-                  ({summary.entry_count} items)
-                </span>
-              </h3>
+              <button
+                onClick={() => setIsTodaysMealsCollapsed(!isTodaysMealsCollapsed)}
+                className="flex items-center justify-between w-full text-left mb-3 cursor-pointer"
+              >
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <span className="text-green-500">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                  Today&apos;s Meals
+                  <span className="text-sm font-normal text-gray-500">
+                    ({summary.entry_count} items)
+                  </span>
+                </h3>
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform ${isTodaysMealsCollapsed ? '' : 'rotate-180'}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
               {/* Render sections for each meal type based on user's selected types */}
+              {!isTodaysMealsCollapsed && (
+              <>
               {orderedMealTypes.map((mealType) => {
                 const entriesForType = summary.entries.filter((e) => e.meal_type === mealType);
                 const prevEntriesInfo = previousEntries[mealType];
@@ -1096,6 +1219,8 @@ export default function LogMealClient({
                   </div>
                 );
               })()}
+              </>
+              )}
             </div>
 
             {/* My Meals - Custom meals and quick cook */}
@@ -1225,6 +1350,120 @@ export default function LogMealClient({
                 </div>
               )}
 
+              {/* Inline Produce Tracking for 800g Goal */}
+              {pendingLogMeal.source === 'meal_plan' && (
+                <div className="mb-4">
+                  {isLoadingProduce ? (
+                    <div className="bg-green-50 rounded-lg p-3 flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span className="text-sm text-green-700">Detecting fruits & veggies...</span>
+                    </div>
+                  ) : detectedProduce.length > 0 ? (
+                    <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🥬</span>
+                        <span className="font-medium text-green-800 text-sm">Add to 800g Goal</span>
+                        <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                          +{detectedProduce.filter(p => p.isSelected).reduce((sum, p) => sum + p.adjustedGrams, 0)}g
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {detectedProduce.map((item, index) => (
+                          <div
+                            key={`${item.name}-${index}`}
+                            className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                              item.isSelected
+                                ? 'bg-white border border-green-200'
+                                : 'bg-green-50/50 opacity-60'
+                            }`}
+                          >
+                            {/* Checkbox */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetectedProduce(prev =>
+                                  prev.map((p, i) =>
+                                    i === index ? { ...p, isSelected: !p.isSelected } : p
+                                  )
+                                );
+                              }}
+                              className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                                item.isSelected
+                                  ? 'bg-green-600 border-green-600 text-white'
+                                  : 'border-gray-300 bg-white'
+                              }`}
+                            >
+                              {item.isSelected && (
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </button>
+
+                            {/* Name */}
+                            <div className="flex-1 min-w-0 flex items-center gap-1">
+                              <span className="text-sm">{item.category === 'fruit' ? '🍎' : '🥬'}</span>
+                              <span className={`text-sm truncate ${item.isSelected ? 'text-gray-900' : 'text-gray-500'}`}>
+                                {item.name}
+                              </span>
+                            </div>
+
+                            {/* Gram adjuster */}
+                            {item.isSelected && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDetectedProduce(prev =>
+                                      prev.map((p, i) =>
+                                        i === index ? { ...p, adjustedGrams: Math.max(0, p.adjustedGrams - 25) } : p
+                                      )
+                                    );
+                                  }}
+                                  className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  value={item.adjustedGrams}
+                                  onChange={(e) => {
+                                    const newGrams = parseInt(e.target.value) || 0;
+                                    setDetectedProduce(prev =>
+                                      prev.map((p, i) =>
+                                        i === index ? { ...p, adjustedGrams: Math.max(0, newGrams) } : p
+                                      )
+                                    );
+                                  }}
+                                  className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-semibold"
+                                />
+                                <span className="text-xs text-gray-500">g</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDetectedProduce(prev =>
+                                      prev.map((p, i) =>
+                                        i === index ? { ...p, adjustedGrams: p.adjustedGrams + 25 } : p
+                                      )
+                                    );
+                                  }}
+                                  className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Log as:
@@ -1243,6 +1482,7 @@ export default function LogMealClient({
                     setPendingMealType(null);
                     setShowIngredientEditor(false);
                     setEditedIngredients(null);
+                    setDetectedProduce([]);
                   }}
                   className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
                 >
@@ -1303,54 +1543,14 @@ export default function LogMealClient({
             // Auto-expand the meal section that was just logged to
             if (entry.meal_type) {
               setRecentlyLoggedToMealType(entry.meal_type);
+              // Also expand the "Today's Meals" section if collapsed
+              setIsTodaysMealsCollapsed(false);
             }
             // Invalidate to get accurate totals from server
             queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
           }}
         />
 
-        {/* Produce Extractor Modal (for 800g tracking after meal log) */}
-        {showProduceModal && pendingProduceMealId && pendingProduceMealType && (
-          <ProduceExtractorModal
-            isOpen={showProduceModal}
-            onClose={() => {
-              setShowProduceModal(false);
-              setPendingProduceMealId(null);
-              setPendingProduceMealName('');
-              setPendingProduceMealType(null);
-            }}
-            mealId={pendingProduceMealId}
-            mealName={pendingProduceMealName}
-            mealType={pendingProduceMealType}
-            selectedDate={selectedDate}
-            onIngredientsLogged={(entries) => {
-              // Optimistically add the new produce entries to cache
-              if (entries.length > 0) {
-                const totalGrams = entries.reduce((sum, e) => sum + (e.grams || 0), 0);
-                queryClient.setQueryData<DailyConsumptionSummary>(
-                  queryKeys.consumption.daily(selectedDate),
-                  (prev) => {
-                    if (!prev) return prev;
-                    const currentFruitVegGrams = prev.fruitVeg?.currentGrams || 0;
-                    const goalGrams = prev.fruitVeg?.goalGrams || 800;
-                    return {
-                      ...prev,
-                      entries: [...prev.entries, ...entries],
-                      entry_count: prev.entry_count + entries.length,
-                      fruitVeg: prev.fruitVeg ? {
-                        ...prev.fruitVeg,
-                        currentGrams: currentFruitVegGrams + totalGrams,
-                        percentage: Math.round(((currentFruitVegGrams + totalGrams) / goalGrams) * 100),
-                      } : undefined,
-                    };
-                  }
-                );
-              }
-              // Invalidate to get accurate totals from server
-              queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
-            }}
-          />
-        )}
       </main>
 
       <MobileTabBar />
