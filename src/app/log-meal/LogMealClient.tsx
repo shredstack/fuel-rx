@@ -980,6 +980,7 @@ export default function LogMealClient({
               <MealTypeBreakdownChart
                 breakdown={periodSummary.byMealType}
                 totalConsumed={periodSummary.consumed}
+                dailyData={periodSummary.dailyData}
               />
             </div>
           </>

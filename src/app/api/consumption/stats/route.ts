@@ -103,7 +103,7 @@ export async function GET() {
     // Fetch all consumption data for the year (we'll filter in memory for different periods)
     const { data: entries, error: entriesError } = await supabase
       .from('meal_consumption_log')
-      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
+      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category, meal_type')
       .eq('user_id', user.id)
       .gte('consumed_date', yearStartStr)
       .lte('consumed_date', todayStr)
@@ -119,33 +119,41 @@ export async function GET() {
       fat: number;
       fruitVegGrams: number;
       entryCount: number;
+      mealTypesLogged: Set<string>;
     };
 
     const dailyMap = new Map<string, DailyStats>();
 
     for (const entry of entries || []) {
       const date = entry.consumed_date;
-      const existing = dailyMap.get(date) || {
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        fruitVegGrams: 0,
-        entryCount: 0,
-      };
+      let dayStats = dailyMap.get(date);
+      if (!dayStats) {
+        dayStats = {
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          fruitVegGrams: 0,
+          entryCount: 0,
+          mealTypesLogged: new Set<string>(),
+        };
+        dailyMap.set(date, dayStats);
+      }
 
-      existing.calories += entry.calories || 0;
-      existing.protein += entry.protein || 0;
-      existing.carbs += entry.carbs || 0;
-      existing.fat += entry.fat || 0;
-      existing.entryCount += 1;
+      // Track unique meal type (null/undefined → 'unassigned')
+      const mealType = entry.meal_type || 'unassigned';
+      dayStats.mealTypesLogged.add(mealType);
+
+      dayStats.calories += entry.calories || 0;
+      dayStats.protein += entry.protein || 0;
+      dayStats.carbs += entry.carbs || 0;
+      dayStats.fat += entry.fat || 0;
+      dayStats.entryCount += 1;
 
       // Count fruit/veg grams
       if (entry.ingredient_category === 'fruit' || entry.ingredient_category === 'vegetable') {
-        existing.fruitVegGrams += entry.grams || 0;
+        dayStats.fruitVegGrams += entry.grams || 0;
       }
-
-      dailyMap.set(date, existing);
     }
 
     // Calculate stats
@@ -174,7 +182,8 @@ export async function GET() {
       const inWeek = date >= weekStartStr;
       const inMonth = date >= monthStartStr;
 
-      totalMealsLogged += stats.entryCount;
+      // Count unique meal occasions (meal types with at least one entry)
+      totalMealsLogged += stats.mealTypesLogged.size;
       totalFruitVegGrams += stats.fruitVegGrams;
 
       // Personal bests
