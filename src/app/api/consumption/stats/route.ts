@@ -57,6 +57,13 @@ export interface UserStats {
     mostVeggiesInADay: number;
     longestCalorieStreak: number;
   };
+  // Water tracking
+  water: {
+    totalOuncesAllTime: number;
+    ouncesThisWeek: number;
+    ouncesThisMonth: number;
+    ouncesThisYear: number;
+  };
 }
 
 const FRUIT_VEG_GOAL_GRAMS = 800;
@@ -118,6 +125,16 @@ export async function GET() {
       .order('consumed_date', { ascending: true });
 
     if (entriesError) throw entriesError;
+
+    // Fetch all water data
+    const { data: waterEntries, error: waterError } = await supabase
+      .from('daily_water_log')
+      .select('date, ounces_consumed')
+      .eq('user_id', user.id)
+      .lte('date', todayStr)
+      .order('date', { ascending: true });
+
+    if (waterError) throw waterError;
 
     // Aggregate by day
     type DailyStats = {
@@ -185,6 +202,22 @@ export async function GET() {
     let totalMealsLogged = 0;
     let mealsLoggedWeek = 0, mealsLoggedMonth = 0, mealsLoggedYear = 0;
     let daysLoggedWeek = 0, daysLoggedMonth = 0, daysLoggedYear = 0;
+    let totalWaterOunces = 0;
+    let waterOuncesWeek = 0, waterOuncesMonth = 0, waterOuncesYear = 0;
+
+    // Calculate water totals per period
+    for (const entry of waterEntries || []) {
+      const date = entry.date;
+      const ounces = entry.ounces_consumed || 0;
+      const inYear = date >= yearStartStr;
+      const inMonth = date >= monthStartStr;
+      const inWeek = date >= weekStartStr;
+
+      totalWaterOunces += ounces;
+      if (inYear) waterOuncesYear += ounces;
+      if (inMonth) waterOuncesMonth += ounces;
+      if (inWeek) waterOuncesWeek += ounces;
+    }
 
     // Sort dates for streak calculations
     const sortedDates = Array.from(dailyMap.keys()).sort();
@@ -386,6 +419,12 @@ export async function GET() {
         mostProteinInADay: Math.round(mostProteinInADay),
         mostVeggiesInADay: Math.round(mostVeggiesInADay),
         longestCalorieStreak: calorieStreaks.longest,
+      },
+      water: {
+        totalOuncesAllTime: Math.round(totalWaterOunces),
+        ouncesThisWeek: Math.round(waterOuncesWeek),
+        ouncesThisMonth: Math.round(waterOuncesMonth),
+        ouncesThisYear: Math.round(waterOuncesYear),
       },
     };
 

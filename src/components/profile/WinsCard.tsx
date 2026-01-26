@@ -100,6 +100,15 @@ export default function WinsCard() {
     }
   }
 
+  const getWaterOuncesForPeriod = () => {
+    switch (period) {
+      case 'week': return stats.water.ouncesThisWeek
+      case 'month': return stats.water.ouncesThisMonth
+      case 'year': return stats.water.ouncesThisYear
+      case 'all': return stats.water.totalOuncesAllTime
+    }
+  }
+
   const getDaysInPeriod = (): number | null => {
     const today = new Date()
     switch (period) {
@@ -130,6 +139,14 @@ export default function WinsCard() {
       return `${(grams / 1000).toFixed(1)}kg`
     }
     return `${grams}g`
+  }
+
+  // Format water ounces (convert to gallons for large amounts)
+  const formatOunces = (ounces: number) => {
+    if (ounces >= 128) {
+      return `${(ounces / 128).toFixed(1)} gal`
+    }
+    return `${ounces} oz`
   }
 
   return (
@@ -234,18 +251,22 @@ export default function WinsCard() {
 
       {/* Fun totals */}
       <div className="border-t border-white/20 pt-3">
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-4 gap-2 text-center">
           <div>
             <div className="text-lg font-bold">{getMealsLoggedForPeriod()}</div>
-            <div className="text-xs text-white/70">Meals Logged</div>
+            <div className="text-xs text-white/70">Meals</div>
           </div>
           <div>
             <div className="text-lg font-bold">{getDaysTrackedForPeriod()}</div>
-            <div className="text-xs text-white/70">Days Tracked</div>
+            <div className="text-xs text-white/70">Days</div>
           </div>
           <div>
             <div className="text-lg font-bold">{formatGrams(getFruitVegGramsForPeriod())}</div>
-            <div className="text-xs text-white/70">Fruits & Veggies</div>
+            <div className="text-xs text-white/70">Produce</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold">{formatOunces(getWaterOuncesForPeriod())}</div>
+            <div className="text-xs text-white/70">Water</div>
           </div>
         </div>
       </div>
