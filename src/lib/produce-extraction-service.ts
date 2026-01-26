@@ -23,13 +23,22 @@ interface MealIngredient {
 
 // Categories that might contain fruits/vegetables
 // We send these to Claude for classification since:
+// - 'fruit'/'fruits' and 'vegetable'/'vegetables' are direct matches
 // - 'produce' obviously contains fruits/veggies
 // - 'grains' might contain sweet potatoes, corn, etc.
 // - 'frozen' might contain frozen vegetables
 // - 'protein' might contain beans/legumes which count as veggies for 800g
 // - 'other' might contain miscategorized items
-// Only 'dairy' and 'pantry' (oils, spices) are excluded
-const POTENTIALLY_PRODUCE_CATEGORIES = ['produce', 'grains', 'frozen', 'protein', 'other'];
+// Only 'dairy', 'pantry' (oils, spices), and 'fats' are excluded
+const POTENTIALLY_PRODUCE_CATEGORIES = [
+  'fruit', 'fruits',
+  'vegetable', 'vegetables',
+  'produce',
+  'grains',
+  'frozen',
+  'protein',
+  'other'
+];
 
 // ============================================
 // Main Extraction Function
@@ -64,6 +73,13 @@ export async function extractProduceFromMeal(
 
   const ingredients = (meal.ingredients || []) as MealIngredient[];
 
+  console.log('[Produce Extraction] Meal ingredients:', {
+    mealId,
+    mealName: meal.name,
+    ingredientCount: ingredients.length,
+    ingredients: ingredients.map(i => ({ name: i.name, category: i.category }))
+  });
+
   if (ingredients.length === 0) {
     return [];
   }
@@ -74,6 +90,11 @@ export async function extractProduceFromMeal(
   const potentialProduceItems = ingredients.filter((ing) => {
     const category = ing.category?.toLowerCase() || 'other';
     return POTENTIALLY_PRODUCE_CATEGORIES.includes(category);
+  });
+
+  console.log('[Produce Extraction] Potential produce items:', {
+    count: potentialProduceItems.length,
+    items: potentialProduceItems.map(i => ({ name: i.name, category: i.category }))
   });
 
   if (potentialProduceItems.length === 0) {
@@ -109,14 +130,45 @@ export async function extractProduceFromMeal(
 
   const aiResults = await estimateProduceGrams(itemsForAI, userId);
 
+  console.log('[Produce Extraction] AI classification results:', {
+    count: aiResults.length,
+    results: aiResults.map(r => ({ name: r.name, category: r.category, grams: r.estimatedGrams }))
+  });
+
   // 5. Build results - prefer known categories from DB, otherwise use AI classification
   const results: ExtractedProduce[] = [];
 
   for (let i = 0; i < potentialProduceItems.length; i++) {
     const originalItem = potentialProduceItems[i];
-    const aiResult = aiResults.find(
-      (r) => r.name.toLowerCase() === originalItem.name.toLowerCase()
-    ) || aiResults[i]; // Fallback to positional match
+    const originalNameLower = originalItem.name.toLowerCase().trim();
+
+    // Try to find matching AI result with increasingly fuzzy matching:
+    // 1. Exact match
+    // 2. Original name contains AI name (e.g., "fresh spinach" contains "spinach")
+    // 3. AI name contains original name
+    // 4. Positional fallback (same index)
+    let aiResult = aiResults.find(
+      (r) => r.name.toLowerCase().trim() === originalNameLower
+    );
+
+    if (!aiResult) {
+      // Try partial matching - original contains AI name
+      aiResult = aiResults.find(
+        (r) => originalNameLower.includes(r.name.toLowerCase().trim())
+      );
+    }
+
+    if (!aiResult) {
+      // Try partial matching - AI name contains original
+      aiResult = aiResults.find(
+        (r) => r.name.toLowerCase().trim().includes(originalNameLower)
+      );
+    }
+
+    if (!aiResult && aiResults[i]) {
+      // Positional fallback
+      aiResult = aiResults[i];
+    }
 
     if (!aiResult) continue;
 

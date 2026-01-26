@@ -72,7 +72,7 @@ Your task: Classify each produce item as 'fruit', 'vegetable', or 'other', and e
 **Vegetables** - Everything else from the produce section:
 - Leafy greens: spinach, kale, lettuce, arugula, chard, collards
 - Cruciferous: broccoli, cauliflower, brussels sprouts, cabbage
-- Root/bulb: carrots, beets, onions, garlic, radishes, turnips, sweet potatoes, yams
+- Root/bulb: carrots, beets, onions, garlic, radishes, turnips, potatoes (all types including white, red, yellow, russet), sweet potatoes, yams
 - Nightshades: tomatoes, bell peppers, eggplant (culinary vegetables)
 - Squash: zucchini, yellow squash, butternut squash, pumpkin
 - Legumes: black beans, kidney beans, chickpeas, lentils, edamame, peas
@@ -80,7 +80,6 @@ Your task: Classify each produce item as 'fruit', 'vegetable', or 'other', and e
 
 **Other** - Items that don't clearly fit the 800g challenge:
 - Dried herbs and spices (basil, oregano, cilantro in small amounts)
-- Regular white potatoes (starchy, often counted separately - but sweet potatoes DO count!)
 - Items that are negligible in quantity
 - Proteins (chicken, beef, fish, eggs, tofu)
 - Dairy (milk, cheese, yogurt)
