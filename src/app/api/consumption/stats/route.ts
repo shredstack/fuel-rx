@@ -13,6 +13,9 @@ export interface UserStats {
     currentStreak: number;
     longestStreak: number;
     totalGramsAllTime: number;
+    gramsThisWeek: number;
+    gramsThisMonth: number;
+    gramsThisYear: number;
   };
   // Macro targets
   calories: {
@@ -38,15 +41,28 @@ export interface UserStats {
   // Logging activity
   logging: {
     totalDaysLogged: number;
+    daysLoggedThisWeek: number;
+    daysLoggedThisMonth: number;
+    daysLoggedThisYear: number;
     currentStreak: number;
     longestStreak: number;
     totalMealsLogged: number;
+    mealsLoggedThisWeek: number;
+    mealsLoggedThisMonth: number;
+    mealsLoggedThisYear: number;
   };
   // Personal bests
   personalBests: {
     mostProteinInADay: number;
     mostVeggiesInADay: number;
     longestCalorieStreak: number;
+  };
+  // Water tracking
+  water: {
+    totalOuncesAllTime: number;
+    ouncesThisWeek: number;
+    ouncesThisMonth: number;
+    ouncesThisYear: number;
   };
 }
 
@@ -100,16 +116,25 @@ export async function GET() {
     const yearStart = new Date(today.getFullYear(), 0, 1);
     const yearStartStr = yearStart.toISOString().split('T')[0];
 
-    // Fetch all consumption data for the year (we'll filter in memory for different periods)
+    // Fetch all consumption data (we'll filter in memory for different periods)
     const { data: entries, error: entriesError } = await supabase
       .from('meal_consumption_log')
-      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
+      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category, meal_type')
       .eq('user_id', user.id)
-      .gte('consumed_date', yearStartStr)
       .lte('consumed_date', todayStr)
       .order('consumed_date', { ascending: true });
 
     if (entriesError) throw entriesError;
+
+    // Fetch all water data
+    const { data: waterEntries, error: waterError } = await supabase
+      .from('daily_water_log')
+      .select('date, ounces_consumed')
+      .eq('user_id', user.id)
+      .lte('date', todayStr)
+      .order('date', { ascending: true });
+
+    if (waterError) throw waterError;
 
     // Aggregate by day
     type DailyStats = {
@@ -119,33 +144,41 @@ export async function GET() {
       fat: number;
       fruitVegGrams: number;
       entryCount: number;
+      mealTypesLogged: Set<string>;
     };
 
     const dailyMap = new Map<string, DailyStats>();
 
     for (const entry of entries || []) {
       const date = entry.consumed_date;
-      const existing = dailyMap.get(date) || {
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        fruitVegGrams: 0,
-        entryCount: 0,
-      };
+      let dayStats = dailyMap.get(date);
+      if (!dayStats) {
+        dayStats = {
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          fruitVegGrams: 0,
+          entryCount: 0,
+          mealTypesLogged: new Set<string>(),
+        };
+        dailyMap.set(date, dayStats);
+      }
 
-      existing.calories += entry.calories || 0;
-      existing.protein += entry.protein || 0;
-      existing.carbs += entry.carbs || 0;
-      existing.fat += entry.fat || 0;
-      existing.entryCount += 1;
+      // Track unique meal type (null/undefined → 'unassigned')
+      const mealType = entry.meal_type || 'unassigned';
+      dayStats.mealTypesLogged.add(mealType);
+
+      dayStats.calories += entry.calories || 0;
+      dayStats.protein += entry.protein || 0;
+      dayStats.carbs += entry.carbs || 0;
+      dayStats.fat += entry.fat || 0;
+      dayStats.entryCount += 1;
 
       // Count fruit/veg grams
       if (entry.ingredient_category === 'fruit' || entry.ingredient_category === 'vegetable') {
-        existing.fruitVegGrams += entry.grams || 0;
+        dayStats.fruitVegGrams += entry.grams || 0;
       }
-
-      dailyMap.set(date, existing);
     }
 
     // Calculate stats
@@ -163,19 +196,54 @@ export async function GET() {
     let carbsDaysWeek = 0, carbsDaysMonth = 0, carbsDaysYear = 0;
     let fatDaysWeek = 0, fatDaysMonth = 0, fatDaysYear = 0;
     let totalFruitVegGrams = 0;
+    let fruitVegGramsWeek = 0, fruitVegGramsMonth = 0, fruitVegGramsYear = 0;
     let mostProteinInADay = 0;
     let mostVeggiesInADay = 0;
     let totalMealsLogged = 0;
+    let mealsLoggedWeek = 0, mealsLoggedMonth = 0, mealsLoggedYear = 0;
+    let daysLoggedWeek = 0, daysLoggedMonth = 0, daysLoggedYear = 0;
+    let totalWaterOunces = 0;
+    let waterOuncesWeek = 0, waterOuncesMonth = 0, waterOuncesYear = 0;
+
+    // Calculate water totals per period
+    for (const entry of waterEntries || []) {
+      const date = entry.date;
+      const ounces = entry.ounces_consumed || 0;
+      const inYear = date >= yearStartStr;
+      const inMonth = date >= monthStartStr;
+      const inWeek = date >= weekStartStr;
+
+      totalWaterOunces += ounces;
+      if (inYear) waterOuncesYear += ounces;
+      if (inMonth) waterOuncesMonth += ounces;
+      if (inWeek) waterOuncesWeek += ounces;
+    }
 
     // Sort dates for streak calculations
     const sortedDates = Array.from(dailyMap.keys()).sort();
 
     for (const [date, stats] of dailyMap) {
-      const inWeek = date >= weekStartStr;
+      const inYear = date >= yearStartStr;
       const inMonth = date >= monthStartStr;
+      const inWeek = date >= weekStartStr;
 
-      totalMealsLogged += stats.entryCount;
+      // Count unique meal occasions (meal types with at least one entry)
+      const mealsThisDay = stats.mealTypesLogged.size;
+      totalMealsLogged += mealsThisDay;
+      if (inYear) mealsLoggedYear += mealsThisDay;
+      if (inMonth) mealsLoggedMonth += mealsThisDay;
+      if (inWeek) mealsLoggedWeek += mealsThisDay;
+
+      // Count days logged per period
+      if (inYear) daysLoggedYear++;
+      if (inMonth) daysLoggedMonth++;
+      if (inWeek) daysLoggedWeek++;
+
+      // Count fruit/veg grams per period
       totalFruitVegGrams += stats.fruitVegGrams;
+      if (inYear) fruitVegGramsYear += stats.fruitVegGrams;
+      if (inMonth) fruitVegGramsMonth += stats.fruitVegGrams;
+      if (inWeek) fruitVegGramsWeek += stats.fruitVegGrams;
 
       // Personal bests
       if (stats.protein > mostProteinInADay) mostProteinInADay = stats.protein;
@@ -183,7 +251,7 @@ export async function GET() {
 
       // 800g challenge
       if (stats.fruitVegGrams >= FRUIT_VEG_GOAL_GRAMS) {
-        fruitVegDaysYear++;
+        if (inYear) fruitVegDaysYear++;
         if (inMonth) fruitVegDaysMonth++;
         if (inWeek) fruitVegDaysWeek++;
       }
@@ -191,14 +259,14 @@ export async function GET() {
       // Calories (within threshold)
       if (stats.calories >= targets.calories * MACRO_HIT_THRESHOLD &&
           stats.calories <= targets.calories * 1.1) {
-        caloriesDaysYear++;
+        if (inYear) caloriesDaysYear++;
         if (inMonth) caloriesDaysMonth++;
         if (inWeek) caloriesDaysWeek++;
       }
 
       // Protein (at least threshold)
       if (stats.protein >= targets.protein * MACRO_HIT_THRESHOLD) {
-        proteinDaysYear++;
+        if (inYear) proteinDaysYear++;
         if (inMonth) proteinDaysMonth++;
         if (inWeek) proteinDaysWeek++;
       }
@@ -206,7 +274,7 @@ export async function GET() {
       // Carbs (within range)
       if (stats.carbs >= targets.carbs * MACRO_HIT_THRESHOLD &&
           stats.carbs <= targets.carbs * 1.15) {
-        carbsDaysYear++;
+        if (inYear) carbsDaysYear++;
         if (inMonth) carbsDaysMonth++;
         if (inWeek) carbsDaysWeek++;
       }
@@ -214,7 +282,7 @@ export async function GET() {
       // Fat (within range)
       if (stats.fat >= targets.fat * MACRO_HIT_THRESHOLD &&
           stats.fat <= targets.fat * 1.15) {
-        fatDaysYear++;
+        if (inYear) fatDaysYear++;
         if (inMonth) fatDaysMonth++;
         if (inWeek) fatDaysWeek++;
       }
@@ -311,6 +379,9 @@ export async function GET() {
         currentStreak: fruitVegStreaks.current,
         longestStreak: fruitVegStreaks.longest,
         totalGramsAllTime: Math.round(totalFruitVegGrams),
+        gramsThisWeek: Math.round(fruitVegGramsWeek),
+        gramsThisMonth: Math.round(fruitVegGramsMonth),
+        gramsThisYear: Math.round(fruitVegGramsYear),
       },
       calories: {
         daysHitThisWeek: caloriesDaysWeek,
@@ -334,14 +405,26 @@ export async function GET() {
       },
       logging: {
         totalDaysLogged: dailyMap.size,
+        daysLoggedThisWeek: daysLoggedWeek,
+        daysLoggedThisMonth: daysLoggedMonth,
+        daysLoggedThisYear: daysLoggedYear,
         currentStreak: loggingStreaks.current,
         longestStreak: loggingStreaks.longest,
         totalMealsLogged,
+        mealsLoggedThisWeek: mealsLoggedWeek,
+        mealsLoggedThisMonth: mealsLoggedMonth,
+        mealsLoggedThisYear: mealsLoggedYear,
       },
       personalBests: {
         mostProteinInADay: Math.round(mostProteinInADay),
         mostVeggiesInADay: Math.round(mostVeggiesInADay),
         longestCalorieStreak: calorieStreaks.longest,
+      },
+      water: {
+        totalOuncesAllTime: Math.round(totalWaterOunces),
+        ouncesThisWeek: Math.round(waterOuncesWeek),
+        ouncesThisMonth: Math.round(waterOuncesMonth),
+        ouncesThisYear: Math.round(waterOuncesYear),
       },
     };
 
