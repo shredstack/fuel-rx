@@ -58,6 +58,24 @@ function getWeekStartFromDateStr(dateStr: string): string {
   return date.toISOString().split('T')[0];
 }
 
+// Helper to get week end (Sunday) from a week start date string (YYYY-MM-DD)
+function getWeekEndFromDateStr(weekStartStr: string): string {
+  const [year, month, day] = weekStartStr.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + 6, 12, 0, 0));
+  return date.toISOString().split('T')[0];
+}
+
+// Helper to get month bounds as date strings (avoids timezone issues)
+function getMonthBoundsAsStrings(year: number, month: number): { startStr: string; endStr: string; dayCount: number } {
+  // First day of month
+  const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
+  // Last day of month - create date at day 0 of next month
+  const lastDay = new Date(Date.UTC(year, month, 0, 12, 0, 0));
+  const endStr = lastDay.toISOString().split('T')[0];
+  const dayCount = lastDay.getUTCDate();
+  return { startStr, endStr, dayCount };
+}
+
 // Helper to get day of week name from a date string (YYYY-MM-DD)
 function getDayOfWeekFromDateStr(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -1638,6 +1656,173 @@ export async function getConsumptionRange(
 }
 
 /**
+ * Get consumption data for a date range using date strings.
+ * This version avoids timezone issues by working with strings directly.
+ */
+export async function getConsumptionRangeByDateStr(
+  userId: string,
+  startStr: string,
+  endStr: string
+): Promise<{
+  dailyData: import('@/lib/types').DailyDataPoint[];
+  totals: Macros;
+  entryCount: number;
+  daysWithData: number;
+  byMealType: MealTypeBreakdown;
+}> {
+  const supabase = await createClient();
+
+  // Get all entries in date range (including meal_type for breakdown)
+  const { data: entries, error } = await supabase
+    .from('meal_consumption_log')
+    .select('consumed_date, meal_type, calories, protein, carbs, fat')
+    .eq('user_id', userId)
+    .gte('consumed_date', startStr)
+    .lte('consumed_date', endStr)
+    .order('consumed_date', { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+
+  // Type for per-day data including meal type breakdown
+  type DailyAccumulator = {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    count: number;
+    byMealType: {
+      breakfast: Macros;
+      pre_workout: Macros;
+      lunch: Macros;
+      post_workout: Macros;
+      snack: Macros;
+      dinner: Macros;
+    };
+  };
+
+  const emptyMealTypeBreakdown = () => ({
+    breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    pre_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    post_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+  });
+
+  // Group entries by date
+  const dailyMap = new Map<string, DailyAccumulator>();
+
+  // Initialize period-level meal type breakdown
+  const byMealType: MealTypeBreakdown = {
+    breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    pre_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    lunch: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    post_workout: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    snack: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    dinner: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    unassigned: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+  };
+
+  for (const entry of entries || []) {
+    const date = entry.consumed_date;
+    const existing = dailyMap.get(date) || {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      count: 0,
+      byMealType: emptyMealTypeBreakdown(),
+    };
+
+    // Update daily totals
+    existing.calories += entry.calories;
+    existing.protein += entry.protein;
+    existing.carbs += entry.carbs;
+    existing.fat += entry.fat;
+    existing.count += 1;
+
+    // Update per-day meal type breakdown (only for known meal types)
+    const mealTypeKey = entry.meal_type as MealType | null;
+    if (mealTypeKey && mealTypeKey in existing.byMealType) {
+      const dayBucket = existing.byMealType[mealTypeKey as keyof typeof existing.byMealType];
+      dayBucket.calories += entry.calories;
+      dayBucket.protein += entry.protein;
+      dayBucket.carbs += entry.carbs;
+      dayBucket.fat += entry.fat;
+    }
+
+    dailyMap.set(date, existing);
+
+    // Aggregate period-level by meal type
+    const periodBucket = mealTypeKey ? byMealType[mealTypeKey] : byMealType.unassigned;
+    periodBucket.calories += entry.calories;
+    periodBucket.protein += entry.protein;
+    periodBucket.carbs += entry.carbs;
+    periodBucket.fat += entry.fat;
+  }
+
+  // Generate all dates in range using UTC to avoid timezone issues
+  const dailyData: import('@/lib/types').DailyDataPoint[] = [];
+  const [startYear, startMonth, startDay] = startStr.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endStr.split('-').map(Number);
+  const current = new Date(Date.UTC(startYear, startMonth - 1, startDay, 12, 0, 0));
+  const endDate = new Date(Date.UTC(endYear, endMonth - 1, endDay, 12, 0, 0));
+
+  while (current <= endDate) {
+    const dateStr = current.toISOString().split('T')[0];
+    const dayData = dailyMap.get(dateStr);
+    const emptyBreakdown = emptyMealTypeBreakdown();
+
+    // Round meal type values for this day
+    const dayMealTypeBreakdown = dayData?.byMealType || emptyBreakdown;
+    for (const key of Object.keys(dayMealTypeBreakdown) as (keyof typeof dayMealTypeBreakdown)[]) {
+      dayMealTypeBreakdown[key].protein = Math.round(dayMealTypeBreakdown[key].protein * 10) / 10;
+      dayMealTypeBreakdown[key].carbs = Math.round(dayMealTypeBreakdown[key].carbs * 10) / 10;
+      dayMealTypeBreakdown[key].fat = Math.round(dayMealTypeBreakdown[key].fat * 10) / 10;
+    }
+
+    dailyData.push({
+      date: dateStr,
+      calories: dayData?.calories || 0,
+      protein: Math.round((dayData?.protein || 0) * 10) / 10,
+      carbs: Math.round((dayData?.carbs || 0) * 10) / 10,
+      fat: Math.round((dayData?.fat || 0) * 10) / 10,
+      entry_count: dayData?.count || 0,
+      byMealType: dayMealTypeBreakdown,
+    });
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  // Calculate totals
+  const totals: Macros = {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  };
+  let entryCount = 0;
+  let daysWithData = 0;
+
+  for (const day of dailyData) {
+    totals.calories += day.calories;
+    totals.protein += day.protein;
+    totals.carbs += day.carbs;
+    totals.fat += day.fat;
+    entryCount += day.entry_count;
+    if (day.entry_count > 0) daysWithData++;
+  }
+
+  // Round meal type breakdown values
+  for (const key of Object.keys(byMealType) as (keyof MealTypeBreakdown)[]) {
+    byMealType[key].protein = Math.round(byMealType[key].protein * 10) / 10;
+    byMealType[key].carbs = Math.round(byMealType[key].carbs * 10) / 10;
+    byMealType[key].fat = Math.round(byMealType[key].fat * 10) / 10;
+  }
+
+  return { dailyData, totals, entryCount, daysWithData, byMealType };
+}
+
+/**
  * Get weekly consumption summary with daily breakdown.
  */
 export async function getWeeklyConsumption(
@@ -1715,7 +1900,87 @@ export async function getWeeklyConsumption(
 }
 
 /**
+ * Get weekly consumption summary with daily breakdown.
+ * Uses date string to avoid timezone issues.
+ */
+export async function getWeeklyConsumptionByDateStr(
+  userId: string,
+  dateStr: string
+): Promise<import('@/lib/types').PeriodConsumptionSummary> {
+  const supabase = await createClient();
+
+  // Get user's daily macro targets
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('target_calories, target_protein, target_carbs, target_fat')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('Profile not found');
+
+  // Use timezone-safe helpers
+  const weekStartStr = getWeekStartFromDateStr(dateStr);
+  const weekEndStr = getWeekEndFromDateStr(weekStartStr);
+
+  const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRangeByDateStr(
+    userId,
+    weekStartStr,
+    weekEndStr
+  );
+
+  const dayCount = 7;
+  const dailyTargets: Macros = {
+    calories: profile.target_calories,
+    protein: profile.target_protein,
+    carbs: profile.target_carbs,
+    fat: profile.target_fat,
+  };
+
+  const weeklyTargets: Macros = {
+    calories: dailyTargets.calories * dayCount,
+    protein: dailyTargets.protein * dayCount,
+    carbs: dailyTargets.carbs * dayCount,
+    fat: dailyTargets.fat * dayCount,
+  };
+
+  const averagePerDay: Macros =
+    daysWithData > 0
+      ? {
+          calories: Math.round(totals.calories / daysWithData),
+          protein: Math.round((totals.protein / daysWithData) * 10) / 10,
+          carbs: Math.round((totals.carbs / daysWithData) * 10) / 10,
+          fat: Math.round((totals.fat / daysWithData) * 10) / 10,
+        }
+      : { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  const percentages: Macros = {
+    calories:
+      weeklyTargets.calories > 0 ? Math.round((totals.calories / weeklyTargets.calories) * 100) : 0,
+    protein:
+      weeklyTargets.protein > 0 ? Math.round((totals.protein / weeklyTargets.protein) * 100) : 0,
+    carbs: weeklyTargets.carbs > 0 ? Math.round((totals.carbs / weeklyTargets.carbs) * 100) : 0,
+    fat: weeklyTargets.fat > 0 ? Math.round((totals.fat / weeklyTargets.fat) * 100) : 0,
+  };
+
+  return {
+    periodType: 'weekly',
+    startDate: weekStartStr,
+    endDate: weekEndStr,
+    dayCount,
+    daysWithData,
+    targets: weeklyTargets,
+    consumed: totals,
+    averagePerDay,
+    percentages,
+    dailyData,
+    entry_count: entryCount,
+    byMealType,
+  };
+}
+
+/**
  * Get monthly consumption summary with daily breakdown.
+ * Uses timezone-safe date string helpers.
  */
 export async function getMonthlyConsumption(
   userId: string,
@@ -1733,13 +1998,13 @@ export async function getMonthlyConsumption(
 
   if (profileError || !profile) throw new Error('Profile not found');
 
-  const { start: monthStart, end: monthEnd } = getMonthBounds(year, month);
-  const dayCount = monthEnd.getDate(); // Number of days in month
+  // Use timezone-safe helper to get month bounds as strings
+  const { startStr, endStr, dayCount } = getMonthBoundsAsStrings(year, month);
 
-  const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRange(
+  const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRangeByDateStr(
     userId,
-    monthStart,
-    monthEnd
+    startStr,
+    endStr
   );
 
   const dailyTargets: Macros = {
@@ -1780,8 +2045,8 @@ export async function getMonthlyConsumption(
 
   return {
     periodType: 'monthly',
-    startDate: monthStart.toISOString().split('T')[0],
-    endDate: monthEnd.toISOString().split('T')[0],
+    startDate: startStr,
+    endDate: endStr,
     dayCount,
     daysWithData,
     targets: monthlyTargets,
