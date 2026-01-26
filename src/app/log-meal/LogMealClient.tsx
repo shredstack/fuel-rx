@@ -743,6 +743,10 @@ export default function LogMealClient({
 
   // Trigger confetti when hitting calorie goal
   useEffect(() => {
+    // Skip confetti check while loading/fetching - we might be seeing stale/fallback data
+    // that doesn't match the selected date, which could cause false confetti triggers
+    if (loading) return;
+
     const currentPercentage = percentages.calories;
     const prevPercentage = prevCaloriePercentageRef.current;
 
@@ -786,7 +790,7 @@ export default function LogMealClient({
     }
 
     prevCaloriePercentageRef.current = currentPercentage;
-  }, [percentages.calories]);
+  }, [percentages.calories, loading]);
 
   // Reset confetti flag when date changes
   useEffect(() => {
@@ -800,6 +804,8 @@ export default function LogMealClient({
 
   // Trigger confetti when hitting 800g fruit/veg goal
   useEffect(() => {
+    // Skip confetti check while loading/fetching - we might be seeing stale/fallback data
+    if (loading) return;
     if (!summary.fruitVeg) return;
 
     const currentPercentage = summary.fruitVeg.percentage;
@@ -854,10 +860,12 @@ export default function LogMealClient({
     }
 
     prevFruitVegPercentageRef.current = currentPercentage;
-  }, [summary.fruitVeg, selectedDate]);
+  }, [summary.fruitVeg, selectedDate, loading]);
 
   // Trigger confetti when hitting 100oz water goal
   useEffect(() => {
+    // Skip confetti check while loading/fetching - we might be seeing stale/fallback data
+    if (loading) return;
     if (!summary.water) return;
 
     const currentPercentage = summary.water.percentage;
@@ -912,7 +920,7 @@ export default function LogMealClient({
     }
 
     prevWaterPercentageRef.current = currentPercentage;
-  }, [summary.water, selectedDate]);
+  }, [summary.water, selectedDate, loading]);
 
   // Get time-based suggested meals from today's plan
   const suggestedMealTypes = getTimeBasedMealTypes();
