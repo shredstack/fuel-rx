@@ -55,18 +55,23 @@ export default function WaterProgressBar({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-gray-500 text-sm">{percentage}%</span>
-          {/* Quick add button */}
+        <span className="text-gray-500 text-sm">{percentage}%</span>
+      </div>
+
+      {/* Quick add buttons for common water bottle sizes */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-gray-500">Quick add:</span>
+        {[10, 16, 20, 24, 32].map((oz) => (
           <button
+            key={oz}
             type="button"
-            onClick={() => onAddWater(10)}
+            onClick={() => onAddWater(oz)}
             disabled={isLoading}
-            className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? '...' : '+10 oz'}
+            {isLoading ? '...' : `+${oz} oz`}
           </button>
-        </div>
+        ))}
       </div>
 
       {/* Progress values */}
