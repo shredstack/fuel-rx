@@ -339,8 +339,8 @@ To test actual email delivery locally, add your Resend API key to `.env.local`.
 
 Sometimes Next.js dev server experiences cache issues. If you all of a sudden start encountering many errors, follow these steps:
 1. Stop the dev server
-2. Run rm -rf .next
-3. Run npm run dev again
+2. Run `rm -rf .next`
+3. Run `npm run dev` again
 
 # Native App
 
