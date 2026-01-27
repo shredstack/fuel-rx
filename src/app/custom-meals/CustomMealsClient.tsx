@@ -76,9 +76,9 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
   // Image upload state
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [uploadingImage, setUploadingImage] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
+  const [validatingImage, setValidatingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Share with community checkbox - default to user's social_feed_enabled setting
@@ -160,14 +160,53 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
         type: 'image/jpeg',
       })
 
-      setImageFile(compressedFile)
+      // Show preview while validating
+      const previewUrl = URL.createObjectURL(compressedBlob)
+      setImagePreview(previewUrl)
       setCompressionInfo(
         `Compressed: ${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)} (${Math.round((1 - compressedSize / originalSize) * 100)}% smaller)`
       )
-      const previewUrl = URL.createObjectURL(compressedBlob)
-      setImagePreview(previewUrl)
+
+      // Validate image immediately (don't wait until save)
+      setValidatingImage(true)
+      const formData = new FormData()
+      formData.append('image', compressedFile)
+
+      const response = await fetch('/api/upload-meal-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+
+        // Check if this is a validation rejection - show modal
+        if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
+          setImageValidationMessage(data.error || 'Please upload an image of food.')
+          setShowImageValidationModal(true)
+          // Clear the preview since validation failed
+          URL.revokeObjectURL(previewUrl)
+          setImagePreview(null)
+          setImageFile(null)
+          setCompressionInfo(null)
+          setValidatingImage(false)
+          return
+        }
+
+        throw new Error(data.error || 'Failed to validate image')
+      }
+
+      // Validation passed - store the uploaded URL and file reference
+      const { url } = await response.json()
+      setImageFile(compressedFile)
+      // Store the uploaded URL in a data attribute on the preview for later use
+      setImagePreview(url)
+      // Clean up the blob URL since we now have the real URL
+      URL.revokeObjectURL(previewUrl)
+      setValidatingImage(false)
     } catch {
       setImageError('Failed to process image. Please try another file.')
+      setValidatingImage(false)
     }
   }
 
@@ -285,44 +324,6 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
     setActiveTab('my-recipes')
   }
 
-  const uploadImage = async (): Promise<{ success: boolean; url?: string; validationFailed?: boolean; message?: string }> => {
-    if (!imageFile) return { success: true, url: undefined }
-
-    setUploadingImage(true)
-    try {
-      const formData = new FormData()
-      formData.append('image', imageFile)
-
-      const response = await fetch('/api/upload-meal-image', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-
-        // Check if this is a validation rejection
-        if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
-          return {
-            success: false,
-            validationFailed: true,
-            message: data.error || 'Please upload an image of food.'
-          }
-        }
-
-        throw new Error(data.error || 'Failed to upload image')
-      }
-
-      const { url } = await response.json()
-      return { success: true, url }
-    } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'Failed to upload image')
-      return { success: false, validationFailed: false }
-    } finally {
-      setUploadingImage(false)
-    }
-  }
-
   const handleSave = async () => {
     setError(null)
 
@@ -342,28 +343,19 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       return
     }
 
+    // Don't save while image is being validated
+    if (validatingImage) {
+      setError('Please wait for image validation to complete')
+      return
+    }
+
     setSaving(true)
 
     try {
+      // Image is already uploaded and validated during selection
+      // imagePreview contains the uploaded URL (or existing URL when editing)
       let imageUrl: string | null = null
-      if (imageFile) {
-        const uploadResult = await uploadImage()
-
-        if (!uploadResult.success) {
-          if (uploadResult.validationFailed) {
-            // Show modal to let user choose what to do
-            setImageValidationMessage(uploadResult.message || 'This image could not be validated as food.')
-            setShowImageValidationModal(true)
-            setSaving(false)
-            return
-          }
-          // Other upload error - already shown via imageError state
-          setSaving(false)
-          return
-        }
-
-        imageUrl = uploadResult.url || null
-      } else if (editingMealId && imagePreview && !imagePreview.startsWith('blob:')) {
+      if (imagePreview && !imagePreview.startsWith('blob:')) {
         imageUrl = imagePreview
       }
 
@@ -957,17 +949,27 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
                           fill
                           className="object-contain"
                         />
+                        {validatingImage && (
+                          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <div className="text-white text-center">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2" />
+                              <p className="text-sm">Validating image...</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={removeImage}
-                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
-                        type="button"
-                      >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                      {compressionInfo && (
+                      {!validatingImage && (
+                        <button
+                          onClick={removeImage}
+                          className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                          type="button"
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                      {compressionInfo && !validatingImage && (
                         <p className="text-xs text-green-600 mt-2">{compressionInfo}</p>
                       )}
                     </div>
@@ -1097,8 +1099,8 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
                   >
                     Cancel
                   </button>
-                  <button onClick={handleSave} className="btn-primary flex-1" disabled={saving || uploadingImage}>
-                    {uploadingImage ? 'Uploading Image...' : saving ? 'Saving...' : editingMealId ? 'Update Recipe' : 'Save Recipe'}
+                  <button onClick={handleSave} className="btn-primary flex-1" disabled={saving || validatingImage}>
+                    {validatingImage ? 'Validating Image...' : saving ? 'Saving...' : editingMealId ? 'Update Recipe' : 'Save Recipe'}
                   </button>
                 </div>
               </div>
