@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { validateFoodImage } from '@/lib/claude/food-validation';
 
 const BUCKET_NAME = 'meal-photos';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB max (should be ~100-200KB after compression)
@@ -47,15 +48,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'File too large. Maximum size is 5MB.' }, { status: 400 });
     }
 
+    // ========== Safety + Food validation ==========
+    const validationBuffer = await file.arrayBuffer();
+    const validationBase64 = Buffer.from(validationBuffer).toString('base64');
+
+    let validationMediaType: 'image/jpeg' | 'image/png' | 'image/webp' = 'image/jpeg';
+    if (file.type === 'image/png') {
+      validationMediaType = 'image/png';
+    } else if (file.type === 'image/webp') {
+      validationMediaType = 'image/webp';
+    }
+
+    const validation = await validateFoodImage(validationBase64, validationMediaType, user.id);
+
+    if (!validation.isSafe || !validation.isFood) {
+      console.log('[Cooked Meal Photo] Rejected image:', {
+        userId: user.id,
+        isSafe: validation.isSafe,
+        isFood: validation.isFood,
+        category: validation.category,
+        detected: validation.detectedContent,
+        confidence: validation.confidence
+      });
+
+      return NextResponse.json(
+        {
+          error: validation.rejectionMessage || 'Please upload an image of food.',
+          code: validation.isSafe ? 'NOT_FOOD' : 'INAPPROPRIATE_CONTENT',
+          category: validation.category
+        },
+        { status: 400 }
+      );
+    }
+    // ========== END: Safety + Food validation ==========
+
     // Generate unique filename: userId/cooked/timestamp-randomstring.ext
     const fileExt = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 8);
     const storagePath = `${user.id}/cooked/${timestamp}-${randomString}.${fileExt}`;
 
-    // Convert File to ArrayBuffer for upload
-    const arrayBuffer = await file.arrayBuffer();
-    const fileBuffer = new Uint8Array(arrayBuffer);
+    // Use the buffer we already created for validation
+    const fileBuffer = new Uint8Array(validationBuffer);
 
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(storagePath, fileBuffer, {
