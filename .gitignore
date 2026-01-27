@@ -55,3 +55,6 @@ ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 
 # iOS - Xcode user-specific settings
 xcuserdata/
+
+# Local supabase queries
+snippets/*

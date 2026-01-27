@@ -1,5 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { inngest } from '@/lib/inngest/client';
+import { checkMealPlanLimit, formatNextAvailableTime } from '@/lib/subscription/check-meal-plan-limit';
 import type { ProteinFocusConstraint } from '@/lib/types';
 
 // Theme selection can be:
@@ -29,24 +30,46 @@ export async function POST(request: Request) {
     .eq('user_id', user.id)
     .single();
 
-  // Check if user can generate meal plans:
-  // 1. Has override (friends/testers) - unlimited access
-  // 2. Has Pro subscription (has_meal_plan_generation = true) - unlimited access
-  // 3. Is free user with remaining free plans
   const isOverride = subscription?.is_override ?? false;
   const hasMealPlanGeneration = subscription?.has_meal_plan_generation ?? false;
   const freePlansUsed = subscription?.free_plans_used ?? 0;
   const freePlanLimit = subscription?.free_plan_limit ?? 3;
 
-  const canGenerate = isOverride || hasMealPlanGeneration || freePlansUsed < freePlanLimit;
+  // Determine user type and apply appropriate limit check
+  const isProOrVip = isOverride || hasMealPlanGeneration;
 
-  if (!canGenerate) {
-    return Response.json({
-      error: 'FREE_PLAN_LIMIT_REACHED',
-      message: 'You have used all your free meal plans. Upgrade to Pro to continue generating meal plans.',
-      freePlansUsed,
-      freePlanLimit,
-    }, { status: 402 }); // 402 Payment Required
+  if (isProOrVip) {
+    // Pro/VIP users: Check rolling 7-day limit
+    const limitCheck = await checkMealPlanLimit(user.id);
+
+    if (!limitCheck.allowed) {
+      const nextAvailableFormatted = limitCheck.nextSlotAvailableAt
+        ? formatNextAvailableTime(limitCheck.nextSlotAvailableAt)
+        : 'in a few days';
+
+      return Response.json({
+        error: 'WEEKLY_LIMIT_REACHED',
+        message: `You've generated ${limitCheck.plansUsedThisWeek} meal plans this week. Your next slot opens ${nextAvailableFormatted}.`,
+        rateLimitStatus: {
+          plansUsedThisWeek: limitCheck.plansUsedThisWeek,
+          plansRemaining: limitCheck.plansRemaining,
+          weeklyLimit: limitCheck.limit,
+          nextSlotAvailableAt: limitCheck.nextSlotAvailableAt?.toISOString() ?? null,
+        },
+      }, { status: 429 }); // 429 Too Many Requests
+    }
+  } else {
+    // Free/Basic users: Check lifetime free plan limit
+    const canGenerate = freePlansUsed < freePlanLimit;
+
+    if (!canGenerate) {
+      return Response.json({
+        error: 'FREE_PLAN_LIMIT_REACHED',
+        message: 'You have used all your free meal plans. Upgrade to Pro to continue generating meal plans.',
+        freePlansUsed,
+        freePlanLimit,
+      }, { status: 402 }); // 402 Payment Required
+    }
   }
 
   // Parse request body for theme selection and protein focus

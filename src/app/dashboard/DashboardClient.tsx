@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { MILESTONE_MESSAGES } from '@/lib/types'
-import type { UserProfile, OnboardingMilestone, ProteinFocusConstraint } from '@/lib/types'
+import type { UserProfile, OnboardingMilestone, ProteinFocusConstraint, MealPlanRateLimitStatus } from '@/lib/types'
 import ThemeSelector, { type ThemeSelection } from '@/components/ThemeSelector'
 import ProteinFocusPicker from '@/components/ProteinFocusPicker'
 import QuickCookCard from '@/components/QuickCookCard'
@@ -58,6 +58,87 @@ const PROGRESS_STAGES = {
 } as const
 
 type JobStatus = keyof typeof PROGRESS_STAGES
+
+// Helper function to format relative time for rate limit display
+function formatRelativeTime(dateString: string): string {
+  const now = new Date()
+  const date = new Date(dateString)
+  const diffMs = date.getTime() - now.getTime()
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffHours < 1) {
+    return 'in less than an hour'
+  } else if (diffHours < 24) {
+    return `in ${diffHours} hour${diffHours === 1 ? '' : 's'}`
+  } else if (diffDays === 1) {
+    return 'tomorrow'
+  } else {
+    return `in ${diffDays} days`
+  }
+}
+
+// Rate limit banner component for Pro/VIP users
+function RateLimitBanner({ rateLimitStatus }: { rateLimitStatus: MealPlanRateLimitStatus | null }) {
+  if (!rateLimitStatus) return null
+
+  const { plansRemaining, plansUsedThisWeek, weeklyLimit, nextSlotAvailableAt } = rateLimitStatus
+
+  // Show nothing if they have plenty of plans remaining
+  if (plansRemaining >= 2) return null
+
+  // Warning state: 1 plan remaining
+  if (plansRemaining === 1) {
+    return (
+      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="flex items-start gap-2">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              1 meal plan remaining this week
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              You&apos;ve used {plansUsedThisWeek} of {weeklyLimit} weekly plans
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Blocked state: 0 plans remaining
+  if (plansRemaining === 0 && nextSlotAvailableAt) {
+    const formattedTime = formatRelativeTime(nextSlotAvailableAt)
+
+    return (
+      <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">
+              Weekly limit reached
+            </p>
+            <p className="text-sm text-gray-600 mt-1">
+              You&apos;ve generated {plansUsedThisWeek} meal plans this week.
+              Your next slot opens <span className="font-medium">{formattedTime}</span>.
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Tip: Use meal swap to customize your current plan instead of regenerating.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
 
 export default function DashboardClient({ profile: initialProfile, recentPlan, hasLoggedFood }: Props) {
   const router = useRouter()
@@ -114,8 +195,9 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
   const [proteinFocus, setProteinFocus] = useState<ProteinFocusConstraint | null>(null)
 
   // Subscription state
-  const { isSubscribed, canGeneratePlan, hasMealPlanGeneration, freePlansRemaining, isOverride, status: subscriptionStatus, refresh: refreshSubscription } = useSubscription()
+  const { isSubscribed, canGeneratePlan, hasMealPlanGeneration, freePlansRemaining, isOverride, status: subscriptionStatus, rateLimitStatus, refresh: refreshSubscription } = useSubscription()
   const [showPaywall, setShowPaywall] = useState(false)
+  const [rateLimitError, setRateLimitError] = useState<{ message: string; nextSlotAvailableAt: string | null } | null>(null)
 
   // Onboarding state
   const { state: onboardingState, isFeatureDiscovered, discoverFeature } = useOnboardingState()
@@ -208,6 +290,19 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
         return
       }
 
+      // Handle 429 Too Many Requests (weekly rate limit reached for Pro/VIP)
+      if (startResponse.status === 429) {
+        const data = await startResponse.json()
+        setRateLimitError({
+          message: data.message,
+          nextSlotAvailableAt: data.rateLimitStatus?.nextSlotAvailableAt ?? null,
+        })
+        setGenerating(false)
+        // Refresh subscription to update rateLimitStatus
+        refreshSubscription()
+        return
+      }
+
       if (!startResponse.ok) {
         const data = await startResponse.json()
         throw new Error(data.error || 'Failed to start meal plan generation')
@@ -256,6 +351,11 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
             <p className="text-gray-600 mb-4">
               Create a new 7-day meal plan based on your macro targets and preferences.
             </p>
+
+            {/* Rate limit warning for Pro/VIP users */}
+            {(hasMealPlanGeneration || isOverride) && !generating && (
+              <RateLimitBanner rateLimitStatus={rateLimitStatus} />
+            )}
 
             {/* Theme selector */}
             <div className="mb-4">
@@ -308,8 +408,34 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
               )}
             </button>
 
+            {/* Rate limit error message */}
+            {rateLimitError && (
+              <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Weekly limit reached</p>
+                    <p className="text-sm text-gray-600 mt-1">{rateLimitError.message}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Tip: Use meal swap to customize your current plan instead of regenerating.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRateLimitError(null)}
+                  className="mt-3 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {/* Free plans remaining indicator */}
-            {subscriptionStatus && !isSubscribed && !generating && (
+            {subscriptionStatus && !isSubscribed && !generating && !rateLimitError && (
               <div className="mt-3 text-center">
                 {freePlansRemaining > 0 ? (
                   <p className="text-sm text-gray-500">
@@ -320,21 +446,26 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                     onClick={() => setShowPaywall(true)}
                     className="text-sm text-primary-600 hover:text-primary-700 font-medium"
                   >
-                    Upgrade to Pro for unlimited plans
+                    Upgrade to Pro
                   </button>
                 )}
               </div>
             )}
 
-            {/* Subscriber/Override badge */}
-            {(hasMealPlanGeneration || isOverride) && !generating && (
+            {/* Pro/VIP subscriber badge with rate limit status */}
+            {(hasMealPlanGeneration || isOverride) && !generating && !rateLimitError && (
               <div className="mt-3 text-center">
                 <span className="inline-flex items-center gap-1 text-sm text-primary-600 font-medium">
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
-                  {isOverride ? 'VIP Access' : 'FuelRx Pro'} - Unlimited Plans
+                  {isOverride ? 'VIP Access' : 'FuelRx Pro'}
                 </span>
+                {rateLimitStatus && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {rateLimitStatus.plansRemaining} of {rateLimitStatus.weeklyLimit} plans remaining this week
+                  </p>
+                )}
               </div>
             )}
 
@@ -348,7 +479,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                   onClick={() => setShowPaywall(true)}
                   className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1"
                 >
-                  Upgrade to Pro for unlimited plans
+                  Upgrade to Pro
                 </button>
               </div>
             )}

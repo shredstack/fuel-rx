@@ -2285,6 +2285,27 @@ export interface BulkUpdateIngredientsRequest {
 }
 
 // ============================================================================
+// Rate Limit Types
+// ============================================================================
+
+/**
+ * Error codes for meal plan generation
+ */
+export type MealPlanGenerationError =
+  | 'FREE_PLAN_LIMIT_REACHED'  // Free tier lifetime limit
+  | 'WEEKLY_LIMIT_REACHED';     // Pro/VIP rolling 7-day limit
+
+/**
+ * Meal plan generation rate limit status (for Pro/VIP users)
+ */
+export interface MealPlanRateLimitStatus {
+  plansUsedThisWeek: number;
+  plansRemaining: number;
+  weeklyLimit: number;
+  nextSlotAvailableAt: string | null; // ISO timestamp
+}
+
+// ============================================================================
 // Subscription Types
 // ============================================================================
 
@@ -2330,6 +2351,8 @@ export interface UserSubscription {
   free_plan_limit: number;
   is_override: boolean;
   override_reason: string | null;
+  // Admin override for weekly plan limit (null = use default of 3)
+  weekly_plan_limit_override: number | null;
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
@@ -2357,6 +2380,8 @@ export interface SubscriptionStatusResponse {
   canUseAiFeatures: boolean;
   // Override status
   isOverride: boolean;
+  // Rate limit status (only present for Pro/VIP users)
+  rateLimitStatus: MealPlanRateLimitStatus | null;
 }
 
 // ============================================================================
