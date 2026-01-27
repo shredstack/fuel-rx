@@ -39,7 +39,8 @@ export default function CookingStatusModal({
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadedPhotoPath, setUploadedPhotoPath] = useState<string | null>(null)
+  const [validatingPhoto, setValidatingPhoto] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -60,6 +61,8 @@ export default function CookingStatusModal({
       setEditedInstructions(currentInstructions)
       setPhotoFile(null)
       setPhotoPreview(null)
+      setUploadedPhotoPath(null)
+      setValidatingPhoto(false)
       setPhotoError(null)
       setCompressionInfo(null)
       setShareWithCommunity(true)
@@ -109,12 +112,47 @@ export default function CookingStatusModal({
       })
       setPhotoFile(compressedFile)
 
-      // Create preview
+      // Create preview while validating
       const previewUrl = URL.createObjectURL(compressedBlob)
       setPhotoPreview(previewUrl)
+
+      // Validate image immediately (don't wait until save)
+      setValidatingPhoto(true)
+      const formData = new FormData()
+      formData.append('image', compressedFile)
+
+      const response = await fetch('/api/cooked-meal-photos', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+
+        // Check if this is a validation rejection - show modal
+        if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
+          setImageValidationMessage(data.error || 'Please upload an image of food.')
+          setShowImageValidationModal(true)
+          // Clear the preview since validation failed
+          URL.revokeObjectURL(previewUrl)
+          setPhotoPreview(null)
+          setPhotoFile(null)
+          setCompressionInfo(null)
+          setValidatingPhoto(false)
+          return
+        }
+
+        throw new Error(data.error || 'Failed to validate image')
+      }
+
+      // Validation passed - store the uploaded path
+      const { storagePath } = await response.json()
+      setUploadedPhotoPath(storagePath)
+      setValidatingPhoto(false)
     } catch (err) {
-      console.error('Error compressing image:', err)
+      console.error('Error processing image:', err)
       setPhotoError('Failed to process image')
+      setValidatingPhoto(false)
     }
 
     // Reset file input
@@ -129,53 +167,23 @@ export default function CookingStatusModal({
     }
     setPhotoFile(null)
     setPhotoPreview(null)
+    setUploadedPhotoPath(null)
     setCompressionInfo(null)
     setPhotoError(null)
   }
 
   const handleSubmit = async () => {
+    // Don't save while photo is being validated
+    if (validatingPhoto) {
+      setPhotoError('Please wait for image validation to complete')
+      return
+    }
+
     setSaving(true)
     try {
-      let uploadedPhotoUrl: string | undefined
-
-      // Upload photo if present
-      if (photoFile && selectedStatus !== 'not_cooked') {
-        setUploadingPhoto(true)
-        try {
-          const formData = new FormData()
-          formData.append('image', photoFile)
-
-          const response = await fetch('/api/cooked-meal-photos', {
-            method: 'POST',
-            body: formData,
-          })
-
-          if (!response.ok) {
-            const data = await response.json()
-
-            // Check if this is a validation rejection - show modal
-            if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
-              setImageValidationMessage(data.error || 'Please upload an image of food.')
-              setShowImageValidationModal(true)
-              setUploadingPhoto(false)
-              setSaving(false)
-              return
-            }
-
-            throw new Error(data.error || 'Failed to upload photo')
-          }
-
-          const { storagePath } = await response.json()
-          uploadedPhotoUrl = storagePath
-        } catch (err) {
-          console.error('Error uploading photo:', err)
-          setPhotoError(err instanceof Error ? err.message : 'Failed to upload photo')
-          setUploadingPhoto(false)
-          setSaving(false)
-          return
-        }
-        setUploadingPhoto(false)
-      }
+      // Photo is already uploaded and validated during selection
+      // Use the stored path if available
+      const photoUrl = selectedStatus !== 'not_cooked' ? uploadedPhotoPath || undefined : undefined
 
       const instructionsToSave =
         selectedStatus === 'cooked_with_modifications' && showInstructionsEditor
@@ -186,7 +194,7 @@ export default function CookingStatusModal({
         selectedStatus,
         notes || undefined,
         instructionsToSave,
-        uploadedPhotoUrl,
+        photoUrl,
         selectedStatus !== 'not_cooked' ? shareWithCommunity : undefined
       )
       onClose()
@@ -384,17 +392,27 @@ export default function CookingStatusModal({
                         fill
                         className="object-contain"
                       />
+                      {validatingPhoto && (
+                        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                          <div className="text-white text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2" />
+                            <p className="text-sm">Validating image...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleRemovePhoto}
-                      className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-md hover:bg-gray-100 transition-colors z-10"
-                    >
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                    {compressionInfo && (
+                    {!validatingPhoto && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-md hover:bg-gray-100 transition-colors z-10"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                    {compressionInfo && !validatingPhoto && (
                       <p className="mt-2 text-xs text-green-600">{compressionInfo}</p>
                     )}
                   </div>
@@ -530,8 +548,8 @@ export default function CookingStatusModal({
             <button onClick={onClose} className="btn-outline flex-1" disabled={saving}>
               Cancel
             </button>
-            <button onClick={handleSubmit} className="btn-primary flex-1" disabled={saving || uploadingPhoto}>
-              {uploadingPhoto ? 'Uploading...' : saving ? 'Saving...' : 'Save'}
+            <button onClick={handleSubmit} className="btn-primary flex-1" disabled={saving || validatingPhoto}>
+              {validatingPhoto ? 'Validating...' : saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
