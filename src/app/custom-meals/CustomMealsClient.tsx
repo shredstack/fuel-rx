@@ -97,6 +97,10 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
   // Edit mode state
   const [editingMealId, setEditingMealId] = useState<string | null>(null)
 
+  // Image validation modal state
+  const [showImageValidationModal, setShowImageValidationModal] = useState(false)
+  const [imageValidationMessage, setImageValidationMessage] = useState<string | null>(null)
+
   // Filter meals by type based on active tab
   const userMeals = meals.filter(isSavedUserMeal)
   const quickCookMeals = meals.filter(isSavedQuickCookMeal)
@@ -281,8 +285,8 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
     setActiveTab('my-recipes')
   }
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return null
+  const uploadImage = async (): Promise<{ success: boolean; url?: string; validationFailed?: boolean; message?: string }> => {
+    if (!imageFile) return { success: true, url: undefined }
 
     setUploadingImage(true)
     try {
@@ -296,14 +300,24 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
 
       if (!response.ok) {
         const data = await response.json()
+
+        // Check if this is a validation rejection
+        if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
+          return {
+            success: false,
+            validationFailed: true,
+            message: data.error || 'Please upload an image of food.'
+          }
+        }
+
         throw new Error(data.error || 'Failed to upload image')
       }
 
       const { url } = await response.json()
-      return url
+      return { success: true, url }
     } catch (err) {
       setImageError(err instanceof Error ? err.message : 'Failed to upload image')
-      return null
+      return { success: false, validationFailed: false }
     } finally {
       setUploadingImage(false)
     }
@@ -333,7 +347,22 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
     try {
       let imageUrl: string | null = null
       if (imageFile) {
-        imageUrl = await uploadImage()
+        const uploadResult = await uploadImage()
+
+        if (!uploadResult.success) {
+          if (uploadResult.validationFailed) {
+            // Show modal to let user choose what to do
+            setImageValidationMessage(uploadResult.message || 'This image could not be validated as food.')
+            setShowImageValidationModal(true)
+            setSaving(false)
+            return
+          }
+          // Other upload error - already shown via imageError state
+          setSaving(false)
+          return
+        }
+
+        imageUrl = uploadResult.url || null
       } else if (editingMealId && imagePreview && !imagePreview.startsWith('blob:')) {
         imageUrl = imagePreview
       }
@@ -429,6 +458,123 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleSaveWithoutImage = async () => {
+    // Close the modal and remove the problematic image
+    setShowImageValidationModal(false)
+    setImageValidationMessage(null)
+    removeImage()
+
+    // Now save without the image
+    setSaving(true)
+
+    try {
+      const ingredientsToSave = isQuickAddMode
+        ? [{
+            name: mealName.trim(),
+            amount: '1',
+            unit: 'serving',
+            calories: Number(quickMacros.calories) || 0,
+            protein: Number(quickMacros.protein) || 0,
+            carbs: Number(quickMacros.carbs) || 0,
+            fat: Number(quickMacros.fat) || 0,
+          }]
+        : ingredients.filter((ing) => ing.name.trim() !== '').map((ing) => {
+            const amountParts = ing.amount.trim().split(/\s+/)
+            const amount = amountParts[0] || ''
+            const unit = amountParts.slice(1).join(' ') || ''
+            return {
+              name: ing.name.trim(),
+              amount,
+              unit,
+              calories: Number(ing.calories) || 0,
+              protein: Number(ing.protein) || 0,
+              carbs: Number(ing.carbs) || 0,
+              fat: Number(ing.fat) || 0,
+            }
+          })
+
+      // Keep existing image if editing, otherwise no image
+      let imageUrl: string | null = null
+      if (editingMealId && imagePreview && !imagePreview.startsWith('blob:')) {
+        imageUrl = imagePreview
+      }
+
+      const isEditing = !!editingMealId
+      const response = await fetch('/api/custom-meals', {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(isEditing && { id: editingMealId }),
+          meal_name: mealName.trim(),
+          ingredients: ingredientsToSave,
+          image_url: imageUrl,
+          share_with_community: shareWithCommunity,
+          prep_time: prepTime,
+          meal_prep_instructions: instructionSteps
+            .filter(s => s.trim().length > 0)
+            .map((step, i) => `${i + 1}. ${step.trim()}`)
+            .join('\n') || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to save meal')
+      }
+
+      const savedMeal = await response.json()
+
+      const newSavedMeal: SavedUserMeal = {
+        id: savedMeal.id,
+        name: savedMeal.meal_name,
+        source_type: 'user_created',
+        source_user_id: savedMeal.user_id,
+        is_public: savedMeal.share_with_community,
+        image_url: savedMeal.image_url,
+        created_at: savedMeal.created_at,
+        updated_at: savedMeal.updated_at,
+        source_community_post_id: null,
+        meal_type: null,
+        calories: savedMeal.calories,
+        protein: savedMeal.protein,
+        carbs: savedMeal.carbs,
+        fat: savedMeal.fat,
+        ingredients: savedMeal.ingredients,
+        instructions: instructionSteps.filter(s => s.trim().length > 0),
+        prep_time_minutes: prepTime === '5_or_less' ? 5 : prepTime === '15' ? 15 : prepTime === '30' ? 30 : 45,
+        prep_instructions: savedMeal.meal_prep_instructions,
+      }
+
+      if (isEditing) {
+        setMeals(meals.map((m) => m.id === savedMeal.id ? newSavedMeal : m))
+      } else {
+        const existingIndex = meals.findIndex((m) => m.name === newSavedMeal.name)
+        if (existingIndex >= 0) {
+          const updated = [...meals]
+          updated[existingIndex] = newSavedMeal
+          setMeals(updated)
+        } else {
+          setMeals([newSavedMeal, ...meals])
+        }
+      }
+
+      resetForm()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save meal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTryDifferentImage = () => {
+    // Close modal and let user pick a new image
+    setShowImageValidationModal(false)
+    setImageValidationMessage(null)
+    removeImage()
+    // Focus the file input
+    fileInputRef.current?.click()
   }
 
   const handleDelete = async (mealId: string) => {
@@ -1053,6 +1199,50 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
 
         {/* Nutrition disclaimer for Apple App Store compliance */}
         <NutritionDisclaimer className="mt-8" />
+
+        {/* Image Validation Modal */}
+        {showImageValidationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Image Not Accepted</h3>
+              </div>
+
+              <p className="text-gray-600 mb-6">
+                {imageValidationMessage}
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleTryDifferentImage}
+                  className="w-full btn-primary"
+                >
+                  Try a Different Image
+                </button>
+                <button
+                  onClick={handleSaveWithoutImage}
+                  className="w-full btn-outline"
+                >
+                  Save Recipe Without Image
+                </button>
+                <button
+                  onClick={() => {
+                    setShowImageValidationModal(false)
+                    setImageValidationMessage(null)
+                  }}
+                  className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <MobileTabBar />

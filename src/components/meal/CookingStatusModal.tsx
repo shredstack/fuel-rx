@@ -47,6 +47,10 @@ export default function CookingStatusModal({
   // Share toggle state
   const [shareWithCommunity, setShareWithCommunity] = useState(true)
 
+  // Image validation modal state
+  const [showImageValidationModal, setShowImageValidationModal] = useState(false)
+  const [imageValidationMessage, setImageValidationMessage] = useState<string | null>(null)
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -59,6 +63,8 @@ export default function CookingStatusModal({
       setPhotoError(null)
       setCompressionInfo(null)
       setShareWithCommunity(true)
+      setShowImageValidationModal(false)
+      setImageValidationMessage(null)
     }
   }, [isOpen, currentStatus, currentInstructions])
 
@@ -146,6 +152,16 @@ export default function CookingStatusModal({
 
           if (!response.ok) {
             const data = await response.json()
+
+            // Check if this is a validation rejection - show modal
+            if (data.code === 'NOT_FOOD' || data.code === 'INAPPROPRIATE_CONTENT') {
+              setImageValidationMessage(data.error || 'Please upload an image of food.')
+              setShowImageValidationModal(true)
+              setUploadingPhoto(false)
+              setSaving(false)
+              return
+            }
+
             throw new Error(data.error || 'Failed to upload photo')
           }
 
@@ -193,6 +209,41 @@ export default function CookingStatusModal({
 
   const handleRemoveInstruction = (index: number) => {
     setEditedInstructions(editedInstructions.filter((_, i) => i !== index))
+  }
+
+  const handleTryDifferentImage = () => {
+    setShowImageValidationModal(false)
+    setImageValidationMessage(null)
+    handleRemovePhoto()
+    fileInputRef.current?.click()
+  }
+
+  const handleSaveWithoutImage = async () => {
+    setShowImageValidationModal(false)
+    setImageValidationMessage(null)
+    handleRemovePhoto()
+
+    // Continue with submit without photo
+    setSaving(true)
+    try {
+      const instructionsToSave =
+        selectedStatus === 'cooked_with_modifications' && showInstructionsEditor
+          ? editedInstructions
+          : undefined
+
+      await onSubmit(
+        selectedStatus,
+        notes || undefined,
+        instructionsToSave,
+        undefined, // No photo
+        selectedStatus !== 'not_cooked' ? shareWithCommunity : undefined
+      )
+      onClose()
+    } catch (error) {
+      console.error('Error saving cooking status:', error)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const isCooked = selectedStatus !== 'not_cooked'
@@ -485,6 +536,50 @@ export default function CookingStatusModal({
           </div>
         </div>
       </div>
+
+      {/* Image Validation Modal */}
+      {showImageValidationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Image Not Accepted</h3>
+            </div>
+
+            <p className="text-gray-600 mb-6">
+              {imageValidationMessage}
+            </p>
+
+            <div className="space-y-3">
+              <button
+                onClick={handleTryDifferentImage}
+                className="w-full btn-primary"
+              >
+                Try a Different Image
+              </button>
+              <button
+                onClick={handleSaveWithoutImage}
+                className="w-full btn-outline"
+              >
+                Save Without Image
+              </button>
+              <button
+                onClick={() => {
+                  setShowImageValidationModal(false)
+                  setImageValidationMessage(null)
+                }}
+                className="w-full text-gray-500 hover:text-gray-700 text-sm py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
