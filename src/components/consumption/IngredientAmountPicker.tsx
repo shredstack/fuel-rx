@@ -39,14 +39,15 @@ interface IngredientAmountPickerProps {
 
 export default function IngredientAmountPicker({ ingredient, isOpen, onClose, onLog, initialMealType }: IngredientAmountPickerProps) {
   const [amount, setAmount] = useState(ingredient.default_amount);
-  const [mealType, setMealType] = useState<MealType>(initialMealType || getTimeBasedMealType());
+  // Use stable default to avoid hydration mismatch - useEffect will set time-based value after mount
+  const [mealType, setMealType] = useState<MealType>(initialMealType || 'breakfast');
   const [logging, setLogging] = useState(false);
   // 800g Challenge: grams input for fruits/vegetables
   const isFruitOrVeg = countsToward800g(ingredient.category);
   const [grams, setGrams] = useState<number>(ingredient.default_grams || 100);
 
-  // Reset meal type when a new ingredient is selected or initialMealType changes
-  // This ensures the correct meal type is shown when clicking + on a section
+  // Set time-based meal type after mount to avoid hydration mismatch
+  // Also reset when ingredient or initialMealType changes
   useEffect(() => {
     setMealType(initialMealType || getTimeBasedMealType());
   }, [initialMealType, ingredient.name]);

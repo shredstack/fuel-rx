@@ -223,6 +223,9 @@ export default function LogMealClient({
   const prevWaterPercentageRef = useRef<number | null>(null);
   const hasShownWaterConfettiRef = useRef(false);
 
+  // Time-based meal suggestions - computed after mount to avoid hydration mismatch
+  const [suggestedMealTypes, setSuggestedMealTypes] = useState<MealType[]>([]);
+
   // Ordered list of meal types based on user preferences
   // Section order: breakfast → lunch → dinner → pre_workout* → post_workout* → snack
   const orderedMealTypes: MealType[] = [
@@ -236,6 +239,7 @@ export default function LogMealClient({
 
   // On mount, check if server-provided date matches client's local date
   // If not (due to timezone mismatch), correct it to user's local today
+  // Also compute time-based meal suggestions after mount to avoid hydration mismatch
   useEffect(() => {
     const localToday = getLocalTodayString();
     if (initialDate !== localToday) {
@@ -243,6 +247,8 @@ export default function LogMealClient({
       // React Query will automatically fetch data for the new date
       setSelectedDate(localToday);
     }
+    // Compute time-based suggestions after mount
+    setSuggestedMealTypes(getTimeBasedMealTypes());
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -297,7 +303,7 @@ export default function LogMealClient({
   const handleLogMeal = async (meal: MealToLog) => {
     // Set pending meal and default to meal's original type
     setPendingLogMeal(meal);
-    setPendingMealType(meal.meal_type || getTimeBasedMealTypes()[0]);
+    setPendingMealType(meal.meal_type || suggestedMealTypes[0] || 'breakfast');
 
     // Reset produce state
     setDetectedProduce([]);
@@ -923,7 +929,6 @@ export default function LogMealClient({
   }, [summary.water, selectedDate, loading]);
 
   // Get time-based suggested meals from today's plan
-  const suggestedMealTypes = getTimeBasedMealTypes();
   const suggestedMeals = available.from_todays_plan
     .filter((m) => m.meal_type && suggestedMealTypes.includes(m.meal_type) && !m.is_logged)
     .slice(0, 3);
@@ -1486,7 +1491,7 @@ export default function LogMealClient({
                 <MealTypeSelector
                   value={pendingMealType}
                   onChange={setPendingMealType}
-                  suggestedTypes={getTimeBasedMealTypes()}
+                  suggestedTypes={suggestedMealTypes}
                 />
               </div>
 

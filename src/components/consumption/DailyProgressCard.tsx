@@ -61,12 +61,13 @@ function ProgressBar({
 }
 
 export default function DailyProgressCard({ date, targets, consumed, percentages, entryCount, fruitVeg, water, onAddWater, isAddingWater }: DailyProgressCardProps) {
-  // Format date for display
-  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
+  // Format date for display - use fixed locale to avoid hydration mismatch
+  // Parse date parts manually to avoid timezone/locale issues
+  const [year, month, day] = date.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dateObj.getDay()];
+  const monthName = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month - 1];
+  const formattedDate = `${weekday}, ${monthName} ${day}`;
 
   const remaining = {
     calories: Math.max(0, targets.calories - consumed.calories),
