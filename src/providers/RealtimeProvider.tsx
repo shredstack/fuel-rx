@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Capacitor } from '@capacitor/core';
 import { createClient } from '@/lib/supabase/client';
 import { queryKeys } from '@/lib/queryKeys';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
@@ -179,6 +180,35 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     setupSubscriptions();
 
+    // Handle app returning from background on native platforms
+    let appStateCleanup: (() => void) | null = null;
+
+    if (Capacitor.isNativePlatform()) {
+      // Dynamically import to avoid issues on web
+      import('@capacitor/app')
+        .then(({ App }) => {
+          const listener = App.addListener('appStateChange', ({ isActive }) => {
+            if (isActive && userIdRef.current) {
+              // App returned to foreground - invalidate consumption cache
+              // to ensure fresh data after potential WebSocket disconnection
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.consumption.all,
+              });
+            }
+          });
+
+          appStateCleanup = () => {
+            listener.then((l) => l.remove());
+          };
+        })
+        .catch((err) => {
+          console.warn(
+            '[RealtimeProvider] Failed to set up app state listener:',
+            err
+          );
+        });
+    }
+
     // Listen for auth state changes to setup/teardown subscriptions
     const {
       data: { subscription: authSubscription },
@@ -204,6 +234,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
+      }
+      if (appStateCleanup) {
+        appStateCleanup();
       }
     };
   }, [queryClient]);

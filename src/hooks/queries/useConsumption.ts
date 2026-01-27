@@ -26,6 +26,7 @@ export function useDailyConsumption(date: string) {
       return response.json();
     },
     staleTime: 60 * 1000, // Consider fresh for 1 minute
+    refetchOnMount: 'always', // Ensure fresh data on navigation (fixes stale cache on native app)
   });
 }
 
@@ -41,6 +42,7 @@ export function useAvailableMeals(date: string) {
       return response.json();
     },
     staleTime: 60 * 1000,
+    refetchOnMount: 'always', // Ensure fresh data on navigation (fixes stale cache on native app)
   });
 }
 
@@ -58,6 +60,7 @@ export function usePreviousEntries(date: string) {
       return response.json();
     },
     staleTime: 5 * 60 * 1000, // Less frequently changing - 5 minutes
+    refetchOnMount: 'always', // Ensure fresh data on navigation (fixes stale cache on native app)
   });
 }
 
