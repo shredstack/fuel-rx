@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import type { SubscriptionStatusResponse, SubscriptionTier, SubscriptionStore } from '@/lib/types';
+import { checkMealPlanLimit } from '@/lib/subscription/check-meal-plan-limit';
+import type { SubscriptionStatusResponse, SubscriptionTier, SubscriptionStore, MealPlanRateLimitStatus } from '@/lib/types';
 
 export async function GET() {
   const supabase = await createClient();
@@ -57,6 +58,18 @@ export async function GET() {
   // 3. Is free user with remaining free plans
   const canUseAiFeatures = isOverride || hasAiFeatures || freePlansRemaining > 0;
 
+  // For Pro/VIP users, include rate limit status
+  let rateLimitStatus: MealPlanRateLimitStatus | null = null;
+  if (isOverride || hasMealPlanGeneration) {
+    const limitCheck = await checkMealPlanLimit(user.id);
+    rateLimitStatus = {
+      plansUsedThisWeek: limitCheck.plansUsedThisWeek,
+      plansRemaining: limitCheck.plansRemaining,
+      weeklyLimit: limitCheck.limit,
+      nextSlotAvailableAt: limitCheck.nextSlotAvailableAt?.toISOString() ?? null,
+    };
+  }
+
   const response: SubscriptionStatusResponse = {
     isSubscribed,
     subscriptionTier: tier,
@@ -71,6 +84,7 @@ export async function GET() {
     canGeneratePlan,
     canUseAiFeatures,
     isOverride,
+    rateLimitStatus,
   };
 
   return Response.json(response);

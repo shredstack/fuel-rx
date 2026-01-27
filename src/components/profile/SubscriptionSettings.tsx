@@ -5,6 +5,25 @@ import { useSubscription } from '@/hooks/useSubscription';
 import PaywallModal from '@/components/PaywallModal';
 import { openExternalUrl } from '@/lib/browser';
 
+// Helper function to format next slot available time
+function formatNextSlot(dateString: string): string {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = date.getTime() - now.getTime();
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffHours < 1) {
+    return 'in less than an hour';
+  } else if (diffHours < 24) {
+    return `in ${diffHours} hour${diffHours === 1 ? '' : 's'}`;
+  } else if (diffDays === 1) {
+    return 'tomorrow';
+  } else {
+    return `in ${diffDays} days`;
+  }
+}
+
 export default function SubscriptionSettings() {
   const {
     status,
@@ -13,6 +32,7 @@ export default function SubscriptionSettings() {
     canPurchase,
     freePlansRemaining,
     isOverride,
+    rateLimitStatus,
     restore,
     sync,
   } = useSubscription();
@@ -199,6 +219,34 @@ export default function SubscriptionSettings() {
               <p className="text-sm text-purple-800">
                 You have VIP access with unlimited features.
               </p>
+            </div>
+          )}
+
+          {/* Meal plan usage for Pro/VIP users */}
+          {rateLimitStatus && (status?.hasMealPlanGeneration || isOverride) && (
+            <div className="pt-2 border-t border-gray-100">
+              <h4 className="font-medium text-gray-900 mb-2">Meal Plan Usage</h4>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-primary-500 h-2 rounded-full transition-all"
+                    style={{ width: `${(rateLimitStatus.plansUsedThisWeek / rateLimitStatus.weeklyLimit) * 100}%` }}
+                  />
+                </div>
+                <span className="text-sm text-gray-600">
+                  {rateLimitStatus.plansUsedThisWeek}/{rateLimitStatus.weeklyLimit} this week
+                </span>
+              </div>
+              {rateLimitStatus.plansRemaining > 0 && (
+                <p className="text-xs text-gray-500 mt-2">
+                  {rateLimitStatus.plansRemaining} plan{rateLimitStatus.plansRemaining !== 1 ? 's' : ''} remaining
+                </p>
+              )}
+              {rateLimitStatus.plansRemaining === 0 && rateLimitStatus.nextSlotAvailableAt && (
+                <p className="text-xs text-amber-600 mt-2">
+                  Next slot available {formatNextSlot(rateLimitStatus.nextSlotAvailableAt)}
+                </p>
+              )}
             </div>
           )}
 

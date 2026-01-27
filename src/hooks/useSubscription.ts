@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { SubscriptionStatusResponse } from '@/lib/types';
+import type { SubscriptionStatusResponse, MealPlanRateLimitStatus } from '@/lib/types';
 import {
   isRevenueCatAvailable,
   isRevenueCatInitialized,
@@ -24,6 +24,8 @@ interface UseSubscriptionReturn {
   hasMealPlanGeneration: boolean;
   freePlansRemaining: number;
   isOverride: boolean;
+  // Rate limit status for Pro/VIP users (null for free/basic)
+  rateLimitStatus: MealPlanRateLimitStatus | null;
 
   // Actions
   refresh: () => Promise<void>;
@@ -149,6 +151,7 @@ export function useSubscription(): UseSubscriptionReturn {
   const hasMealPlanGeneration = status?.hasMealPlanGeneration ?? false;
   const freePlansRemaining = status?.freePlansRemaining ?? 3;
   const isOverride = status?.isOverride ?? false;
+  const rateLimitStatus = status?.rateLimitStatus ?? null;
   const canPurchase = isRevenueCatAvailable();
 
   return {
@@ -161,6 +164,7 @@ export function useSubscription(): UseSubscriptionReturn {
     hasMealPlanGeneration,
     freePlansRemaining,
     isOverride,
+    rateLimitStatus,
     refresh: fetchStatus,
     showPaywall,
     restore,
