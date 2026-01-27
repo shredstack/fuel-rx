@@ -446,7 +446,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                     onClick={() => setShowPaywall(true)}
                     className="text-sm text-primary-600 hover:text-primary-700 font-medium"
                   >
-                    Upgrade to Pro for unlimited plans
+                    Upgrade to Pro
                   </button>
                 )}
               </div>
@@ -479,7 +479,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                   onClick={() => setShowPaywall(true)}
                   className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1"
                 >
-                  Upgrade to Pro for unlimited plans
+                  Upgrade to Pro
                 </button>
               </div>
             )}

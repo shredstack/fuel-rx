@@ -497,10 +497,12 @@ To ensure my personal Anthropic bill doesn't get out of control, we've implement
 | Free user | 3, 2, or 1 | ✅ Yes | ✅ Yes |
 | Free user | 0 | ❌ Paywall | ❌ Paywall |
 | Basic subscriber | N/A | ✅ Yes | ❌ Paywall (uses free plans) |
-| Pro subscriber | N/A | ✅ Yes | ✅ Unlimited |
-| Override (VIP) | N/A | ✅ Yes | ✅ Unlimited |
+| Pro subscriber | N/A | ✅ Unlimited | ✅ 3/week |
+| Override (VIP) | N/A | ✅ Unlimited | ✅ 3/week |
 
-**AI Features include:** Cooking Assistant, Snap-a-Meal photo analysis, Quick Cook meal generation, and Prep Mode generation.
+**AI Features include:** Cooking Assistant, Snap-a-Meal photo analysis, Quick Cook meal generation, and Prep Mode generation. These are unlimited for Pro/VIP users.
+
+**Meal Plan Generation:** Pro and VIP users can generate up to 3 meal plans per rolling 7-day window. See `ADMIN_README.md` for admin override options.
 
 ## Steps to change subscription prices
 

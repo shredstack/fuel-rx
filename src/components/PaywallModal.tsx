@@ -95,7 +95,7 @@ export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
           </h2>
 
           <p className="text-sm text-gray-500 text-center mb-4">
-            {isUpgrade ? 'Save 17% with an annual subscription' : 'Unlock unlimited meal planning'}
+            {isUpgrade ? 'Save 17% with an annual subscription' : 'Unlock weekly meal plans & unlimited AI'}
           </p>
 
           {/* Plan selection - horizontal on larger screens */}
@@ -150,9 +150,9 @@ export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
           <div className="bg-gray-50 rounded-xl p-3 mb-4">
             <div className="grid grid-cols-2 gap-2 text-xs">
               {[
-                'Unlimited meal plans',
+                '3 meal plans/week',
+                'Unlimited AI features',
                 'Grocery lists',
-                'AI Quick Cook',
                 'Community features',
               ].map((feature) => (
                 <div key={feature} className="flex items-center gap-1.5">
