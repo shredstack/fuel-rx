@@ -831,18 +831,29 @@ export function buildPrepTaskMap(
     const tasks = getSessionTasks(session)
 
     for (const task of tasks) {
-      // Use the task description (meal name) as the key
-      // Clean up the description - remove parenthetical notes
+      const taskWithSession = { ...task, sessionId: session.id }
+
+      // Clean up the description - remove parenthetical notes like "(Mon-Wed, 3 servings)"
       const cleanDesc = task.description.replace(/\s*\([^)]*\)\s*/g, '').toLowerCase().trim()
 
       if (!map.has(cleanDesc)) {
-        map.set(cleanDesc, { ...task, sessionId: session.id })
+        map.set(cleanDesc, taskWithSession)
+      }
+
+      // Also extract just the meal name if description has "Day MealType: " prefix
+      // e.g., "Monday Dinner: Salmon with Vegetables" → extract "salmon with vegetables"
+      const prefixMatch = cleanDesc.match(/^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:breakfast|lunch|dinner|snack|pre_workout|post_workout):\s*(.+)$/i)
+      if (prefixMatch) {
+        const mealNameOnly = prefixMatch[1].toLowerCase().trim()
+        if (!map.has(mealNameOnly)) {
+          map.set(mealNameOnly, taskWithSession)
+        }
       }
 
       // Also map by meal_ids for more precise matching
       for (const mealId of task.meal_ids || []) {
         if (!map.has(mealId)) {
-          map.set(mealId, { ...task, sessionId: session.id })
+          map.set(mealId, taskWithSession)
         }
       }
     }

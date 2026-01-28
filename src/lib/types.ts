@@ -803,8 +803,36 @@ export interface PrepModeResponse {
     estimatedMinutes: number;
     instructions: string;
     prepItems: PrepItem[];
+    // Extended fields for new prep task system
+    sessionType?: PrepSessionType;
+    sessionDay?: DayOfWeek | null;
+    sessionTimeOfDay?: 'morning' | 'afternoon' | 'night' | null;
+    prepForDate?: string | null;
+    prepTasks?: PrepTask[];
+    displayOrder?: number;
   }>;
   dailyAssembly: DailyAssembly;
+}
+
+// ============================================
+// Batch Prep Status Types
+// ============================================
+
+/** Status of async batch prep generation */
+export type BatchPrepStatus = 'pending' | 'generating' | 'completed' | 'failed';
+
+/** Prep session data stored on meal_plans table */
+export interface MealPlanPrepSessions {
+  prep_sessions_day_of: PrepModeResponse | null;
+  prep_sessions_batch: PrepModeResponse | null;
+  batch_prep_status: BatchPrepStatus;
+}
+
+/** Response from batch prep status API endpoint */
+export interface BatchPrepStatusResponse {
+  status: BatchPrepStatus;
+  ready: boolean;
+  hasBatchPrep: boolean;
 }
 
 // ============================================
