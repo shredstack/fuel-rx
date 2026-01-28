@@ -786,7 +786,7 @@ After analysis, users review the AI-generated results and can edit meal names, a
 - "Steal This Week" — clone another athlete's full plan as starting point
 
 **Curated Collections**
-- "Coach Hillari's Favorites" — permanent collection adding personality
+- "Coach Hill's Favorites" — permanent collection adding personality
 - Guest collections from coaches or respected athletes
 - "FuelRx Verified" badge for macro-accurate community favorites
 

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type {
   Ingredient,
@@ -21,8 +21,13 @@ import type {
   CookingStatus,
   MealPlanMealCookingStatus,
   GroceryItemWithContext,
+  MealType,
+  PrepSession,
+  HouseholdServingsPrefs,
+  DailyAssembly,
 } from '@/lib/types'
-import { normalizeCoreIngredients } from '@/lib/types'
+import { normalizeCoreIngredients, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
+import { buildPrepTaskMap, type PrepTaskWithSession } from '@/components/prep/prepUtils'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 import ThemeBadge from '@/components/ThemeBadge'
 import { SwapModal } from '@/components/meal'
@@ -42,6 +47,10 @@ interface Props {
     grocery_list: Ingredient[]
     contextual_grocery_list?: GroceryItemWithContext[]
   }
+  prepSessions?: PrepSession[]
+  householdServings?: HouseholdServingsPrefs
+  prepStyle?: string
+  dailyAssembly?: DailyAssembly
 }
 
 interface MealPreferencesMap {
@@ -75,14 +84,25 @@ function minutesToPrepTime(minutes: number): CustomMealPrepTime {
   return 'more_than_30'
 }
 
-export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
+export default function MealPlanClient({
+  mealPlan: initialMealPlan,
+  prepSessions = [],
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+  prepStyle = 'day_of',
+  dailyAssembly,
+}: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const [mealPlan, setMealPlan] = useState(initialMealPlan)
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(mealPlan.days[0]?.day || 'monday')
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null)
   const [isFavorite, setIsFavorite] = useState(mealPlan.is_favorite)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
+
+  // URL query params for deep linking
+  const viewFromUrl = searchParams.get('view') as 'daily' | 'meal-type' | null
+  const mealTypeFromUrl = searchParams.get('type') as MealType | null
 
   // Title editing state
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -116,8 +136,18 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Social feed enabled state
   const [socialFeedEnabled, setSocialFeedEnabled] = useState(false)
 
+  // Cook Now handler - navigates to prep-view focused on the specific meal
+  const handleCookNow = (mealSlot: MealSlot) => {
+    // Navigate to prep-view with the meal name as a focus parameter
+    const mealName = encodeURIComponent(mealSlot.meal.name)
+    router.push(`/prep-view/${mealPlan.id}?focusMeal=${mealName}`)
+  }
+
+  // Build prep task map for efficient meal-to-prep-task lookups
+  const prepTaskMap = useMemo(() => buildPrepTaskMap(prepSessions), [prepSessions])
+
   // View toggle state (daily vs meal-type view)
-  const [activeView, setActiveView] = useViewPreference()
+  const [activeView, setActiveView] = useViewPreference({ urlOverride: viewFromUrl })
 
   // Onboarding state
   const {
@@ -821,7 +851,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               className="btn-primary bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600"
               data-tour="prep-schedule-link"
             >
-              Start Cooking
+              Batch Prep
             </Link>
             <Link
               href={`/grocery-list/${mealPlan.id}`}
@@ -850,7 +880,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
         {/* Nutrition Disclaimer - Required by Apple App Store Guideline 1.4.1 */}
         <NutritionDisclaimer className="mb-6" />
 
-        {/* Start Cooking CTA Banner */}
+        {/* Batch Prep Mode CTA Banner */}
         <Link
           href={`/prep-view/${mealPlan.id}`}
           className="block mb-6 p-4 bg-gradient-to-r from-primary-50 to-green-50 border border-primary-200 rounded-xl hover:from-primary-100 hover:to-green-100 transition-colors group"
@@ -864,9 +894,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-semibold text-gray-900">Ready to cook?</span>
+                <span className="font-semibold text-gray-900">Ready to batch prep?</span>
                 <span className="text-primary-600 font-medium group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  Start Cooking
+                  Batch Prep Mode
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -885,7 +915,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             href={`/prep-view/${mealPlan.id}`}
             className="btn-primary bg-gradient-to-r from-primary-600 to-primary-500 flex-1 text-center text-sm py-2"
           >
-            Start Cooking
+            Batch Prep
           </Link>
           <Link
             href={`/grocery-list/${mealPlan.id}`}
@@ -957,6 +987,8 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             {/* Meals */}
             <div className="space-y-4">
               {sortedMeals.map((mealSlot, idx) => {
+                // Look up prep task by meal name (normalized)
+                const prepTask = prepTaskMap.get(mealSlot.meal.name.toLowerCase().trim())
                 return (
                   <MealCard
                     key={mealSlot.id}
@@ -991,6 +1023,12 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                       handleCookingStatusChange(mealSlot.id, mealSlot.meal.id, status, notes, updatedInstructions, photoUrl, shareWithCommunity)
                     }
                     socialFeedEnabled={socialFeedEnabled}
+                    onCookNow={() => handleCookNow(mealSlot)}
+                    prepTask={prepTask}
+                    householdServings={householdServings}
+                    currentDay={selectedDay}
+                    dailyAssembly={dailyAssembly}
+                    prepStyle={prepStyle}
                   />
                 )
               })}
@@ -1024,6 +1062,12 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
             onSwap={handleOpenSwapModal}
             onCookingStatusChange={handleCookingStatusChange}
             socialFeedEnabled={socialFeedEnabled}
+            onCookNow={handleCookNow}
+            initialMealType={mealTypeFromUrl}
+            prepTaskMap={prepTaskMap}
+            householdServings={householdServings}
+            dailyAssembly={dailyAssembly}
+            prepStyle={prepStyle}
           />
         )}
 

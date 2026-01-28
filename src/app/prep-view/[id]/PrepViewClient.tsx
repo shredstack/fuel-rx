@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { PrepSession, PrepStyle, DailyAssembly, DayPlan, DayPlanNormalized, HouseholdServingsPrefs } from '@/lib/types'
 import { PREP_STYLE_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
@@ -56,6 +57,12 @@ export default function PrepViewClient({
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
 }: PrepViewClientProps) {
   const supabase = createClient()
+  const searchParams = useSearchParams()
+  const focusMealParam = searchParams.get('focusMeal')
+  const focusMealName = focusMealParam ? decodeURIComponent(focusMealParam) : null
+
+  // Ref for scrolling to focused meal section
+  const focusedSectionRef = useRef<HTMLDivElement>(null)
 
   // Convert normalized days to legacy DayPlan format for prep utilities
   const mealPlanDays: DayPlan[] = days.map(convertToLegacyDayPlan)
@@ -110,6 +117,19 @@ export default function PrepViewClient({
   // Key format: "taskId_stepIndex"
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set())
 
+  // Scroll to focused meal section after mount
+  useEffect(() => {
+    if (focusMealName && focusedSectionRef.current) {
+      // Small delay to ensure DOM is fully rendered
+      setTimeout(() => {
+        focusedSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      }, 100)
+    }
+  }, [focusMealName])
+
   const toggleStepComplete = (taskId: string, stepIndex: number) => {
     const stepKey = `${taskId}_${stepIndex}`
     const newCompletedSteps = new Set(completedSteps)
@@ -163,7 +183,7 @@ export default function PrepViewClient({
             &larr; View Meal Plan
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Start Cooking
+            Batch Prep Mode
           </h1>
           <p className="text-gray-600">
             Week of {new Date(mealPlan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', {
@@ -248,20 +268,34 @@ export default function PrepViewClient({
           {/* Meal Type Sections */}
           {mealTypeGroups.length > 0 && (
             <div className="space-y-4">
-              {mealTypeGroups.map((group) => (
-                <MealTypeSection
-                  key={`${group.mealType}-${group.snackNumber || 0}`}
-                  group={group}
-                  completedTasks={completedTasks}
-                  completedSteps={completedSteps}
-                  onToggleTaskComplete={toggleTaskComplete}
-                  onToggleStepComplete={toggleStepComplete}
-                  defaultExpanded={false}
-                  householdServings={householdServings}
-                  prepStyle={prepStyle}
-                  dailyAssembly={dailyAssembly}
-                />
-              ))}
+              {mealTypeGroups.map((group) => {
+                // Check if this group contains the focused meal
+                const containsFocusedMeal = focusMealName
+                  ? group.consolidatedMeals.some(
+                      (m) => m.mealName.toLowerCase() === focusMealName.toLowerCase()
+                    )
+                  : false
+
+                return (
+                  <div
+                    key={`${group.mealType}-${group.snackNumber || 0}`}
+                    ref={containsFocusedMeal ? focusedSectionRef : undefined}
+                  >
+                    <MealTypeSection
+                      group={group}
+                      completedTasks={completedTasks}
+                      completedSteps={completedSteps}
+                      onToggleTaskComplete={toggleTaskComplete}
+                      onToggleStepComplete={toggleStepComplete}
+                      defaultExpanded={containsFocusedMeal}
+                      householdServings={householdServings}
+                      prepStyle={prepStyle}
+                      dailyAssembly={dailyAssembly}
+                      focusMealName={focusMealName}
+                    />
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

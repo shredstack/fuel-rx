@@ -17,6 +17,7 @@ interface Props {
   householdServings?: HouseholdServingsPrefs
   prepStyle?: string
   dailyAssembly?: DailyAssembly
+  defaultExpanded?: boolean
 }
 
 export default function ConsolidatedPrepTask({
@@ -28,9 +29,11 @@ export default function ConsolidatedPrepTask({
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   prepStyle = 'mixed',
   dailyAssembly,
+  defaultExpanded = true,
 }: Props) {
   // Consolidated meals (same meal across multiple days) start expanded since they're batch prep
-  const [isExpanded, setIsExpanded] = useState(true)
+  // Can be overridden by defaultExpanded prop
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [showPrintModal, setShowPrintModal] = useState(false)
 
   // Use first task as the primary task (for consolidated meals, they should be similar)

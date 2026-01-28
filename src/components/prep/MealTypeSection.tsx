@@ -18,6 +18,7 @@ interface Props {
   householdServings?: HouseholdServingsPrefs
   prepStyle?: string
   dailyAssembly?: DailyAssembly
+  focusMealName?: string | null
 }
 
 export default function MealTypeSection({
@@ -30,6 +31,7 @@ export default function MealTypeSection({
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   prepStyle = 'mixed',
   dailyAssembly,
+  focusMealName,
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
@@ -149,35 +151,46 @@ export default function MealTypeSection({
       {/* Expanded content */}
       {isExpanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-gray-100 mt-2 pt-4">
-          {group.consolidatedMeals.map((meal, index) => (
-            <div key={`${meal.mealName}-${index}`}>
-              {/* If meal appears on multiple days with same name, show consolidated view */}
-              {meal.days.length > 1 ? (
-                <ConsolidatedPrepTask
-                  meal={meal}
-                  completedTasks={completedTasks}
-                  completedSteps={completedSteps}
-                  onToggleTaskComplete={onToggleTaskComplete}
-                  onToggleStepComplete={onToggleStepComplete}
-                  householdServings={householdServings}
-                  prepStyle={prepStyle}
-                  dailyAssembly={dailyAssembly}
-                />
-              ) : (
-                /* Single day - show simple task */
-                <DaySpecificPrepTask
-                  meal={meal}
-                  day={meal.days[0]}
-                  completedTasks={completedTasks}
-                  completedSteps={completedSteps}
-                  onToggleTaskComplete={onToggleTaskComplete}
-                  onToggleStepComplete={onToggleStepComplete}
-                  householdServings={householdServings}
-                  dailyAssembly={dailyAssembly}
-                />
-              )}
-            </div>
-          ))}
+          {group.consolidatedMeals.map((meal, index) => {
+            const isFocusedMeal = focusMealName
+              ? meal.mealName.toLowerCase() === focusMealName.toLowerCase()
+              : false
+
+            return (
+              <div
+                key={`${meal.mealName}-${index}`}
+                className={isFocusedMeal ? 'ring-2 ring-primary-400 rounded-lg' : ''}
+              >
+                {/* If meal appears on multiple days with same name, show consolidated view */}
+                {meal.days.length > 1 ? (
+                  <ConsolidatedPrepTask
+                    meal={meal}
+                    completedTasks={completedTasks}
+                    completedSteps={completedSteps}
+                    onToggleTaskComplete={onToggleTaskComplete}
+                    onToggleStepComplete={onToggleStepComplete}
+                    householdServings={householdServings}
+                    prepStyle={prepStyle}
+                    dailyAssembly={dailyAssembly}
+                    defaultExpanded={isFocusedMeal || true}
+                  />
+                ) : (
+                  /* Single day - show simple task */
+                  <DaySpecificPrepTask
+                    meal={meal}
+                    day={meal.days[0]}
+                    completedTasks={completedTasks}
+                    completedSteps={completedSteps}
+                    onToggleTaskComplete={onToggleTaskComplete}
+                    onToggleStepComplete={onToggleStepComplete}
+                    householdServings={householdServings}
+                    dailyAssembly={dailyAssembly}
+                    defaultExpanded={isFocusedMeal}
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

@@ -773,3 +773,80 @@ export function generateHouseholdScalingGuide(
 
   return result
 }
+
+/**
+ * Get prep task data for a specific meal by name
+ * Returns the prep task with equipment, temps, tips, detailed steps, etc.
+ */
+export function getPrepTaskForMeal(
+  prepSessions: PrepSession[],
+  mealName: string,
+  day?: DayOfWeek,
+  mealType?: MealType
+): PrepTaskWithSession | null {
+  const normalizedMealName = mealName.toLowerCase().trim()
+
+  for (const session of prepSessions) {
+    const tasks = getSessionTasks(session)
+
+    for (const task of tasks) {
+      // Match by meal_ids if we have day/mealType
+      if (day && mealType && task.meal_ids && task.meal_ids.length > 0) {
+        // Check if any meal_id matches our day/mealType
+        const matchesDayAndType = task.meal_ids.some(mealId => {
+          const taskDay = getDayFromMealId(mealId)
+          const taskMealType = getMealTypeFromMealId(mealId)
+          return taskDay === day && taskMealType === mealType
+        })
+
+        if (matchesDayAndType) {
+          // Additionally verify the description contains the meal name (loose match)
+          const descNormalized = task.description.toLowerCase().trim()
+          if (descNormalized.includes(normalizedMealName) || normalizedMealName.includes(descNormalized.replace(/\s*\([^)]*\)\s*/g, ''))) {
+            return { ...task, sessionId: session.id }
+          }
+        }
+      }
+
+      // Fallback: match by description containing meal name
+      const descNormalized = task.description.toLowerCase().trim()
+      if (descNormalized.includes(normalizedMealName) || normalizedMealName.includes(descNormalized.replace(/\s*\([^)]*\)\s*/g, ''))) {
+        return { ...task, sessionId: session.id }
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Build a map of meal names to their prep tasks for efficient lookup
+ */
+export function buildPrepTaskMap(
+  prepSessions: PrepSession[]
+): Map<string, PrepTaskWithSession> {
+  const map = new Map<string, PrepTaskWithSession>()
+
+  for (const session of prepSessions) {
+    const tasks = getSessionTasks(session)
+
+    for (const task of tasks) {
+      // Use the task description (meal name) as the key
+      // Clean up the description - remove parenthetical notes
+      const cleanDesc = task.description.replace(/\s*\([^)]*\)\s*/g, '').toLowerCase().trim()
+
+      if (!map.has(cleanDesc)) {
+        map.set(cleanDesc, { ...task, sessionId: session.id })
+      }
+
+      // Also map by meal_ids for more precise matching
+      for (const mealId of task.meal_ids || []) {
+        if (!map.has(mealId)) {
+          map.set(mealId, { ...task, sessionId: session.id })
+        }
+      }
+    }
+  }
+
+  return map
+}

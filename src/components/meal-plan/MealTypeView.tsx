@@ -11,10 +11,13 @@ import type {
   MealPlanMealCookingStatus,
   DayOfWeek,
   MealType,
+  HouseholdServingsPrefs,
+  DailyAssembly,
 } from '@/lib/types'
-import { MEAL_TYPE_CONFIG } from '@/lib/types'
+import { MEAL_TYPE_CONFIG, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import { groupMealsByTypeDeduped, type DeduplicatedMeal } from '@/lib/meal-plan-utils'
 import { MealCard } from './MealCard'
+import type { PrepTaskWithSession } from '@/components/prep/prepUtils'
 
 interface IngredientPreferencesMap {
   [ingredientNameNormalized: string]: {
@@ -54,6 +57,13 @@ interface MealTypeViewProps {
     shareWithCommunity?: boolean
   ) => Promise<void>
   socialFeedEnabled: boolean
+  onCookNow?: (mealSlot: MealSlot) => void
+  initialMealType?: MealType | null
+  // Prep detail props
+  prepTaskMap?: Map<string, PrepTaskWithSession>
+  householdServings?: HouseholdServingsPrefs
+  dailyAssembly?: DailyAssembly
+  prepStyle?: string
 }
 
 export function MealTypeView({
@@ -71,6 +81,12 @@ export function MealTypeView({
   onSwap,
   onCookingStatusChange,
   socialFeedEnabled,
+  onCookNow,
+  initialMealType,
+  prepTaskMap,
+  householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
+  dailyAssembly,
+  prepStyle = 'day_of',
 }: MealTypeViewProps) {
   // Group meals by type, deduplicating identical meals
   const groupedMeals = useMemo(
@@ -96,10 +112,14 @@ export function MealTypeView({
     [groupedMeals]
   )
 
-  // Selected meal type tab
-  const [selectedMealType, setSelectedMealType] = useState<MealType>(
-    activeMealTypes[0] || 'breakfast'
-  )
+  // Selected meal type tab - use initialMealType if valid, otherwise first active type
+  const getInitialMealType = (): MealType => {
+    if (initialMealType && activeMealTypes.includes(initialMealType)) {
+      return initialMealType
+    }
+    return activeMealTypes[0] || 'breakfast'
+  }
+  const [selectedMealType, setSelectedMealType] = useState<MealType>(getInitialMealType)
 
   // Get meals for selected type (deduplicated)
   const mealsForType = groupedMeals.get(selectedMealType) || []
@@ -151,50 +171,60 @@ export function MealTypeView({
 
       {/* Meals for selected type (deduplicated) */}
       <div className="space-y-4">
-        {mealsForType.map(({ mealSlot, days }, idx) => (
-          <MealCard
-            key={mealSlot.id}
-            mealSlot={mealSlot}
-            days={days}
-            showDayBadge
-            isExpanded={shouldAutoExpand || expandedMeal === mealSlot.id}
-            onToggle={() => handleToggle(mealSlot.id)}
-            preference={mealPreferences[mealSlot.meal.name]}
-            onLike={() => onLike(mealSlot)}
-            onDislike={() => onDislike(mealSlot)}
-            onIngredientChange={(ingredientIndex, newIngredient) =>
-              onIngredientChange(mealSlot, ingredientIndex, newIngredient)
-            }
-            mealPlanId={mealPlan.id}
-            ingredientPreferences={ingredientPreferences}
-            onIngredientLike={onIngredientLike}
-            onIngredientDislike={onIngredientDislike}
-            onSwap={() => onSwap(mealSlot, days[0])}
-            isFirstMealCard={idx === 0}
-            cookingStatus={
-              cookingStatuses.get(mealSlot.id)?.cooking_status || 'not_cooked'
-            }
-            cookingStatusData={cookingStatuses.get(mealSlot.id)}
-            onCookingStatusChange={(
-              status,
-              notes,
-              updatedInstructions,
-              photoUrl,
-              shareWithCommunity
-            ) =>
-              onCookingStatusChange(
-                mealSlot.id,
-                mealSlot.meal.id,
+        {mealsForType.map(({ mealSlot, days }, idx) => {
+          // Look up prep task by meal name (normalized)
+          const prepTask = prepTaskMap?.get(mealSlot.meal.name.toLowerCase().trim())
+          return (
+            <MealCard
+              key={mealSlot.id}
+              mealSlot={mealSlot}
+              days={days}
+              showDayBadge
+              isExpanded={shouldAutoExpand || expandedMeal === mealSlot.id}
+              onToggle={() => handleToggle(mealSlot.id)}
+              preference={mealPreferences[mealSlot.meal.name]}
+              onLike={() => onLike(mealSlot)}
+              onDislike={() => onDislike(mealSlot)}
+              onIngredientChange={(ingredientIndex, newIngredient) =>
+                onIngredientChange(mealSlot, ingredientIndex, newIngredient)
+              }
+              mealPlanId={mealPlan.id}
+              ingredientPreferences={ingredientPreferences}
+              onIngredientLike={onIngredientLike}
+              onIngredientDislike={onIngredientDislike}
+              onSwap={() => onSwap(mealSlot, days[0])}
+              isFirstMealCard={idx === 0}
+              cookingStatus={
+                cookingStatuses.get(mealSlot.id)?.cooking_status || 'not_cooked'
+              }
+              cookingStatusData={cookingStatuses.get(mealSlot.id)}
+              onCookingStatusChange={(
                 status,
                 notes,
                 updatedInstructions,
                 photoUrl,
                 shareWithCommunity
-              )
-            }
-            socialFeedEnabled={socialFeedEnabled}
-          />
-        ))}
+              ) =>
+                onCookingStatusChange(
+                  mealSlot.id,
+                  mealSlot.meal.id,
+                  status,
+                  notes,
+                  updatedInstructions,
+                  photoUrl,
+                  shareWithCommunity
+                )
+              }
+              socialFeedEnabled={socialFeedEnabled}
+              onCookNow={onCookNow ? () => onCookNow(mealSlot) : undefined}
+              prepTask={prepTask}
+              householdServings={householdServings}
+              currentDay={days[0]}
+              dailyAssembly={dailyAssembly}
+              prepStyle={prepStyle}
+            />
+          )
+        })}
       </div>
     </div>
   )
