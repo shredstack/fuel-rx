@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { detectIngredientCategory } from '@/lib/claude/category-detection';
 import type { AddUserIngredientRequest, IngredientToLog } from '@/lib/types';
 
 /**
@@ -31,6 +32,11 @@ export async function POST(request: Request) {
 
   const normalizedName = body.name.toLowerCase().trim();
 
+  // Detect category using AI if not provided or defaulting to 'other'
+  const category = (body.category && body.category !== 'other')
+    ? body.category
+    : await detectIngredientCategory(body.name, user.id);
+
   // Check if ingredient already exists
   const { data: existing } = await supabase
     .from('ingredients')
@@ -50,7 +56,7 @@ export async function POST(request: Request) {
       .insert({
         name: body.name.trim(),
         name_normalized: normalizedName,
-        category: body.category || 'other',
+        category,
         is_user_added: true,
         added_by_user_id: user.id,
         added_at: new Date().toISOString(),
@@ -144,6 +150,7 @@ export async function POST(request: Request) {
     source: body.barcode ? 'barcode' : 'manual',
     is_user_added: true,
     barcode: body.barcode,
+    category,
   };
 
   return NextResponse.json(result, { status: 201 });

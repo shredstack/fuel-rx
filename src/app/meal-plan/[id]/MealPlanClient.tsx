@@ -74,6 +74,16 @@ const DAY_LABELS: Record<string, string> = {
   sunday: 'Sunday',
 }
 
+const DAY_LABELS_SHORT: Record<string, string> = {
+  monday: 'Mon',
+  tuesday: 'Tue',
+  wednesday: 'Wed',
+  thursday: 'Thu',
+  friday: 'Fri',
+  saturday: 'Sat',
+  sunday: 'Sun',
+}
+
 const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack', 'pre_workout', 'post_workout']
 
 const SELECTED_DAY_STORAGE_KEY = 'fuelrx-mealplan-selected-day'
@@ -930,20 +940,21 @@ export default function MealPlanClient({
           <>
             {/* Day selector - Mobile: dropdown, Desktop: tabs */}
             <div data-tour="day-selector" className="mb-6">
-              {/* Mobile dropdown */}
-              <div className="md:hidden">
-                <select
-                  value={selectedDay}
-                  onChange={(e) => setSelectedDay(e.target.value as DayOfWeek)}
-                  className="w-full px-4 py-3 bg-primary-50 border-2 border-primary-200 rounded-lg font-medium text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 appearance-none"
-                  style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%230d9488' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25em 1.25em' }}
-                >
-                  {mealPlan.days.map((day) => (
-                    <option key={day.day} value={day.day}>
-                      {DAY_LABELS[day.day]}
-                    </option>
-                  ))}
-                </select>
+              {/* Mobile pills */}
+              <div className="md:hidden flex flex-wrap gap-2">
+                {mealPlan.days.map((day) => (
+                  <button
+                    key={day.day}
+                    onClick={() => setSelectedDay(day.day)}
+                    className={`px-3.5 py-2 rounded-full text-sm font-medium transition-colors ${
+                      selectedDay === day.day
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'bg-white text-gray-700 border border-gray-200'
+                    }`}
+                  >
+                    {DAY_LABELS_SHORT[day.day]}
+                  </button>
+                ))}
               </div>
               {/* Desktop tabs */}
               <div className="hidden md:flex overflow-x-auto gap-2 pb-2">

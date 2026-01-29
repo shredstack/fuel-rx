@@ -131,6 +131,7 @@ export default function PrepViewClient({
 
   // State for triggering batch prep generation
   const [isTriggering, setIsTriggering] = useState(false)
+  const [hasTriggered, setHasTriggered] = useState(false)
   const [triggerError, setTriggerError] = useState<string | null>(null)
 
   // Persist active tab to localStorage
@@ -155,8 +156,10 @@ export default function PrepViewClient({
   const activeTab = activeTabState
 
   // Poll batch prep status if it's actively generating (not for not_started)
+  // Keep the hook enabled after triggering (hasTriggered) so the 'completed' status
+  // isn't lost when isTriggering resets, which would revert the UI to 'not_started'
   const { data: batchPrepStatusData, refetch: refetchBatchPrepStatus } = useBatchPrepStatus(
-    initialBatchPrepStatus === 'pending' || initialBatchPrepStatus === 'generating' || isTriggering
+    initialBatchPrepStatus === 'pending' || initialBatchPrepStatus === 'generating' || isTriggering || hasTriggered
       ? mealPlan.id
       : null
   )
@@ -168,6 +171,7 @@ export default function PrepViewClient({
   // Handle triggering batch prep generation
   const handleGenerateBatchPrep = async () => {
     setIsTriggering(true)
+    setHasTriggered(true)
     setTriggerError(null)
 
     try {
@@ -198,8 +202,12 @@ export default function PrepViewClient({
   useEffect(() => {
     if (batchPrepStatus === 'completed' || batchPrepStatus === 'failed') {
       setIsTriggering(false)
+      // Refresh server data so prepSessionsBatch prop gets the newly generated data
+      if (batchPrepStatus === 'completed') {
+        router.refresh()
+      }
     }
-  }, [batchPrepStatus])
+  }, [batchPrepStatus, router])
 
   // Ref for scrolling to focused meal section
   const focusedSectionRef = useRef<HTMLDivElement>(null)
@@ -241,14 +249,6 @@ export default function PrepViewClient({
   const batchSessions = batchSessionsFromNewColumn.length > 0
     ? batchSessionsFromNewColumn
     : batchSessionsFromLegacy
-
-  // When batch prep generation completes but we still have stale (empty) props,
-  // refresh server data so the page re-renders with the new prep_sessions_batch
-  useEffect(() => {
-    if (batchPrepStatus === 'completed' && batchSessions.length === 0) {
-      router.refresh()
-    }
-  }, [batchPrepStatus, batchSessions.length, router])
 
   // Day-of sessions come from the legacy prep_sessions table
   const dayOfSessions = prepSessions.filter(s => s.session_type !== 'weekly_batch')
