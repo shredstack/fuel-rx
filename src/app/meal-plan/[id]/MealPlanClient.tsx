@@ -851,7 +851,7 @@ export default function MealPlanClient({
               className="btn-primary bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600"
               data-tour="prep-schedule-link"
             >
-              Batch Prep
+              Start Cooking
             </Link>
             <Link
               href={`/grocery-list/${mealPlan.id}`}
@@ -896,14 +896,14 @@ export default function MealPlanClient({
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-semibold text-gray-900">Ready to batch prep?</span>
                 <span className="text-primary-600 font-medium group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  Batch Prep Mode
+                  Start Cooking
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                Get step-by-step cooking instructions with an AI assistant that knows your meals and can help with substitutions, timing, and technique.
+                Get step-by-step cooking instructions with an AI assistant that knows your meals and can help with substitutions, timing, and technique. You can use the fresh day-of cooking instructions or batch prep instructions if you like to prepare eligible ingredients beforehand.
               </p>
             </div>
           </div>
@@ -915,7 +915,7 @@ export default function MealPlanClient({
             href={`/prep-view/${mealPlan.id}`}
             className="btn-primary bg-gradient-to-r from-primary-600 to-primary-500 flex-1 text-center text-sm py-2"
           >
-            Batch Prep
+            Start Cooking
           </Link>
           <Link
             href={`/grocery-list/${mealPlan.id}`}
@@ -927,7 +927,7 @@ export default function MealPlanClient({
         </div>
 
         {/* View Toggle */}
-        <ViewToggle view={activeView} onChange={setActiveView} />
+        <ViewToggle view={activeView} onChange={setActiveView} data-tour="view-toggle" />
 
         {/* Daily View */}
         {activeView === 'daily' && (

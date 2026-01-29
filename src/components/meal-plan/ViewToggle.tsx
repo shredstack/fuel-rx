@@ -5,6 +5,7 @@ export type MealPlanViewType = 'daily' | 'meal-type'
 interface ViewToggleProps {
   view: MealPlanViewType
   onChange: (view: MealPlanViewType) => void
+  'data-tour'?: string
 }
 
 const TABS: { value: MealPlanViewType; label: string }[] = [
@@ -12,9 +13,9 @@ const TABS: { value: MealPlanViewType; label: string }[] = [
   { value: 'meal-type', label: 'By Meal Type' },
 ]
 
-export function ViewToggle({ view, onChange }: ViewToggleProps) {
+export function ViewToggle({ view, onChange, 'data-tour': dataTour }: ViewToggleProps) {
   return (
-    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-4">
+    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-4" data-tour={dataTour}>
       {TABS.map((tab) => (
         <button
           key={tab.value}
