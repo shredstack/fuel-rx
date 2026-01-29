@@ -146,6 +146,25 @@ useRealtimeSubscription({
 });
 ```
 
+### UI Performance
+
+Fast load times are critical since the app runs in a Capacitor WebView on mobile. Follow these principles when adding or updating client-side code:
+
+**Data fetching:**
+- When a page provides server-rendered initial data, pass it to React Query via `setQueryData` and set `refetchOnMount: false` for that initial load. Don't immediately refetch data the server just sent.
+- Never use manual `fetch()` + `useState` for data that should be cached across interactions (e.g., tab switches, navigation). Use React Query hooks so data is cached and served instantly on revisit.
+- Use the `enabled` option to conditionally fetch — don't fetch data the user hasn't requested yet.
+
+**Memoization:**
+- Wrap derived/computed values with `useMemo` when they involve filtering, mapping, or combining arrays (e.g., building a lookup array from multiple sources).
+- Wrap callback handlers passed to child components with `useCallback` so `React.memo` on those children is effective.
+- Use `React.memo` on list-item components and repeated sections (e.g., `MealSection`, `MealLogCard`) to prevent re-renders when parent state changes don't affect them.
+
+**Avoid common pitfalls:**
+- Don't rebuild the same array in multiple places during render — compute it once and reuse.
+- Don't pass inline arrow functions as props to memoized children (defeats `React.memo`).
+- Keep large components from holding too many `useState` calls — when unrelated state changes force a full re-render, consider extracting sub-components with local state.
+
 ### Meal Plan Generation
 
 Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.

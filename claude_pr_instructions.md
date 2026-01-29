@@ -50,6 +50,16 @@ Since meal plan generation is a critical, long-running process (~5 minutes):
 - Will existing in-progress jobs be affected?
 - Is the client-side polling logic preserved?
 
+### UI Performance Review
+
+The app runs in a Capacitor WebView on mobile, so load times directly impact user experience. Check for:
+- [ ] **No redundant fetches on mount**: If a page passes server-rendered data to React Query, it should not immediately refetch that same data (`refetchOnMount` should be `false` when initial data is provided)
+- [ ] **Cached data for repeated interactions**: Data viewed across tab switches, navigation, or modal re-opens should use React Query (not manual `fetch` + `useState`) so it's served from cache on revisit
+- [ ] **Memoized derived data**: Arrays built from filtering/mapping/spreading (e.g., combining multiple meal sources into a lookup array) should use `useMemo`, not recompute on every render
+- [ ] **Stable callback references**: Callbacks passed to `React.memo`-wrapped children should use `useCallback` so the memoization is effective
+- [ ] **No duplicate array construction**: The same combined array shouldn't be rebuilt in multiple places during render — compute once and reuse
+- [ ] **Conditional fetching**: Queries for data the user hasn't requested yet (e.g., weekly/monthly views when daily is selected) should use `enabled: false` until needed
+
 ### Data Fetching Review
 
 Check that client-side data fetching follows our React Query patterns:

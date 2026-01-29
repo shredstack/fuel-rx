@@ -2,9 +2,7 @@
 
 import { useState } from 'react';
 import { CookingAssistantDrawer } from './CookingAssistantDrawer';
-import { CookingAssistantFullScreen } from './CookingAssistantFullScreen';
 import { useResolvedMealId } from '@/components/prep/MealIdContext';
-import { usePlatform } from '@/hooks/usePlatform';
 
 interface CookingAssistantButtonProps {
   mealId: string; // Can be either a UUID or a composite ID like "meal_monday_breakfast_0"
@@ -21,7 +19,6 @@ export function CookingAssistantButton({
   batchContext,
 }: CookingAssistantButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { isNative } = usePlatform();
 
   // Try to resolve composite ID to actual UUID using context
   const resolvedMeal = useResolvedMealId(mealId);
@@ -57,21 +54,12 @@ export function CookingAssistantButton({
       </button>
 
       {isOpen && (
-        isNative ? (
-          <CookingAssistantFullScreen
-            mealId={actualMealId}
-            mealName={actualMealName}
-            onClose={() => setIsOpen(false)}
-            batchContext={batchContext}
-          />
-        ) : (
-          <CookingAssistantDrawer
-            mealId={actualMealId}
-            mealName={actualMealName}
-            onClose={() => setIsOpen(false)}
-            batchContext={batchContext}
-          />
-        )
+        <CookingAssistantDrawer
+          mealId={actualMealId}
+          mealName={actualMealName}
+          onClose={() => setIsOpen(false)}
+          batchContext={batchContext}
+        />
       )}
     </>
   );

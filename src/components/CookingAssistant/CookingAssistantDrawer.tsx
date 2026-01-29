@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChatMessage } from './ChatMessage';
 import { SuggestedQuestions } from './SuggestedQuestions';
 import { ChatInput } from './ChatInput';
@@ -188,7 +189,7 @@ export function CookingAssistantDrawer({
     onClose();
   };
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -297,6 +298,7 @@ export function CookingAssistantDrawer({
           refreshSubscription();
         }}
       />
-    </>
+    </>,
+    document.body
   );
 }
