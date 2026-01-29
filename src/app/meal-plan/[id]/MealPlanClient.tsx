@@ -928,21 +928,39 @@ export default function MealPlanClient({
         {/* Daily View */}
         {activeView === 'daily' && (
           <>
-            {/* Day selector */}
-            <div className="flex overflow-x-auto gap-2 mb-6 pb-2" data-tour="day-selector">
-              {mealPlan.days.map((day) => (
-                <button
-                  key={day.day}
-                  onClick={() => setSelectedDay(day.day)}
-                  className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                    selectedDay === day.day
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
+            {/* Day selector - Mobile: dropdown, Desktop: tabs */}
+            <div data-tour="day-selector" className="mb-6">
+              {/* Mobile dropdown */}
+              <div className="md:hidden">
+                <select
+                  value={selectedDay}
+                  onChange={(e) => setSelectedDay(e.target.value as DayOfWeek)}
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 appearance-none"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25em 1.25em' }}
                 >
-                  {DAY_LABELS[day.day]}
-                </button>
-              ))}
+                  {mealPlan.days.map((day) => (
+                    <option key={day.day} value={day.day}>
+                      {DAY_LABELS[day.day]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Desktop tabs */}
+              <div className="hidden md:flex overflow-x-auto gap-2 pb-2">
+                {mealPlan.days.map((day) => (
+                  <button
+                    key={day.day}
+                    onClick={() => setSelectedDay(day.day)}
+                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                      selectedDay === day.day
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {DAY_LABELS[day.day]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Daily totals */}
