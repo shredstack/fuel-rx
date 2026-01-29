@@ -169,24 +169,34 @@ export function MealTypeView({
     <div>
       {/* Meal type selector - Mobile: dropdown, Desktop: tabs */}
       <div className="mb-6">
-        {/* Mobile dropdown */}
-        <div className="md:hidden">
-          <select
-            value={selectedMealType}
-            onChange={(e) => setSelectedMealType(e.target.value as MealType)}
-            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 appearance-none"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.25em 1.25em' }}
-          >
-            {activeMealTypes.map((type) => {
-              const config = MEAL_TYPE_CONFIG[type]
-              const count = groupedMeals.get(type)?.length || 0
-              return (
-                <option key={type} value={type}>
-                  {config?.label || type} ({count})
-                </option>
-              )
-            })}
-          </select>
+        {/* Mobile pills */}
+        <div className="md:hidden flex flex-wrap gap-2">
+          {activeMealTypes.map((type) => {
+            const config = MEAL_TYPE_CONFIG[type]
+            const count = groupedMeals.get(type)?.length || 0
+            return (
+              <button
+                key={type}
+                onClick={() => setSelectedMealType(type)}
+                className={`px-3.5 py-2 rounded-full text-sm font-medium transition-colors ${
+                  selectedMealType === type
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-200'
+                }`}
+              >
+                {config?.label || type}
+                <span
+                  className={`ml-1 text-xs ${
+                    selectedMealType === type
+                      ? 'text-white/80'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  ({count})
+                </span>
+              </button>
+            )
+          })}
         </div>
         {/* Desktop tabs */}
         <div className="hidden md:flex overflow-x-auto gap-2 pb-2">

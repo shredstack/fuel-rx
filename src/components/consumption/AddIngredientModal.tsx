@@ -185,8 +185,8 @@ export default function AddIngredientModal({
         // Initialize editable name with brand + product name
         const initialName = data.brand ? `${data.brand} ${data.name}` : data.name;
         setBarcodeEditedName(initialName);
-        // Initialize category to 'other' (user can change)
-        setBarcodeEditedCategory('other');
+        // Initialize category from AI detection (user can override)
+        setBarcodeEditedCategory(data.category || 'other');
         // Initialize editable macros with scanned values
         setBarcodeEditedMacros({
           calories: data.calories,

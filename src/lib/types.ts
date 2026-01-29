@@ -2063,6 +2063,7 @@ export interface BarcodeProduct {
   fat: number;
   image_url?: string;
   found: boolean;
+  category?: IngredientCategoryType;
 }
 
 /**

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { lookupBarcode } from '@/lib/barcode-service';
 import { lookupBarcodeOnFatSecret, isFatSecretConfigured } from '@/lib/fatsecret-service';
+import { detectIngredientCategory } from '@/lib/claude/category-detection';
 import type { BarcodeProduct } from '@/lib/types';
 
 /**
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
       ...result,
       source: 'database',
       is_user_added: ingredient.is_user_added,
+      category: ingredient.category,
     });
   }
 
@@ -74,10 +76,12 @@ export async function GET(request: Request) {
   const openFoodFactsProduct = await lookupBarcode(cleanBarcode);
 
   if (openFoodFactsProduct.found) {
+    const category = await detectIngredientCategory(openFoodFactsProduct.name, user.id);
     return NextResponse.json({
       ...openFoodFactsProduct,
       source: 'open_food_facts',
       is_user_added: false,
+      category,
     });
   }
 
@@ -86,10 +90,12 @@ export async function GET(request: Request) {
     const fatSecretProduct = await lookupBarcodeOnFatSecret(cleanBarcode);
 
     if (fatSecretProduct.found) {
+      const category = await detectIngredientCategory(fatSecretProduct.name, user.id);
       return NextResponse.json({
         ...fatSecretProduct,
         source: 'fatsecret',
         is_user_added: false,
+        category,
       });
     }
   }

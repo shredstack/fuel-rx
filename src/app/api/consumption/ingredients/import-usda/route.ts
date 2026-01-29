@@ -11,111 +11,12 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUSDAFoodDetails, extractNutritionPer100g, getCommonPortions } from '@/lib/usda-service';
 import { calculateHealthScoreFromDetails } from '@/lib/health-score-service';
+import { detectIngredientCategory } from '@/lib/claude/category-detection';
 import type { IngredientToLog, IngredientCategoryType } from '@/lib/types';
 
 interface ImportUSDARequest {
   fdcId: number;
   category?: IngredientCategoryType;
-}
-
-/**
- * Guess category from USDA food description and data
- */
-function guessCategory(description: string, dataType: string): IngredientCategoryType {
-  const lower = description.toLowerCase();
-
-  // Protein sources
-  if (
-    lower.includes('chicken') ||
-    lower.includes('beef') ||
-    lower.includes('pork') ||
-    lower.includes('turkey') ||
-    lower.includes('fish') ||
-    lower.includes('salmon') ||
-    lower.includes('tuna') ||
-    lower.includes('shrimp') ||
-    lower.includes('egg') ||
-    lower.includes('tofu') ||
-    lower.includes('tempeh') ||
-    lower.includes('seitan')
-  ) {
-    return 'protein';
-  }
-
-  // Dairy
-  if (
-    lower.includes('milk') ||
-    lower.includes('cheese') ||
-    lower.includes('yogurt') ||
-    lower.includes('butter') ||
-    lower.includes('cream')
-  ) {
-    return 'dairy';
-  }
-
-  // Fruits
-  if (
-    lower.includes('apple') ||
-    lower.includes('banana') ||
-    lower.includes('orange') ||
-    lower.includes('berry') ||
-    lower.includes('berries') ||
-    lower.includes('grape') ||
-    lower.includes('melon') ||
-    lower.includes('mango') ||
-    lower.includes('peach') ||
-    lower.includes('pear') ||
-    lower.includes('fruit')
-  ) {
-    return 'fruit';
-  }
-
-  // Vegetables
-  if (
-    lower.includes('broccoli') ||
-    lower.includes('spinach') ||
-    lower.includes('carrot') ||
-    lower.includes('pepper') ||
-    lower.includes('onion') ||
-    lower.includes('tomato') ||
-    lower.includes('lettuce') ||
-    lower.includes('kale') ||
-    lower.includes('vegetable') ||
-    lower.includes('cabbage') ||
-    lower.includes('celery') ||
-    lower.includes('cucumber')
-  ) {
-    return 'vegetable';
-  }
-
-  // Grains
-  if (
-    lower.includes('bread') ||
-    lower.includes('rice') ||
-    lower.includes('pasta') ||
-    lower.includes('oat') ||
-    lower.includes('cereal') ||
-    lower.includes('quinoa') ||
-    lower.includes('wheat') ||
-    lower.includes('grain')
-  ) {
-    return 'grain';
-  }
-
-  // Fats
-  if (
-    lower.includes('oil') ||
-    lower.includes('nut') ||
-    lower.includes('seed') ||
-    lower.includes('avocado') ||
-    lower.includes('almond') ||
-    lower.includes('peanut') ||
-    lower.includes('walnut')
-  ) {
-    return 'fat';
-  }
-
-  return 'other';
 }
 
 export async function POST(request: Request) {
@@ -199,8 +100,8 @@ export async function POST(request: Request) {
     const healthScore = calculateHealthScoreFromDetails(usdaFood);
     const portions = getCommonPortions(usdaFood);
 
-    // Determine category
-    const category = body.category || guessCategory(usdaFood.description, usdaFood.dataType);
+    // Determine category using AI detection
+    const category = body.category || await detectIngredientCategory(usdaFood.description, user.id);
 
     // Create a clean name (remove excessive detail from USDA descriptions)
     const cleanName = usdaFood.description
