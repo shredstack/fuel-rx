@@ -158,37 +158,41 @@ export function MealCard({
           </div>
         </button>
 
-        {/* Action buttons: Cooking Assistant, Status, Log, Swap, Like/Dislike, Expand */}
+        {/* Action buttons - Mobile: compact essential actions only */}
         <div
-          className="flex items-center gap-2 ml-4"
+          className="flex items-center gap-1 ml-2 md:gap-2 md:ml-4"
           {...(isFirstMealCard ? { 'data-tour': 'like-dislike' } : {})}
         >
-          <CookingAssistantButton
-            mealId={meal.id}
-            mealName={meal.name}
-          />
-          <CookingStatusButton
-            status={cookingStatus}
-            mealName={meal.name}
-            currentInstructions={meal.instructions}
-            onStatusChange={onCookingStatusChange}
-            variant="icon"
-            socialFeedEnabled={socialFeedEnabled}
-          />
-          <InlineLogButton
-            mealSlot={mealSlot}
-            mealPlanMealId={mealSlot.id}
-            defaultMealType={mealSlot.meal_type}
-          />
-          <span {...(isFirstMealCard ? { 'data-tour': 'swap-button' } : {})}>
-            <SwapButton onClick={onSwap} />
-          </span>
+          {/* Desktop only: Secondary actions */}
+          <div className="hidden md:flex items-center gap-2">
+            <CookingAssistantButton
+              mealId={meal.id}
+              mealName={meal.name}
+            />
+            <CookingStatusButton
+              status={cookingStatus}
+              mealName={meal.name}
+              currentInstructions={meal.instructions}
+              onStatusChange={onCookingStatusChange}
+              variant="icon"
+              socialFeedEnabled={socialFeedEnabled}
+            />
+            <InlineLogButton
+              mealSlot={mealSlot}
+              mealPlanMealId={mealSlot.id}
+              defaultMealType={mealSlot.meal_type}
+            />
+            <span {...(isFirstMealCard ? { 'data-tour': 'swap-button' } : {})}>
+              <SwapButton onClick={onSwap} />
+            </span>
+          </div>
+          {/* Like button */}
           <button
             onClick={(e) => {
               e.stopPropagation()
               onLike()
             }}
-            className={`p-2 rounded-full transition-colors ${
+            className={`p-1.5 md:p-2 rounded-full transition-colors ${
               preference === 'liked'
                 ? 'bg-green-100 text-green-600'
                 : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
@@ -199,12 +203,13 @@ export function MealCard({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
             </svg>
           </button>
+          {/* Dislike button */}
           <button
             onClick={(e) => {
               e.stopPropagation()
               onDislike()
             }}
-            className={`p-2 rounded-full transition-colors ${
+            className={`p-1.5 md:p-2 rounded-full transition-colors ${
               preference === 'disliked'
                 ? 'bg-red-100 text-red-600'
                 : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
@@ -215,12 +220,13 @@ export function MealCard({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
             </svg>
           </button>
+          {/* Expand/collapse button */}
           <button
             onClick={onToggle}
-            className="p-2"
+            className="p-1.5 md:p-2"
           >
             <svg
-              className={`w-6 h-6 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 md:w-6 md:h-6 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -233,6 +239,28 @@ export function MealCard({
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-gray-200">
+          {/* Mobile action bar - shows secondary actions hidden from header */}
+          <div className="md:hidden flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 overflow-x-auto">
+            <CookingAssistantButton
+              mealId={meal.id}
+              mealName={meal.name}
+            />
+            <CookingStatusButton
+              status={cookingStatus}
+              mealName={meal.name}
+              currentInstructions={meal.instructions}
+              onStatusChange={onCookingStatusChange}
+              variant="icon"
+              socialFeedEnabled={socialFeedEnabled}
+            />
+            <InlineLogButton
+              mealSlot={mealSlot}
+              mealPlanMealId={mealSlot.id}
+              defaultMealType={mealSlot.meal_type}
+            />
+            <SwapButton onClick={onSwap} />
+          </div>
+
           {/* Your Modifications Section - shown when there are notes or photos */}
           {cookingStatusData && (cookingStatusData.modification_notes || cookingStatusData.cooked_photo_url) && (
             <MealModificationsSection
