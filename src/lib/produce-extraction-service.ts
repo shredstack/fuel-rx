@@ -21,6 +21,13 @@ interface MealIngredient {
   category?: string;
 }
 
+interface ProduceWeight {
+  name_normalized: string;
+  category: string;
+  unit: string;
+  grams: number;
+}
+
 // Categories that might contain fruits/vegetables
 // We send these to Claude for classification since:
 // - 'fruit'/'fruits' and 'vegetable'/'vegetables' are direct matches
@@ -41,6 +48,132 @@ const POTENTIALLY_PRODUCE_CATEGORIES = [
 ];
 
 // ============================================
+// Unit Normalization
+// ============================================
+
+/**
+ * Normalize a unit string from meal ingredients to match produce_weights table format.
+ * E.g., "cups" -> "cup_raw", "medium" -> "medium", "oz" -> "oz"
+ */
+function normalizeUnit(unit: string): string[] {
+  const u = unit.toLowerCase().trim();
+
+  // Map common unit variants to produce_weights table keys.
+  // Returns multiple candidates to try (first match wins).
+  const mappings: Record<string, string[]> = {
+    // Cup variants — try specific first, then generic
+    'cup': ['cup', 'cup_raw', 'cup_chopped', 'cup_cooked'],
+    'cups': ['cup', 'cup_raw', 'cup_chopped', 'cup_cooked'],
+    'cup chopped': ['cup_chopped'],
+    'cup diced': ['cup_diced'],
+    'cup sliced': ['cup_sliced'],
+    'cup shredded': ['cup_shredded'],
+    'cup cooked': ['cup_cooked'],
+    'cup raw': ['cup_raw'],
+    'cup cubed': ['cup_cubed'],
+    'cup chunks': ['cup_chunks'],
+    // Whole/size
+    'whole': ['medium', 'whole'],
+    'medium': ['medium'],
+    'large': ['large'],
+    'small': ['small'],
+    // Weight
+    'oz': ['oz'],
+    'ounce': ['oz'],
+    'ounces': ['oz'],
+    // Specific
+    'clove': ['clove'],
+    'cloves': ['clove'],
+    'stalk': ['stalk'],
+    'stalks': ['stalk'],
+    'spear': ['spear'],
+    'spears': ['spear'],
+    'ear': ['ear'],
+    'ears': ['ear'],
+    'head': ['head'],
+    'bunch': ['bunch'],
+    'sprout': ['sprout'],
+    'leaf': ['leaf'],
+    'leaves': ['leaf'],
+    'half': ['half'],
+    'pepper': ['pepper'],
+    'slice': ['slice'],
+    'slices': ['slice'],
+    'wedge': ['wedge'],
+  };
+
+  return mappings[u] || [u];
+}
+
+// ============================================
+// Deterministic Lookup
+// ============================================
+
+/**
+ * Look up produce weights from the produce_weights table for known items.
+ * Returns a map of ingredient index -> { category, grams } for items that matched.
+ */
+async function lookupProduceWeights(
+  items: MealIngredient[],
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<Map<number, { category: 'fruit' | 'vegetable'; grams: number }>> {
+  const results = new Map<number, { category: 'fruit' | 'vegetable'; grams: number }>();
+
+  if (items.length === 0) return results;
+
+  const normalizedNames = [...new Set(items.map(item => item.name.toLowerCase().trim()))];
+
+  const { data: weights } = await supabase
+    .from('produce_weights')
+    .select('name_normalized, category, unit, grams')
+    .in('name_normalized', normalizedNames);
+
+  if (!weights || weights.length === 0) return results;
+
+  // Build a lookup: name_normalized -> { unit -> { category, grams } }
+  const weightMap = new Map<string, Map<string, ProduceWeight>>();
+  for (const w of weights) {
+    if (!weightMap.has(w.name_normalized)) {
+      weightMap.set(w.name_normalized, new Map());
+    }
+    weightMap.get(w.name_normalized)!.set(w.unit, w as ProduceWeight);
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const nameNorm = item.name.toLowerCase().trim();
+    const unitEntries = weightMap.get(nameNorm);
+    if (!unitEntries) continue;
+
+    // Try each normalized unit candidate until we find a match
+    const unitCandidates = normalizeUnit(item.unit);
+    let match: ProduceWeight | undefined;
+    for (const candidate of unitCandidates) {
+      match = unitEntries.get(candidate);
+      if (match) break;
+    }
+
+    if (!match) {
+      // Fallback: if the item exists in the table at all, use the first available unit
+      // as a rough estimate (better than nothing for classification at least)
+      continue;
+    }
+
+    // Parse amount and multiply by grams-per-unit
+    const amount = parseFloat(item.amount) || 1;
+    const totalGrams = Math.round(amount * Number(match.grams));
+
+    // Map legume -> vegetable for the 800g challenge (legumes count as veggies)
+    const category = match.category === 'legume' ? 'vegetable' : match.category;
+    if (category !== 'fruit' && category !== 'vegetable') continue;
+
+    results.set(i, { category: category as 'fruit' | 'vegetable', grams: totalGrams });
+  }
+
+  return results;
+}
+
+// ============================================
 // Main Extraction Function
 // ============================================
 
@@ -50,9 +183,9 @@ const POTENTIALLY_PRODUCE_CATEGORIES = [
  * Flow:
  * 1. Fetch meal by ID and get ingredients JSONB
  * 2. Filter for ingredients that might be fruits/vegetables
- * 3. Send ALL potential items to Claude for classification
- * 4. Claude decides what's actually a fruit/vegetable and estimates grams
- * 5. Return only items classified as fruit or vegetable
+ * 3. Deterministic lookup in produce_weights table for known items
+ * 4. Send only unmatched items to Claude for classification and gram estimation
+ * 5. Merge deterministic + AI results, return only fruit/vegetable items
  */
 export async function extractProduceFromMeal(
   mealId: string,
@@ -85,8 +218,6 @@ export async function extractProduceFromMeal(
   }
 
   // 2. Filter for items that might be produce
-  // Include 'produce', 'grains' (for sweet potatoes), 'frozen' (for frozen veggies), and 'other'
-  // Exclude proteins, dairy, pantry (oils, spices) which are definitely not fruits/veggies
   const potentialProduceItems = ingredients.filter((ing) => {
     const category = ing.category?.toLowerCase() || 'other';
     return POTENTIALLY_PRODUCE_CATEGORIES.includes(category);
@@ -101,7 +232,28 @@ export async function extractProduceFromMeal(
     return [];
   }
 
-  // 3. Look up items in the ingredients dimension table for known categories
+  // 3. Deterministic lookup in produce_weights table
+  const deterministicResults = await lookupProduceWeights(potentialProduceItems, supabase);
+
+  console.log('[Produce Extraction] Deterministic lookup results:', {
+    matched: deterministicResults.size,
+    total: potentialProduceItems.length,
+    items: Array.from(deterministicResults.entries()).map(([idx, r]) => ({
+      name: potentialProduceItems[idx].name,
+      category: r.category,
+      grams: r.grams,
+    })),
+  });
+
+  // 4. Collect items that need AI classification (not matched by deterministic lookup)
+  const unmatchedItems: { index: number; item: MealIngredient }[] = [];
+  for (let i = 0; i < potentialProduceItems.length; i++) {
+    if (!deterministicResults.has(i)) {
+      unmatchedItems.push({ index: i, item: potentialProduceItems[i] });
+    }
+  }
+
+  // 5. Look up known categories from the ingredients dimension table
   const normalizedNames = potentialProduceItems.map((item) =>
     item.name.toLowerCase().trim()
   );
@@ -111,7 +263,6 @@ export async function extractProduceFromMeal(
     .select('name_normalized, category')
     .in('name_normalized', normalizedNames);
 
-  // Build a map of known categories from our ingredients table
   const knownCategoryMap = new Map<string, IngredientCategoryType>();
   if (knownIngredients) {
     for (const ing of knownIngredients) {
@@ -121,62 +272,77 @@ export async function extractProduceFromMeal(
     }
   }
 
-  // 4. Send ALL potential items to Claude for classification and gram estimation
-  const itemsForAI: ProduceItem[] = potentialProduceItems.map((item) => ({
-    name: item.name,
-    amount: item.amount,
-    unit: item.unit,
-  }));
+  // 6. Send only unmatched items to Claude for classification and gram estimation
+  let aiResults: Awaited<ReturnType<typeof estimateProduceGrams>> = [];
+  if (unmatchedItems.length > 0) {
+    const itemsForAI: ProduceItem[] = unmatchedItems.map(({ item }) => ({
+      name: item.name,
+      amount: item.amount,
+      unit: item.unit,
+    }));
 
-  const aiResults = await estimateProduceGrams(itemsForAI, userId);
+    aiResults = await estimateProduceGrams(itemsForAI, userId);
 
-  console.log('[Produce Extraction] AI classification results:', {
-    count: aiResults.length,
-    results: aiResults.map(r => ({ name: r.name, category: r.category, grams: r.estimatedGrams }))
-  });
+    console.log('[Produce Extraction] AI classification results:', {
+      count: aiResults.length,
+      results: aiResults.map(r => ({ name: r.name, category: r.category, grams: r.estimatedGrams }))
+    });
+  } else {
+    console.log('[Produce Extraction] All items resolved via deterministic lookup, skipping AI call');
+  }
 
-  // 5. Build results - prefer known categories from DB, otherwise use AI classification
+  // 7. Build final results — merge deterministic + AI
   const results: ExtractedProduce[] = [];
 
   for (let i = 0; i < potentialProduceItems.length; i++) {
     const originalItem = potentialProduceItems[i];
     const originalNameLower = originalItem.name.toLowerCase().trim();
 
-    // Try to find matching AI result with increasingly fuzzy matching:
-    // 1. Exact match
-    // 2. Original name contains AI name (e.g., "fresh spinach" contains "spinach")
-    // 3. AI name contains original name
-    // 4. Positional fallback (same index)
+    // Check deterministic result first
+    const deterministicResult = deterministicResults.get(i);
+    if (deterministicResult) {
+      results.push({
+        name: originalItem.name,
+        amount: originalItem.amount,
+        unit: originalItem.unit,
+        category: deterministicResult.category,
+        estimatedGrams: deterministicResult.grams,
+      });
+      continue;
+    }
+
+    // Fall back to AI result for unmatched items
+    // Find the AI result index — unmatchedItems preserves order sent to AI
+    const unmatchedIdx = unmatchedItems.findIndex(u => u.index === i);
+    if (unmatchedIdx === -1) continue;
+
+    // Try to find matching AI result with increasingly fuzzy matching
     let aiResult = aiResults.find(
       (r) => r.name.toLowerCase().trim() === originalNameLower
     );
 
     if (!aiResult) {
-      // Try partial matching - original contains AI name
       aiResult = aiResults.find(
         (r) => originalNameLower.includes(r.name.toLowerCase().trim())
       );
     }
 
     if (!aiResult) {
-      // Try partial matching - AI name contains original
       aiResult = aiResults.find(
         (r) => r.name.toLowerCase().trim().includes(originalNameLower)
       );
     }
 
-    if (!aiResult && aiResults[i]) {
-      // Positional fallback
-      aiResult = aiResults[i];
+    if (!aiResult && aiResults[unmatchedIdx]) {
+      aiResult = aiResults[unmatchedIdx];
     }
 
     if (!aiResult) continue;
 
     // Determine category: prefer DB lookup, fallback to AI classification
-    const knownCategory = knownCategoryMap.get(originalItem.name.toLowerCase().trim());
+    const knownCategory = knownCategoryMap.get(originalNameLower);
     const category = knownCategory || aiResult.category;
 
-    // Skip items classified as 'other' (not fruit/vegetable)
     if (category === 'other') continue;
 
     results.push({

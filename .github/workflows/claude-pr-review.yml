@@ -113,16 +113,13 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Read the prompt
-          PROMPT=$(cat review_prompt.txt)
-
-          # Call Claude API
+          # Call Claude API using --rawfile to avoid shell expansion issues
           RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
             -H "Content-Type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d "$(jq -n \
-              --arg prompt "$PROMPT" \
+              --rawfile prompt review_prompt.txt \
               '{
                 "model": "claude-sonnet-4-20250514",
                 "max_tokens": 4096,
