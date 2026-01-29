@@ -128,7 +128,16 @@ Use these common conversions as reference:
 - 4 oz = ~113g
 - 6 oz = ~170g
 
-Be slightly conservative with estimates - users will verify and adjust. Round to the nearest 10g for cleaner numbers.`;
+## Per-Serving Reasonableness
+
+These estimates are for a SINGLE SERVING of a meal. Keep these limits in mind:
+- Most individual fruits/vegetables in a single serving weigh 50-200g
+- Only dense/large items like whole sweet potatoes, baked potatoes, or large fruit (e.g. whole mango, large apple) might exceed 200g
+- If an ingredient amount seems like it could be for multiple servings, divide accordingly to estimate a single-serving portion
+- Maximum for any single produce item in one serving: 300g (rare — only for large whole items like a baked potato)
+- If unsure, err on the side of 100-180g for a typical single-serving portion
+
+Be slightly conservative with estimates - users will verify and adjust.`;
 
 // ============================================
 // Main Function

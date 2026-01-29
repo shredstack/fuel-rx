@@ -30,6 +30,7 @@ export default function IngredientSearchBar({
   const [showDropdown, setShowDropdown] = useState(false);
   const [includeUsda, setIncludeUsda] = useState(true);
   const [importingFdcId, setImportingFdcId] = useState<number | null>(null);
+  const [showAllUsda, setShowAllUsda] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isKeyboardVisible, keyboardHeight } = useKeyboard();
@@ -62,6 +63,7 @@ export default function IngredientSearchBar({
     }
 
     setIsSearching(true);
+    setShowAllUsda(false);
     try {
       const url = searchUsda
         ? `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}&include_usda=true`
@@ -295,7 +297,7 @@ export default function IngredientSearchBar({
                     From USDA Database ({usdaResults.length})
                   </span>
                 </div>
-                {usdaResults.slice(0, 5).map((food) => (
+                {(showAllUsda ? usdaResults : usdaResults.slice(0, 5)).map((food) => (
                   <button
                     key={`usda-${food.fdcId}`}
                     onClick={() => handleSelectUsdaFood(food)}
@@ -324,9 +326,9 @@ export default function IngredientSearchBar({
                     </div>
                   </button>
                 ))}
-                {usdaResults.length > 5 && (
+                {usdaResults.length > 5 && !showAllUsda && (
                   <button
-                    onClick={onAddManually}
+                    onClick={() => setShowAllUsda(true)}
                     className="w-full px-4 py-2 text-center text-sm text-blue-600 hover:bg-blue-50
                                border-t border-gray-100"
                   >
