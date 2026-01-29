@@ -14,10 +14,13 @@ export interface ExtractedProduce {
   estimatedGrams: number;
 }
 
-interface MealIngredient {
+export interface ProduceItemInput {
   name: string;
   amount: string;
   unit: string;
+}
+
+interface MealIngredient extends ProduceItemInput {
   category?: string;
 }
 
@@ -113,8 +116,8 @@ function normalizeUnit(unit: string): string[] {
  * Look up produce weights from the produce_weights table for known items.
  * Returns a map of ingredient index -> { category, grams } for items that matched.
  */
-async function lookupProduceWeights(
-  items: MealIngredient[],
+export async function lookupProduceWeights(
+  items: ProduceItemInput[],
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<Map<number, { category: 'fruit' | 'vegetable'; grams: number }>> {
   const results = new Map<number, { category: 'fruit' | 'vegetable'; grams: number }>();

@@ -5,11 +5,13 @@
  *
  * Given an array of ingredients (with categories already detected by Claude Vision),
  * estimates their weight in grams for the 800g challenge.
+ * Uses deterministic lookup from produce_weights table first, falls back to LLM for unmatched items.
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { estimateProduceGrams, type ProduceItem } from '@/lib/claude/produce-estimation';
+import { lookupProduceWeights, type ProduceItemInput } from '@/lib/produce-extraction-service';
 
 interface PhotoIngredient {
   name: string;
@@ -49,21 +51,54 @@ export async function POST(request: Request) {
       return NextResponse.json({ produceIngredients: [] }, { status: 200 });
     }
 
-    // Convert to format expected by produce estimation
-    const itemsForEstimation: ProduceItem[] = produceIngredients.map((ing) => ({
+    // 1. Try deterministic lookup first
+    const lookupItems: ProduceItemInput[] = produceIngredients.map((ing) => ({
       name: ing.name,
       amount: ing.estimated_amount,
       unit: ing.estimated_unit,
     }));
 
-    // Call Claude to estimate grams for each produce item
-    const estimatedItems = await estimateProduceGrams(itemsForEstimation, user.id);
+    const deterministicResults = await lookupProduceWeights(lookupItems, supabase);
 
-    // Map back to the format expected by ProduceExtractorModal
+    // 2. Collect items not matched by deterministic lookup
+    const unmatchedItems: { index: number; item: PhotoIngredient }[] = [];
+    for (let i = 0; i < produceIngredients.length; i++) {
+      if (!deterministicResults.has(i)) {
+        unmatchedItems.push({ index: i, item: produceIngredients[i] });
+      }
+    }
+
+    // 3. Send only unmatched items to Claude for gram estimation
+    let aiResults: Awaited<ReturnType<typeof estimateProduceGrams>> = [];
+    if (unmatchedItems.length > 0) {
+      const itemsForAI: ProduceItem[] = unmatchedItems.map(({ item }) => ({
+        name: item.name,
+        amount: item.estimated_amount,
+        unit: item.estimated_unit,
+      }));
+
+      aiResults = await estimateProduceGrams(itemsForAI, user.id);
+    }
+
+    // 4. Merge deterministic + AI results
     const result = produceIngredients.map((ing, index) => {
-      const estimated = estimatedItems.find(
+      // Check deterministic result first
+      const deterministicResult = deterministicResults.get(index);
+      if (deterministicResult) {
+        return {
+          name: ing.name,
+          amount: ing.estimated_amount,
+          unit: ing.estimated_unit,
+          category: ing.category as 'fruit' | 'vegetable',
+          estimatedGrams: deterministicResult.grams,
+        };
+      }
+
+      // Fall back to AI result
+      const unmatchedIdx = unmatchedItems.findIndex(u => u.index === index);
+      const estimated = aiResults.find(
         (e) => e.name.toLowerCase() === ing.name.toLowerCase()
-      ) || estimatedItems[index];
+      ) || (unmatchedIdx >= 0 ? aiResults[unmatchedIdx] : undefined);
 
       return {
         name: ing.name,

@@ -1000,6 +1000,50 @@ export async function searchIngredients(userId: string, query: string): Promise<
     );
   }
 
+  // 3. Populate default_grams for fruit/vegetable results from produce_weights table
+  const produceResults = results.filter(
+    (r) => !r.default_grams && (r.category === 'fruit' || r.category === 'vegetable')
+  );
+
+  if (produceResults.length > 0) {
+    const produceNames = [...new Set(produceResults.map((r) => r.name.toLowerCase().trim()))];
+    const { data: weights } = await supabase
+      .from('produce_weights')
+      .select('name_normalized, unit, grams')
+      .in('name_normalized', produceNames);
+
+    if (weights && weights.length > 0) {
+      // Build a map: name_normalized -> first available grams value
+      // Prefer 'medium' unit, then 'cup' variants, then any available
+      const gramsMap = new Map<string, number>();
+      const unitPriority = ['medium', 'cup', 'cup_raw', 'cup_chopped', 'cup_cooked'];
+
+      for (const name of produceNames) {
+        const nameWeights = weights.filter((w) => w.name_normalized === name);
+        if (nameWeights.length === 0) continue;
+
+        // Pick the best unit by priority
+        let bestWeight = nameWeights[0];
+        for (const preferred of unitPriority) {
+          const match = nameWeights.find((w) => w.unit === preferred);
+          if (match) {
+            bestWeight = match;
+            break;
+          }
+        }
+        gramsMap.set(name, Number(bestWeight.grams));
+      }
+
+      // Apply default_grams to matching results
+      for (const r of produceResults) {
+        const grams = gramsMap.get(r.name.toLowerCase().trim());
+        if (grams) {
+          r.default_grams = grams;
+        }
+      }
+    }
+  }
+
   return results;
 }
 
