@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import type { ConsumptionEntry, MealType } from '@/lib/types';
 import { MEAL_TYPE_LABELS, MEAL_TYPE_CONFIG } from '@/lib/types';
 import LoggedEntryRow from './LoggedEntryRow';
@@ -55,7 +55,7 @@ function getTodayString(): string {
   return `${year}-${month}-${day}`;
 }
 
-export default function MealSection({
+export default memo(function MealSection({
   mealType,
   entries,
   previousEntries,
@@ -214,4 +214,4 @@ export default function MealSection({
       )}
     </div>
   );
-}
+});

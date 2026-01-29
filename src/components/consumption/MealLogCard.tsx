@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import type { MealToLog } from '@/lib/types';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 
@@ -12,7 +12,7 @@ interface MealLogCardProps {
   showMealSource?: boolean;  // Show "Recipe" or "Quick Cook" badge
 }
 
-export default function MealLogCard({ meal, onLog, onUndo, compact = false, showMealSource = false }: MealLogCardProps) {
+export default memo(function MealLogCard({ meal, onLog, onUndo, compact = false, showMealSource = false }: MealLogCardProps) {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const touchStartX = useRef(0);
@@ -170,4 +170,4 @@ export default function MealLogCard({ meal, onLog, onUndo, compact = false, show
       </div>
     </div>
   );
-}
+});

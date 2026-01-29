@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,14 +14,13 @@ import type {
   ConsumptionEntry,
   Macros,
   ConsumptionPeriodType,
-  PeriodConsumptionSummary,
   MealType,
   IngredientCategoryType,
   SelectableMealType,
   EditableIngredient,
   IngredientWithNutrition,
 } from '@/lib/types';
-import { useLogMealData, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
+import { useLogMealData, useWeeklyConsumption, useMonthlyConsumption, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
 import { useMealIngredients } from '@/hooks/queries/useMealIngredients';
 import {
   useLogMeal,
@@ -173,8 +172,21 @@ export default function LogMealClient({
 
   // Period view state
   const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
-  const [periodSummary, setPeriodSummary] = useState<PeriodConsumptionSummary | null>(null);
-  const [periodLoading, setPeriodLoading] = useState(false);
+
+  // Period data via React Query (cached across tab switches)
+  const [year, month] = selectedDate.split('-').map(Number);
+  const weeklyQuery = useWeeklyConsumption(selectedDate, selectedPeriod === 'weekly');
+  const monthlyQuery = useMonthlyConsumption(year, month, selectedPeriod === 'monthly');
+  const periodSummary = selectedPeriod === 'weekly'
+    ? weeklyQuery.data ?? null
+    : selectedPeriod === 'monthly'
+      ? monthlyQuery.data ?? null
+      : null;
+  const periodLoading = selectedPeriod === 'weekly'
+    ? weeklyQuery.isLoading
+    : selectedPeriod === 'monthly'
+      ? monthlyQuery.isLoading
+      : false;
 
   // Modal states
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientToLog | null>(null);
@@ -252,39 +264,6 @@ export default function LogMealClient({
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Fetch period data when period or date changes
-  useEffect(() => {
-    if (selectedPeriod === 'daily') {
-      setPeriodSummary(null);
-      return;
-    }
-
-    const fetchPeriodData = async () => {
-      setPeriodLoading(true);
-      try {
-        let url: string;
-        if (selectedPeriod === 'weekly') {
-          url = `/api/consumption/weekly?date=${selectedDate}`;
-        } else {
-          // Parse date components directly to avoid timezone issues
-          const [year, month] = selectedDate.split('-').map(Number);
-          url = `/api/consumption/monthly?year=${year}&month=${month}`;
-        }
-
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          setPeriodSummary(data);
-        }
-      } catch (error) {
-        console.error('Error fetching period data:', error);
-      }
-      setPeriodLoading(false);
-    };
-
-    fetchPeriodData();
-  }, [selectedPeriod, selectedDate]);
 
   // Initialize editable ingredients when meal data loads
   useEffect(() => {
@@ -734,19 +713,57 @@ export default function LogMealClient({
   };
 
   // Handle adding entry from a meal section (pre-selects meal type)
-  const handleAddFromSection = (mealType: MealType) => {
+  const handleAddFromSection = useCallback((mealType: MealType) => {
     setAddingToMealType(mealType);
     setShowIngredientSearch(true);
-  };
+  }, []);
+
+  // Pre-compute the combined meal lookup array used to match entries to meals
+  // (avoids rebuilding this in multiple places during render)
+  const allMealsLookup: MealToLog[] = useMemo(
+    () => [
+      ...available.from_todays_plan,
+      ...available.from_week_plan,
+      ...available.custom_meals,
+      ...available.quick_cook_meals,
+      ...(available.latest_plan_meals || []),
+    ],
+    [available.from_todays_plan, available.from_week_plan, available.custom_meals, available.quick_cook_meals, available.latest_plan_meals]
+  );
+
+  // Handle removing an entry from a meal section (stable reference for React.memo)
+  const handleRemoveEntry = useCallback((entryId: string) => {
+    const entry = summary.entries.find((e) => e.id === entryId);
+    if (entry) {
+      const meal = allMealsLookup.find((m) => m.logged_entry_id === entryId);
+      if (meal) {
+        handleUndoLog(entryId, meal);
+      } else {
+        handleUndoLog(entryId, {
+          id: entryId,
+          source: entry.entry_type,
+          source_id: entryId,
+          name: entry.display_name,
+          calories: entry.calories,
+          protein: entry.protein,
+          carbs: entry.carbs,
+          fat: entry.fat,
+          is_logged: true,
+          logged_entry_id: entryId,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary.entries, allMealsLookup]);
 
   // Recalculate percentages when summary changes
-  const percentages: Macros = {
+  const percentages: Macros = useMemo(() => ({
     calories:
       summary.targets.calories > 0 ? Math.round((summary.consumed.calories / summary.targets.calories) * 100) : 0,
     protein: summary.targets.protein > 0 ? Math.round((summary.consumed.protein / summary.targets.protein) * 100) : 0,
     carbs: summary.targets.carbs > 0 ? Math.round((summary.consumed.carbs / summary.targets.carbs) * 100) : 0,
     fat: summary.targets.fat > 0 ? Math.round((summary.consumed.fat / summary.targets.fat) * 100) : 0,
-  };
+  }), [summary.targets, summary.consumed]);
 
   // Trigger confetti when hitting calorie goal
   useEffect(() => {
@@ -930,20 +947,26 @@ export default function LogMealClient({
   }, [summary.water, selectedDate, loading]);
 
   // Get time-based suggested meals from today's plan
-  const suggestedMeals = available.from_todays_plan
-    .filter((m) => m.meal_type && suggestedMealTypes.includes(m.meal_type) && !m.is_logged)
-    .slice(0, 3);
+  const suggestedMeals = useMemo(
+    () => available.from_todays_plan
+      .filter((m) => m.meal_type && suggestedMealTypes.includes(m.meal_type) && !m.is_logged)
+      .slice(0, 3),
+    [available.from_todays_plan, suggestedMealTypes]
+  );
 
   // Combine custom meals and quick cook for "My Meals" section
   // Meal plan meals are shown separately in the MealPlanMealsSection with search functionality
-  const myMeals: MealToLog[] = [
-    ...available.custom_meals,
-    ...available.quick_cook_meals,
-  ];
+  const myMeals: MealToLog[] = useMemo(
+    () => [...available.custom_meals, ...available.quick_cook_meals],
+    [available.custom_meals, available.quick_cook_meals]
+  );
 
   // latest_plan_meals contains meals from the most recent meal plan only
   // Search functionality in MealPlanMealsSection allows finding meals from older plans
-  const latestPlanMeals = available.latest_plan_meals || [];
+  const latestPlanMeals = useMemo(
+    () => available.latest_plan_meals || [],
+    [available.latest_plan_meals]
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
@@ -1127,34 +1150,7 @@ export default function LogMealClient({
                     forceExpand={recentlyLoggedToMealType === mealType}
                     onForceExpandHandled={() => setRecentlyLoggedToMealType(null)}
                     onAddEntry={handleAddFromSection}
-                    onRemoveEntry={(entryId) => {
-                      const entry = summary.entries.find((e) => e.id === entryId);
-                      if (entry) {
-                        const meal = [
-                          ...available.from_todays_plan,
-                          ...available.from_week_plan,
-                          ...available.custom_meals,
-                          ...available.quick_cook_meals,
-                          ...(available.latest_plan_meals || []),
-                        ].find((m) => m.logged_entry_id === entryId);
-                        if (meal) {
-                          handleUndoLog(entryId, meal);
-                        } else {
-                          handleUndoLog(entryId, {
-                            id: entryId,
-                            source: entry.entry_type,
-                            source_id: entryId,
-                            name: entry.display_name,
-                            calories: entry.calories,
-                            protein: entry.protein,
-                            carbs: entry.carbs,
-                            fat: entry.fat,
-                            is_logged: true,
-                            logged_entry_id: entryId,
-                          });
-                        }
-                      }
-                    }}
+                    onRemoveEntry={handleRemoveEntry}
                     onMoveEntry={handleMoveMealType}
                     onEditAmount={handleEditEntryAmount}
                     onRepeatFromPrevious={handleRepeatMealType}
@@ -1205,13 +1201,7 @@ export default function LogMealClient({
                             </select>
                             <button
                               onClick={() => {
-                                const meal = [
-                                  ...available.from_todays_plan,
-                                  ...available.from_week_plan,
-                                  ...available.custom_meals,
-                                  ...available.quick_cook_meals,
-                                  ...(available.latest_plan_meals || []),
-                                ].find((m) => m.logged_entry_id === entry.id);
+                                const meal = allMealsLookup.find((m) => m.logged_entry_id === entry.id);
                                 if (meal) {
                                   handleUndoLog(entry.id, meal);
                                 } else {
