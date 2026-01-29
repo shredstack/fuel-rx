@@ -267,8 +267,9 @@ export default function LogMealClient({
         if (selectedPeriod === 'weekly') {
           url = `/api/consumption/weekly?date=${selectedDate}`;
         } else {
-          const date = new Date(selectedDate);
-          url = `/api/consumption/monthly?year=${date.getFullYear()}&month=${date.getMonth() + 1}`;
+          // Parse date components directly to avoid timezone issues
+          const [year, month] = selectedDate.split('-').map(Number);
+          url = `/api/consumption/monthly?year=${year}&month=${month}`;
         }
 
         const response = await fetch(url);

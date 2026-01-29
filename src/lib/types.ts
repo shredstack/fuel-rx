@@ -819,7 +819,7 @@ export interface PrepModeResponse {
 // ============================================
 
 /** Status of async batch prep generation */
-export type BatchPrepStatus = 'pending' | 'generating' | 'completed' | 'failed';
+export type BatchPrepStatus = 'not_started' | 'pending' | 'generating' | 'completed' | 'failed';
 
 /** Prep session data stored on meal_plans table */
 export interface MealPlanPrepSessions {
@@ -833,6 +833,8 @@ export interface BatchPrepStatusResponse {
   status: BatchPrepStatus;
   ready: boolean;
   hasBatchPrep: boolean;
+  /** Whether this plan has day-of prep data needed to generate batch prep */
+  canGenerateBatchPrep?: boolean;
 }
 
 // ============================================

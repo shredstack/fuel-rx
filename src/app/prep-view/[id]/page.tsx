@@ -177,6 +177,16 @@ export default async function PrepViewPage({
     }
   }
 
+  // Determine batch prep status - use 'not_started' for plans that never had batch prep
+  const canGenerateBatchPrep = !!mealPlan.prep_sessions_day_of
+  let batchPrepStatus: BatchPrepStatus
+  if (mealPlan.batch_prep_status) {
+    batchPrepStatus = mealPlan.batch_prep_status as BatchPrepStatus
+  } else {
+    // No status set - this is either a legacy plan or batch prep was never triggered
+    batchPrepStatus = 'not_started'
+  }
+
   return (
     <PrepViewClient
       mealPlan={{
@@ -191,7 +201,8 @@ export default async function PrepViewPage({
       // New batch prep data from meal_plans table
       prepSessionsDayOf={mealPlan.prep_sessions_day_of as PrepModeResponse | null}
       prepSessionsBatch={mealPlan.prep_sessions_batch as PrepModeResponse | null}
-      batchPrepStatus={(mealPlan.batch_prep_status || 'pending') as BatchPrepStatus}
+      batchPrepStatus={batchPrepStatus}
+      canGenerateBatchPrep={canGenerateBatchPrep}
     />
   )
 }

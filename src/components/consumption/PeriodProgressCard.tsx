@@ -7,17 +7,29 @@ interface PeriodProgressCardProps {
   dailyTargets: Macros;
 }
 
+// Month names for hydration-safe date formatting
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const MONTH_NAMES_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 function formatDateRange(startDate: string, endDate: string, periodType: 'weekly' | 'monthly'): string {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  // Parse date components directly to avoid timezone issues
+  // dateStr is in YYYY-MM-DD format
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [, endMonth, endDay] = endDate.split('-').map(Number);
 
   if (periodType === 'monthly') {
-    return start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return `${MONTH_NAMES[startMonth - 1]} ${startYear}`;
   }
 
-  // Weekly format
-  const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Weekly format: "Jan 20 - Jan 26"
+  const startStr = `${MONTH_NAMES_SHORT[startMonth - 1]} ${startDay}`;
+  const endStr = `${MONTH_NAMES_SHORT[endMonth - 1]} ${endDay}`;
   return `${startStr} - ${endStr}`;
 }
 

@@ -35,6 +35,8 @@ interface PrepViewClientProps {
   prepSessionsDayOf?: PrepModeResponse | null
   prepSessionsBatch?: PrepModeResponse | null
   batchPrepStatus?: BatchPrepStatus
+  /** Whether this plan has day-of prep data needed to generate batch prep */
+  canGenerateBatchPrep?: boolean
 }
 
 // Helper function to convert DayPlanNormalized to legacy DayPlan format
@@ -115,7 +117,8 @@ export default function PrepViewClient({
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   prepSessionsDayOf,
   prepSessionsBatch,
-  batchPrepStatus: initialBatchPrepStatus = 'pending',
+  batchPrepStatus: initialBatchPrepStatus = 'not_started',
+  canGenerateBatchPrep: initialCanGenerateBatchPrep = false,
 }: PrepViewClientProps) {
   const supabase = createClient()
   const searchParams = useSearchParams()
@@ -124,6 +127,10 @@ export default function PrepViewClient({
 
   // Tab state - default to 'fresh' (day-of cooking) view
   const [activeTabState, setActiveTabState] = useState<PrepViewTab>('fresh')
+
+  // State for triggering batch prep generation
+  const [isTriggering, setIsTriggering] = useState(false)
+  const [triggerError, setTriggerError] = useState<string | null>(null)
 
   // Persist active tab to localStorage
   const setActiveTab = useCallback((tab: PrepViewTab) => {
@@ -146,15 +153,52 @@ export default function PrepViewClient({
   // Alias for reading the state
   const activeTab = activeTabState
 
-  // Poll batch prep status if it's still generating
-  const { data: batchPrepStatusData } = useBatchPrepStatus(
-    initialBatchPrepStatus === 'pending' || initialBatchPrepStatus === 'generating'
+  // Poll batch prep status if it's actively generating (not for not_started)
+  const { data: batchPrepStatusData, refetch: refetchBatchPrepStatus } = useBatchPrepStatus(
+    initialBatchPrepStatus === 'pending' || initialBatchPrepStatus === 'generating' || isTriggering
       ? mealPlan.id
       : null
   )
 
   // Use polled status if available, otherwise use initial
   const batchPrepStatus = batchPrepStatusData?.status ?? initialBatchPrepStatus
+  const canGenerateBatchPrep = batchPrepStatusData?.canGenerateBatchPrep ?? initialCanGenerateBatchPrep
+
+  // Handle triggering batch prep generation
+  const handleGenerateBatchPrep = async () => {
+    setIsTriggering(true)
+    setTriggerError(null)
+
+    try {
+      const response = await fetch(`/api/trigger-batch-prep/${mealPlan.id}`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        if (data.code === 'NO_DAY_OF_PREP') {
+          setTriggerError('This older meal plan doesn\'t have the data needed to generate batch prep instructions. Try creating a new meal plan instead.')
+        } else {
+          setTriggerError(data.error || 'Failed to start batch prep generation')
+        }
+        setIsTriggering(false)
+        return
+      }
+
+      // Start polling for status updates
+      refetchBatchPrepStatus()
+    } catch (error) {
+      setTriggerError('Failed to connect to server. Please try again.')
+      setIsTriggering(false)
+    }
+  }
+
+  // Reset triggering state when generation completes or fails
+  useEffect(() => {
+    if (batchPrepStatus === 'completed' || batchPrepStatus === 'failed') {
+      setIsTriggering(false)
+    }
+  }, [batchPrepStatus])
 
   // Ref for scrolling to focused meal section
   const focusedSectionRef = useRef<HTMLDivElement>(null)
@@ -449,12 +493,55 @@ export default function PrepViewClient({
           {/* Batch Prep Tab Content */}
           {activeTab === 'batch' && (
             <>
+              {/* Not Started State - Offer to generate batch prep */}
+              {batchPrepStatus === 'not_started' && !isTriggering && (
+                <div className="card text-center py-8 bg-gradient-to-br from-teal-50 to-blue-50 border-teal-200">
+                  <svg className="w-12 h-12 text-teal-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Generate Batch Prep Instructions
+                  </h3>
+                  {canGenerateBatchPrep ? (
+                    <>
+                      <p className="text-gray-600 text-sm mb-6 max-w-md mx-auto">
+                        Transform your meal plan into an efficient Sunday batch prep session with daily assembly instructions.
+                      </p>
+                      {triggerError && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm max-w-md mx-auto">
+                          {triggerError}
+                        </div>
+                      )}
+                      <button
+                        onClick={handleGenerateBatchPrep}
+                        className="btn-primary"
+                      >
+                        Generate Batch Prep
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-600 text-sm mb-4 max-w-md mx-auto">
+                        This older meal plan doesn&apos;t have the data needed for batch prep generation.
+                        Batch prep is available for new meal plans.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab('fresh')}
+                        className="btn-outline"
+                      >
+                        Use Fresh Cooking Instead
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Loading State */}
-              {(batchPrepStatus === 'pending' || batchPrepStatus === 'generating') && (
+              {(batchPrepStatus === 'pending' || batchPrepStatus === 'generating' || isTriggering) && (
                 <div className="card text-center py-12">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {batchPrepStatus === 'pending' ? 'Preparing batch prep instructions...' : 'Generating batch prep plan...'}
+                    {batchPrepStatus === 'pending' || isTriggering ? 'Preparing batch prep instructions...' : 'Generating batch prep plan...'}
                   </h3>
                   <p className="text-gray-600 text-sm">
                     We&apos;re optimizing your meals for efficient Sunday batch prep.
@@ -464,7 +551,7 @@ export default function PrepViewClient({
               )}
 
               {/* Failed State */}
-              {batchPrepStatus === 'failed' && (
+              {batchPrepStatus === 'failed' && !isTriggering && (
                 <div className="card text-center py-8 border-red-200 bg-red-50">
                   <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -475,12 +562,22 @@ export default function PrepViewClient({
                   <p className="text-gray-600 text-sm mb-4">
                     Don&apos;t worry - you can still use the Fresh Cooking tab for day-of cooking instructions.
                   </p>
-                  <button
-                    onClick={() => setActiveTab('fresh')}
-                    className="btn-primary"
-                  >
-                    Switch to Fresh Cooking
-                  </button>
+                  <div className="flex gap-3 justify-center">
+                    {canGenerateBatchPrep && (
+                      <button
+                        onClick={handleGenerateBatchPrep}
+                        className="btn-outline"
+                      >
+                        Try Again
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setActiveTab('fresh')}
+                      className="btn-primary"
+                    >
+                      Switch to Fresh Cooking
+                    </button>
+                  </div>
                 </div>
               )}
 

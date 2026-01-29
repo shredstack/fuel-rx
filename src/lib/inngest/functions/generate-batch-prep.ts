@@ -41,6 +41,7 @@ type BatchPrepEvent = {
   data: {
     mealPlanId: string;
     userId: string;
+    jobId?: string; // Optional for backwards compatibility
   };
 };
 
@@ -51,15 +52,54 @@ export const generateBatchPrepFunction = inngest.createFunction(
     concurrency: {
       limit: 5,
     },
+    onFailure: async ({ event, error }) => {
+      const { mealPlanId, jobId } = event.data.event.data as BatchPrepEvent['data'];
+      const supabase = createServiceRoleClient();
+      const errorMessage = error.message || 'Unknown error during batch prep generation';
+
+      // Update job status to failed
+      if (jobId) {
+        await supabase
+          .from('meal_plan_jobs')
+          .update({
+            status: 'failed',
+            error_message: errorMessage,
+            progress_message: 'Batch prep generation failed',
+          })
+          .eq('id', jobId);
+      }
+
+      // Update meal_plans status to failed for UI
+      await supabase
+        .from('meal_plans')
+        .update({ batch_prep_status: 'failed' })
+        .eq('id', mealPlanId);
+    },
   },
   { event: 'meal-plan/generate-batch-prep' },
   async ({ event, step }) => {
-    const { mealPlanId, userId } = event.data as BatchPrepEvent['data'];
+    const { mealPlanId, userId, jobId } = event.data as BatchPrepEvent['data'];
     const supabase = createServiceRoleClient();
+
+    // Helper to update job status
+    const updateJobStatus = async (status: string, progressMessage: string, errorMessage?: string) => {
+      if (!jobId) return;
+      await supabase
+        .from('meal_plan_jobs')
+        .update({
+          status,
+          progress_message: progressMessage,
+          ...(errorMessage && { error_message: errorMessage }),
+        })
+        .eq('id', jobId);
+    };
 
     // Step 1: Load meal plan data
     const mealPlanData = await step.run('load-meal-plan', async () => {
-      // Update status to generating
+      // Update job status
+      await updateJobStatus('generating_prep', 'Loading meal plan data...');
+
+      // Update status to generating on meal_plans (for UI)
       await supabase
         .from('meal_plans')
         .update({ batch_prep_status: 'generating' })
@@ -139,6 +179,7 @@ export const generateBatchPrepFunction = inngest.createFunction(
 
     // Step 2: Transform to batch prep
     const batchPrepResult = await step.run('transform-to-batch-prep', async () => {
+      await updateJobStatus('generating_prep', 'Transforming to batch prep format...');
       return await transformToBatchPrep(
         mealPlanData.dayOfPrepSessions,
         mealPlanData.days,
@@ -152,6 +193,8 @@ export const generateBatchPrepFunction = inngest.createFunction(
 
     // Step 3: Save batch prep result
     await step.run('save-batch-prep', async () => {
+      await updateJobStatus('saving', 'Saving batch prep results...');
+
       const { error } = await supabase
         .from('meal_plans')
         .update({
@@ -161,11 +204,15 @@ export const generateBatchPrepFunction = inngest.createFunction(
         .eq('id', mealPlanId);
 
       if (error) {
+        await updateJobStatus('failed', 'Failed to save batch prep', error.message);
         throw new Error(`Failed to save batch prep: ${error.message}`);
       }
+
+      // Mark job as completed
+      await updateJobStatus('completed', 'Batch prep generation complete!');
     });
 
-    return { success: true, mealPlanId };
+    return { success: true, mealPlanId, jobId };
   }
 );
 

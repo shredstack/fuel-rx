@@ -944,11 +944,31 @@ export const generateMealPlanFunction = inngest.createFunction(
       // This runs in the background - users can view batch prep once it's ready
       await step.run('trigger-batch-prep', async () => {
         try {
+          const supabase = createServiceRoleClient();
+
+          // Create a job record for tracking/history
+          const { data: batchPrepJob, error: jobError } = await supabase
+            .from('meal_plan_jobs')
+            .insert({
+              user_id: userId,
+              meal_plan_id: savedPlanId,
+              job_type: 'batch_prep_generation',
+              status: 'pending',
+              progress_message: 'Starting batch prep generation...',
+            })
+            .select('id')
+            .single();
+
+          if (jobError) {
+            console.error('[Batch Prep] Failed to create job record:', jobError);
+          }
+
           await inngest.send({
             name: 'meal-plan/generate-batch-prep',
             data: {
               mealPlanId: savedPlanId,
               userId,
+              jobId: batchPrepJob?.id,
             },
           });
         } catch (err) {

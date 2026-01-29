@@ -57,4 +57,4 @@ ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 xcuserdata/
 
 # Local supabase queries
-snippets/*
+supabase/snippets/*
