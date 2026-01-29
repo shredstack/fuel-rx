@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -76,6 +76,8 @@ const DAY_LABELS: Record<string, string> = {
 
 const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack', 'pre_workout', 'post_workout']
 
+const SELECTED_DAY_STORAGE_KEY = 'fuelrx-mealplan-selected-day'
+
 // Convert prep_time_minutes to CustomMealPrepTime format for social feed
 function minutesToPrepTime(minutes: number): CustomMealPrepTime {
   if (minutes <= 5) return '5_or_less'
@@ -95,8 +97,31 @@ export default function MealPlanClient({
   const searchParams = useSearchParams()
   const supabase = createClient()
   const [mealPlan, setMealPlan] = useState(initialMealPlan)
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(mealPlan.days[0]?.day || 'monday')
+  const [selectedDayState, setSelectedDayState] = useState<DayOfWeek>(mealPlan.days[0]?.day || 'monday')
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null)
+
+  // Persist selected day to localStorage
+  const setSelectedDay = useCallback((day: DayOfWeek) => {
+    setSelectedDayState(day)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SELECTED_DAY_STORAGE_KEY, day)
+    }
+  }, [])
+
+  // On mount, restore selected day from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SELECTED_DAY_STORAGE_KEY) as DayOfWeek | null
+      const validDays = mealPlan.days.map(d => d.day)
+      if (saved && validDays.includes(saved)) {
+        setSelectedDayState(saved)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Alias for reading the state
+  const selectedDay = selectedDayState
   const [isFavorite, setIsFavorite] = useState(mealPlan.is_favorite)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
 
@@ -880,35 +905,6 @@ export default function MealPlanClient({
         {/* Nutrition Disclaimer - Required by Apple App Store Guideline 1.4.1 */}
         <NutritionDisclaimer className="mb-6" />
 
-        {/* Batch Prep Mode CTA Banner */}
-        <Link
-          href={`/prep-view/${mealPlan.id}`}
-          className="block mb-6 p-4 bg-gradient-to-r from-primary-50 to-green-50 border border-primary-200 rounded-xl hover:from-primary-100 hover:to-green-100 transition-colors group"
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center group-hover:bg-primary-200 transition-colors">
-              <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-semibold text-gray-900">Ready to batch prep?</span>
-                <span className="text-primary-600 font-medium group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  Start Cooking
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </span>
-              </div>
-              <p className="text-sm text-gray-600">
-                Get step-by-step cooking instructions with an AI assistant that knows your meals and can help with substitutions, timing, and technique. You can use the fresh day-of cooking instructions or batch prep instructions if you like to prepare eligible ingredients beforehand.
-              </p>
-            </div>
-          </div>
-        </Link>
-
         {/* Mobile sticky action bar - key actions always visible */}
         <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex gap-3 shadow-lg">
           <Link
@@ -1070,6 +1066,35 @@ export default function MealPlanClient({
             prepStyle={prepStyle}
           />
         )}
+
+        {/* Batch Prep Mode CTA Banner */}
+        <Link
+          href={`/prep-view/${mealPlan.id}`}
+          className="block mt-8 p-4 bg-gradient-to-r from-primary-50 to-green-50 border border-primary-200 rounded-xl hover:from-primary-100 hover:to-green-100 transition-colors group"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center group-hover:bg-primary-200 transition-colors">
+              <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-semibold text-gray-900">Ready to batch prep?</span>
+                <span className="text-primary-600 font-medium group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                  Start Cooking
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </div>
+              <p className="text-sm text-gray-600">
+                Get step-by-step cooking instructions with an AI assistant that knows your meals and can help with substitutions, timing, and technique. You can use the fresh day-of cooking instructions or batch prep instructions if you like to prepare eligible ingredients beforehand.
+              </p>
+            </div>
+          </div>
+        </Link>
 
         {/* Swap Modal */}
         {swapTarget && (

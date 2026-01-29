@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import type {
   MealPlanNormalized,
   MealSlot,
@@ -18,6 +18,8 @@ import { MEAL_TYPE_CONFIG, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 import { groupMealsByTypeDeduped, type DeduplicatedMeal } from '@/lib/meal-plan-utils'
 import { MealCard } from './MealCard'
 import type { PrepTaskWithSession } from '@/components/prep/prepUtils'
+
+const MEAL_TYPE_STORAGE_KEY = 'fuelrx-mealplan-meal-type'
 
 interface IngredientPreferencesMap {
   [ingredientNameNormalized: string]: {
@@ -112,14 +114,40 @@ export function MealTypeView({
     [groupedMeals]
   )
 
-  // Selected meal type tab - use initialMealType if valid, otherwise first active type
-  const getInitialMealType = (): MealType => {
-    if (initialMealType && activeMealTypes.includes(initialMealType)) {
-      return initialMealType
+  // Selected meal type tab - start with first active type, then sync from storage
+  const [selectedMealType, setSelectedMealTypeState] = useState<MealType>(
+    activeMealTypes[0] || 'breakfast'
+  )
+
+  // Persist meal type to localStorage when it changes
+  const setSelectedMealType = useCallback((mealType: MealType) => {
+    setSelectedMealTypeState(mealType)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MEAL_TYPE_STORAGE_KEY, mealType)
     }
-    return activeMealTypes[0] || 'breakfast'
-  }
-  const [selectedMealType, setSelectedMealType] = useState<MealType>(getInitialMealType)
+  }, [])
+
+  // On mount, restore from URL param or localStorage (priority: URL > localStorage > default)
+  useEffect(() => {
+    // URL param takes highest priority
+    if (initialMealType && activeMealTypes.includes(initialMealType)) {
+      setSelectedMealTypeState(initialMealType)
+      return
+    }
+    // Check localStorage for saved preference
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(MEAL_TYPE_STORAGE_KEY) as MealType | null
+      if (saved && activeMealTypes.includes(saved)) {
+        setSelectedMealTypeState(saved)
+        return
+      }
+    }
+    // Default to first active type
+    if (activeMealTypes.length > 0) {
+      setSelectedMealTypeState(activeMealTypes[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Get meals for selected type (deduplicated)
   const mealsForType = groupedMeals.get(selectedMealType) || []

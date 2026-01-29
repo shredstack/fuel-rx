@@ -162,8 +162,9 @@ function groupAssemblyByMealType(
         // Parse instructions into steps
         const { steps, tips } = parseAssemblyInstructions(instructions, mealId)
 
-        // Create a key based on meal name + instructions (to group identical meals)
-        const groupKey = `${mealName.toLowerCase()}_${instructions.toLowerCase()}`
+        // Group by meal name only - identical meals should have the same assembly process
+        // even if the LLM generates slightly different wording per day
+        const groupKey = mealName.toLowerCase()
 
         if (mealsByKey.has(groupKey)) {
           // Add this day to existing meal group

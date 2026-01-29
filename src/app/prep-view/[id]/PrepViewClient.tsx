@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -18,6 +18,8 @@ import NutritionDisclaimer from '@/components/NutritionDisclaimer'
 import { useBatchPrepStatus } from '@/hooks/queries/useBatchPrepStatus'
 
 type PrepViewTab = 'fresh' | 'batch'
+
+const PREP_VIEW_TAB_STORAGE_KEY = 'fuelrx-prep-view-tab'
 
 interface PrepViewClientProps {
   mealPlan: {
@@ -121,7 +123,28 @@ export default function PrepViewClient({
   const focusMealName = focusMealParam ? decodeURIComponent(focusMealParam) : null
 
   // Tab state - default to 'fresh' (day-of cooking) view
-  const [activeTab, setActiveTab] = useState<PrepViewTab>('fresh')
+  const [activeTabState, setActiveTabState] = useState<PrepViewTab>('fresh')
+
+  // Persist active tab to localStorage
+  const setActiveTab = useCallback((tab: PrepViewTab) => {
+    setActiveTabState(tab)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(PREP_VIEW_TAB_STORAGE_KEY, tab)
+    }
+  }, [])
+
+  // On mount, restore active tab from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(PREP_VIEW_TAB_STORAGE_KEY) as PrepViewTab | null
+      if (saved === 'fresh' || saved === 'batch') {
+        setActiveTabState(saved)
+      }
+    }
+  }, [])
+
+  // Alias for reading the state
+  const activeTab = activeTabState
 
   // Poll batch prep status if it's still generating
   const { data: batchPrepStatusData } = useBatchPrepStatus(
