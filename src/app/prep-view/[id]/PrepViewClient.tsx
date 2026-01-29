@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { PrepSession, PrepStyle, DailyAssembly, DayPlan, DayPlanNormalized, HouseholdServingsPrefs, PrepModeResponse, BatchPrepStatus } from '@/lib/types'
 import { PREP_STYLE_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
@@ -121,6 +121,7 @@ export default function PrepViewClient({
   canGenerateBatchPrep: initialCanGenerateBatchPrep = false,
 }: PrepViewClientProps) {
   const supabase = createClient()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const focusMealParam = searchParams.get('focusMeal')
   const focusMealName = focusMealParam ? decodeURIComponent(focusMealParam) : null
@@ -240,6 +241,14 @@ export default function PrepViewClient({
   const batchSessions = batchSessionsFromNewColumn.length > 0
     ? batchSessionsFromNewColumn
     : batchSessionsFromLegacy
+
+  // When batch prep generation completes but we still have stale (empty) props,
+  // refresh server data so the page re-renders with the new prep_sessions_batch
+  useEffect(() => {
+    if (batchPrepStatus === 'completed' && batchSessions.length === 0) {
+      router.refresh()
+    }
+  }, [batchPrepStatus, batchSessions.length, router])
 
   // Day-of sessions come from the legacy prep_sessions table
   const dayOfSessions = prepSessions.filter(s => s.session_type !== 'weekly_batch')
@@ -545,7 +554,7 @@ export default function PrepViewClient({
                   </h3>
                   <p className="text-gray-600 text-sm">
                     We&apos;re optimizing your meals for efficient Sunday batch prep.
-                    This usually takes 1-2 minutes.
+                    This usually takes ~5 minutes so feel free to come back later.
                   </p>
                 </div>
               )}
