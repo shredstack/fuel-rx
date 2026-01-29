@@ -77,7 +77,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             });
           }
         )
-        // Meal plan changes
+        // Meal plan changes (including batch prep status updates)
         .on(
           'postgres_changes',
           {
@@ -86,7 +86,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             table: 'meal_plans',
             filter: `user_id=eq.${user.id}`,
           },
-          () => {
+          (payload) => {
             queryClient.invalidateQueries({
               queryKey: queryKeys.mealPlans.all,
             });
@@ -94,6 +94,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries({
               queryKey: queryKeys.consumption.all,
             });
+            // Invalidate specific batch prep status if meal plan ID is known
+            if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.mealPlans.batchPrepStatus(payload.new.id as string),
+              });
+            }
           }
         )
         // Meal plan meals changes

@@ -7,7 +7,7 @@ import { RealtimeProvider } from '@/providers/RealtimeProvider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "Coach Hill's FuelRx - AI Meal Planning for CrossFit Draper Athletes",
+  title: "Coach Hill's FuelRx - AI Meal Planning for CrossFit Athletes",
   description: 'AI-powered meal planning optimized for your macros, training schedule, and dietary preferences.',
   icons: {
     icon: '/favicon.ico',

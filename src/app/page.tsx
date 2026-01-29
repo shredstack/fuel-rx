@@ -24,10 +24,10 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
           <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6">
             AI-Powered Meal Planning for{' '}
-            <span className="text-primary-600">CrossFit Draper Athletes</span>
+            <span className="text-primary-600">CrossFit Athletes</span>
           </h2>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Get personalized weekly meal plans optimized for your macros 
+            Get personalized weekly meal plans optimized for your macros
             and dietary preferences.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

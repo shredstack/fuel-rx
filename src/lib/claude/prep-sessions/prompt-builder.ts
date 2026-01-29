@@ -3,17 +3,20 @@ import type {
   CoreIngredients,
   UserProfile,
   DayOfWeek,
-  PrepStyle,
   MealComplexity,
   HouseholdServingsPrefs,
 } from '../../types';
 import { DAYS_OF_WEEK, DAY_OF_WEEK_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '../../types';
-import { buildBatchPrepPromptSection } from './batch-prep-rules';
+// Note: batch-prep-rules is now used by batch-transform.ts for async batch prep generation
 import { buildDayOfPromptSection } from './day-of-rules';
 import { hasHouseholdMembers, getServingMultiplier } from '../helpers';
 
 /**
- * Builds the complete prep sessions prompt based on user's prep style
+ * Builds the complete prep sessions prompt for day-of fresh cooking.
+ *
+ * This ALWAYS generates day-of cooking instructions regardless of user's prep_style.
+ * Batch prep instructions are generated separately via async transformation
+ * (see batch-transform.ts and the generate-batch-prep Inngest function).
  */
 export function buildPrepSessionsPrompt(
   days: DayPlan[],
@@ -21,8 +24,6 @@ export function buildPrepSessionsPrompt(
   profile: UserProfile,
   weekStartDate?: string
 ): string {
-  const prepStyle = profile.prep_style || 'day_of';
-
   // Build meal IDs for reference (index per meal type, not global)
   const mealIds: Record<string, string> = {};
   days.forEach((day) => {
@@ -38,7 +39,7 @@ export function buildPrepSessionsPrompt(
   // Build a detailed summary of the meal plan with IDs AND instructions
   const mealSummary = buildMealSummary(days);
 
-  // Get meal complexities
+  // Get meal complexities for day-of cooking instructions
   const breakfastComplexity = (profile.breakfast_complexity || 'minimal_prep') as MealComplexity;
   const lunchComplexity = (profile.lunch_complexity || 'quick_assembly') as MealComplexity;
   const dinnerComplexity = (profile.dinner_complexity || 'full_recipe') as MealComplexity;
@@ -46,10 +47,9 @@ export function buildPrepSessionsPrompt(
   // Calculate week dates for prep_for_date
   const dayDates = calculateWeekDates(weekStartDate);
 
-  // Get prep style specific instructions
-  const prepStyleInstructions = prepStyle === 'traditional_batch'
-    ? buildBatchPrepPromptSection()
-    : buildDayOfPromptSection(breakfastComplexity, lunchComplexity, dinnerComplexity);
+  // ALWAYS use day-of fresh cooking instructions
+  // Batch prep is generated as a separate async transformation step
+  const prepStyleInstructions = buildDayOfPromptSection(breakfastComplexity, lunchComplexity, dinnerComplexity);
 
   // Build household context for prep instructions
   const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;

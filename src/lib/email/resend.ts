@@ -34,7 +34,7 @@ export async function sendVerificationEmail({
 
   try {
     const { error } = await client.emails.send({
-      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      from: `FuelRx <${FROM_EMAIL}>`,
       replyTo: REPLY_TO_EMAIL,
       to: [to],
       subject: 'Verify your FuelRx account',
@@ -54,7 +54,7 @@ export async function sendVerificationEmail({
           <tr>
             <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                Coach Hill's FuelRx
+                FuelRx
               </h1>
             </td>
           </tr>
@@ -163,7 +163,7 @@ export async function sendMealPlanReadyEmail({
 
   try {
     const { error } = await client.emails.send({
-      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      from: `FuelRx <${FROM_EMAIL}>`,
       replyTo: REPLY_TO_EMAIL,
       to: [to],
       subject,
@@ -183,7 +183,7 @@ export async function sendMealPlanReadyEmail({
           <tr>
             <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                Coach Hill's FuelRx
+                FuelRx
               </h1>
             </td>
           </tr>
@@ -287,7 +287,7 @@ export async function sendPasswordResetEmail({
 
   try {
     const { error } = await client.emails.send({
-      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      from: `FuelRx <${FROM_EMAIL}>`,
       replyTo: REPLY_TO_EMAIL,
       to: [to],
       subject: 'Reset your FuelRx password',
@@ -307,7 +307,7 @@ export async function sendPasswordResetEmail({
           <tr>
             <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                Coach Hill's FuelRx
+                FuelRx
               </h1>
             </td>
           </tr>
@@ -418,7 +418,7 @@ export async function sendMealPlanSharedEmail({
 
   try {
     const { error } = await client.emails.send({
-      from: `Coach Hill's FuelRx <${FROM_EMAIL}>`,
+      from: `FuelRx <${FROM_EMAIL}>`,
       replyTo: REPLY_TO_EMAIL,
       to: [to],
       subject,
@@ -438,7 +438,7 @@ export async function sendMealPlanSharedEmail({
           <tr>
             <td style="background-color: #16a34a; padding: 32px 40px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                Coach Hill's FuelRx
+                FuelRx
               </h1>
             </td>
           </tr>

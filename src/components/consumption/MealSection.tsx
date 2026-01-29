@@ -71,6 +71,13 @@ export default function MealSection({
   // Start expanded if there are entries OR if there are previous entries to show the "Log same" hint
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed && entries.length === 0 && !previousEntries);
   const [isRepeating, setIsRepeating] = useState(false);
+  // Store today's date in state to avoid hydration mismatch
+  const [today, setToday] = useState<string>('');
+
+  // Set today's date after mount to avoid hydration mismatch
+  useEffect(() => {
+    setToday(getTodayString());
+  }, []);
 
   // Auto-expand when forceExpand is true (e.g., when an item was just logged to this section)
   useEffect(() => {
@@ -116,8 +123,6 @@ export default function MealSection({
       setIsRepeating(false);
     }
   };
-
-  const today = getTodayString();
 
   return (
     <div className="card mb-4">
@@ -184,8 +189,8 @@ export default function MealSection({
             <p className="text-sm text-gray-400 text-center py-2">No items logged</p>
           )}
 
-          {/* Previous entries hint (only show when empty and has previous) */}
-          {isEmpty && previousEntries && previousSummary && (
+          {/* Previous entries hint (only show when empty and has previous, after today is set) */}
+          {isEmpty && previousEntries && previousSummary && today && (
             <div className="mt-3 pt-3 border-t border-gray-100">
               <div className="flex items-start gap-2 text-sm">
                 <span className="text-yellow-500 mt-0.5">💡</span>

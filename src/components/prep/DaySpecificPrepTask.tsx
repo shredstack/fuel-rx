@@ -17,6 +17,7 @@ interface Props {
   onToggleStepComplete: (taskId: string, stepIndex: number) => void
   householdServings?: HouseholdServingsPrefs
   dailyAssembly?: DailyAssembly
+  defaultExpanded?: boolean
 }
 
 export default function DaySpecificPrepTask({
@@ -28,9 +29,11 @@ export default function DaySpecificPrepTask({
   onToggleStepComplete,
   householdServings = DEFAULT_HOUSEHOLD_SERVINGS_PREFS,
   dailyAssembly,
+  defaultExpanded = false,
 }: Props) {
   // Start collapsed for single-day items (variety meals) - click header to expand
-  const [isExpanded, setIsExpanded] = useState(false)
+  // Unless defaultExpanded is true (e.g., from Cook Now navigation)
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [showPrintModal, setShowPrintModal] = useState(false)
 
   const primaryTask = meal.tasks[0]
