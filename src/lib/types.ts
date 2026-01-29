@@ -803,8 +803,38 @@ export interface PrepModeResponse {
     estimatedMinutes: number;
     instructions: string;
     prepItems: PrepItem[];
+    // Extended fields for new prep task system
+    sessionType?: PrepSessionType;
+    sessionDay?: DayOfWeek | null;
+    sessionTimeOfDay?: 'morning' | 'afternoon' | 'night' | null;
+    prepForDate?: string | null;
+    prepTasks?: PrepTask[];
+    displayOrder?: number;
   }>;
   dailyAssembly: DailyAssembly;
+}
+
+// ============================================
+// Batch Prep Status Types
+// ============================================
+
+/** Status of async batch prep generation */
+export type BatchPrepStatus = 'not_started' | 'pending' | 'generating' | 'completed' | 'failed';
+
+/** Prep session data stored on meal_plans table */
+export interface MealPlanPrepSessions {
+  prep_sessions_day_of: PrepModeResponse | null;
+  prep_sessions_batch: PrepModeResponse | null;
+  batch_prep_status: BatchPrepStatus;
+}
+
+/** Response from batch prep status API endpoint */
+export interface BatchPrepStatusResponse {
+  status: BatchPrepStatus;
+  ready: boolean;
+  hasBatchPrep: boolean;
+  /** Whether this plan has day-of prep data needed to generate batch prep */
+  canGenerateBatchPrep?: boolean;
 }
 
 // ============================================
@@ -1416,6 +1446,14 @@ export interface TourStep {
 
 export const FIRST_PLAN_TOUR_STEPS: TourStep[] = [
   {
+    id: 'view_toggle',
+    targetSelector: '[data-tour="view-toggle"]',
+    title: 'Choose Your View',
+    description:
+      'Switch between Daily view (meals organized by day) and By Meal Type view (all breakfasts together, all lunches together, etc.). Both views show the same meals - pick whichever works best for you!',
+    position: 'bottom',
+  },
+  {
     id: 'day_selector',
     targetSelector: '[data-tour="day-selector"]',
     title: 'Navigate Your Week',
@@ -1432,8 +1470,9 @@ export const FIRST_PLAN_TOUR_STEPS: TourStep[] = [
   {
     id: 'meal_card',
     targetSelector: '[data-tour="meal-card"]',
-    title: 'Explore Your Meals',
-    description: 'Click any meal to expand it and see ingredients, instructions, and nutrition details.',
+    title: 'Explore & Cook Your Meals',
+    description:
+      'Click any meal to expand it and see ingredients, step-by-step cooking instructions, and nutrition details. You can cook directly from here!',
     position: 'top',
   },
   {
@@ -1447,21 +1486,24 @@ export const FIRST_PLAN_TOUR_STEPS: TourStep[] = [
     id: 'swap_button',
     targetSelector: '[data-tour="swap-button"]',
     title: 'Swap Meals',
-    description: 'Not feeling a meal? Swap it with your custom meals, community favorites, or previous meals.',
+    description:
+      'Not feeling a meal? Swap it with your custom meals, community favorites, or previous meals.',
     position: 'left',
   },
   {
     id: 'grocery_list',
     targetSelector: '[data-tour="grocery-list-link"]',
     title: 'Your Grocery List',
-    description: 'All ingredients aggregated and organized by category. Check items off as you shop!',
+    description:
+      'All ingredients aggregated and organized by category. Check items off as you shop!',
     position: 'bottom',
   },
   {
     id: 'prep_schedule',
     targetSelector: '[data-tour="prep-schedule-link"]',
-    title: 'Prep Schedule',
-    description: 'Step-by-step prep instructions organized by day, with detailed cooking tips.',
+    title: 'Prep View',
+    description:
+      'Prefer to batch prep? The Prep View organizes cooking by prep session, perfect for weekend meal prep. You can also cook day-of using instructions right here on the meal cards.',
     position: 'bottom',
   },
 ];

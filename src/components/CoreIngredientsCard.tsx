@@ -51,7 +51,7 @@ const CATEGORY_ICONS: Record<IngredientCategory, React.ReactNode> = {
 }
 
 export default function CoreIngredientsCard({ coreIngredients }: Props) {
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   const allItems = Object.values(coreIngredients).flat() as CoreIngredientItem[]
   const totalItems = allItems.length

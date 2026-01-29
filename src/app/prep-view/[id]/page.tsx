@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PrepViewClient from './PrepViewClient'
-import type { PrepSession, DailyAssembly, DayPlanNormalized, MealSlot, MealEntity, DayOfWeek, MealType, HouseholdServingsPrefs } from '@/lib/types'
+import type { PrepSession, DailyAssembly, DayPlanNormalized, MealSlot, MealEntity, DayOfWeek, MealType, HouseholdServingsPrefs, PrepModeResponse, BatchPrepStatus } from '@/lib/types'
 import { DEFAULT_HOUSEHOLD_SERVINGS_PREFS } from '@/lib/types'
 
 const DAYS_ORDER: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -24,10 +24,10 @@ export default async function PrepViewPage({
     redirect('/login')
   }
 
-  // Fetch meal plan (basic metadata only - plan_data was removed)
+  // Fetch meal plan with new prep session columns
   const { data: mealPlan, error: planError } = await supabase
     .from('meal_plans')
-    .select('id, user_id, week_start_date, title, theme_id, core_ingredients, is_favorite, created_at, prep_style')
+    .select('id, user_id, week_start_date, title, theme_id, core_ingredients, is_favorite, created_at, prep_style, prep_sessions_day_of, prep_sessions_batch, batch_prep_status')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
@@ -177,6 +177,16 @@ export default async function PrepViewPage({
     }
   }
 
+  // Determine batch prep status - use 'not_started' for plans that never had batch prep
+  const canGenerateBatchPrep = !!mealPlan.prep_sessions_day_of
+  let batchPrepStatus: BatchPrepStatus
+  if (mealPlan.batch_prep_status) {
+    batchPrepStatus = mealPlan.batch_prep_status as BatchPrepStatus
+  } else {
+    // No status set - this is either a legacy plan or batch prep was never triggered
+    batchPrepStatus = 'not_started'
+  }
+
   return (
     <PrepViewClient
       mealPlan={{
@@ -188,6 +198,11 @@ export default async function PrepViewPage({
       prepStyle={mealPlan.prep_style || 'day_of'}
       dailyAssembly={dailyAssembly}
       householdServings={householdServings}
+      // New batch prep data from meal_plans table
+      prepSessionsDayOf={mealPlan.prep_sessions_day_of as PrepModeResponse | null}
+      prepSessionsBatch={mealPlan.prep_sessions_batch as PrepModeResponse | null}
+      batchPrepStatus={batchPrepStatus}
+      canGenerateBatchPrep={canGenerateBatchPrep}
     />
   )
 }

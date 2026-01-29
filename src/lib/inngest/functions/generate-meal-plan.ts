@@ -832,6 +832,20 @@ export const generateMealPlanFunction = inngest.createFunction(
             console.error('Failed to save prep sessions:', prepError);
             // Don't throw - prep sessions are non-critical, meal plan is still usable
           }
+
+          // Save the raw PrepModeResponse to meal_plans.prep_sessions_day_of for batch prep transformation
+          const { error: updateError } = await supabase
+            .from('meal_plans')
+            .update({
+              prep_sessions_day_of: prepSessions,
+              batch_prep_status: 'pending',
+            })
+            .eq('id', savedPlan.id);
+
+          if (updateError) {
+            console.error('Failed to update meal_plan with prep_sessions_day_of:', updateError);
+            // Non-critical - batch prep can still be generated on-demand
+          }
         } else {
           console.warn('No prep sessions to save - prepSessionsArray may have been empty');
         }
@@ -925,6 +939,43 @@ export const generateMealPlanFunction = inngest.createFunction(
           }
         });
       }
+
+      // Step 12: Trigger async batch prep generation
+      // This runs in the background - users can view batch prep once it's ready
+      await step.run('trigger-batch-prep', async () => {
+        try {
+          const supabase = createServiceRoleClient();
+
+          // Create a job record for tracking/history
+          const { data: batchPrepJob, error: jobError } = await supabase
+            .from('meal_plan_jobs')
+            .insert({
+              user_id: userId,
+              meal_plan_id: savedPlanId,
+              job_type: 'batch_prep_generation',
+              status: 'pending',
+              progress_message: 'Starting batch prep generation...',
+            })
+            .select('id')
+            .single();
+
+          if (jobError) {
+            console.error('[Batch Prep] Failed to create job record:', jobError);
+          }
+
+          await inngest.send({
+            name: 'meal-plan/generate-batch-prep',
+            data: {
+              mealPlanId: savedPlanId,
+              userId,
+              jobId: batchPrepJob?.id,
+            },
+          });
+        } catch (err) {
+          // Non-critical - batch prep can be regenerated on-demand
+          console.error('[Batch Prep] Failed to trigger generation:', err);
+        }
+      });
 
       return { success: true, mealPlanId: savedPlanId };
 
