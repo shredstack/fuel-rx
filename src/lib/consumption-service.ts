@@ -22,6 +22,8 @@ import type {
   FruitVegProgress,
   WaterProgress,
   IngredientCategoryType,
+  ConsumptionSummaryData,
+  WeeklySummaryDataPoint,
 } from '@/lib/types';
 
 // Categories that count toward the 800g goal
@@ -2100,6 +2102,155 @@ export async function getMonthlyConsumption(
     dailyData,
     entry_count: entryCount,
     byMealType,
+  };
+}
+
+/**
+ * Get rolling-year summary data with weekly averages for macros, fruit/veg, and water.
+ * Used by the Summary tab on the log-meal page.
+ */
+export async function getConsumptionSummary(userId: string): Promise<ConsumptionSummaryData> {
+  const supabase = await createClient();
+
+  // Get user's daily macro targets
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('target_calories, target_protein, target_carbs, target_fat')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('Profile not found');
+
+  // Calculate date range: 52 weeks back from today (Monday-aligned)
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayWeekStart = getWeekStartFromDateStr(todayStr);
+
+  // Go back 51 more weeks from this week's Monday (52 weeks total including current)
+  const [twsYear, twsMonth, twsDay] = todayWeekStart.split('-').map(Number);
+  const rangeStart = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - 51 * 7, 12, 0, 0));
+  const rangeStartStr = rangeStart.toISOString().split('T')[0];
+
+  // Fetch all consumption entries in the range
+  const { data: entries, error: entriesError } = await supabase
+    .from('meal_consumption_log')
+    .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
+    .eq('user_id', userId)
+    .gte('consumed_date', rangeStartStr)
+    .lte('consumed_date', todayStr)
+    .order('consumed_date', { ascending: true });
+
+  if (entriesError) throw new Error(`Failed to fetch consumption entries: ${entriesError.message}`);
+
+  // Fetch all water entries in the range
+  const { data: waterEntries, error: waterError } = await supabase
+    .from('daily_water_log')
+    .select('date, ounces_consumed')
+    .eq('user_id', userId)
+    .gte('date', rangeStartStr)
+    .lte('date', todayStr);
+
+  if (waterError) throw new Error(`Failed to fetch water entries: ${waterError.message}`);
+
+  // Build daily aggregates for macros and fruit/veg
+  const dailyMacros = new Map<string, { calories: number; protein: number; carbs: number; fat: number; fruitVegGrams: number; hasEntries: boolean }>();
+
+  for (const entry of entries || []) {
+    const date = entry.consumed_date;
+    const existing = dailyMacros.get(date) || { calories: 0, protein: 0, carbs: 0, fat: 0, fruitVegGrams: 0, hasEntries: false };
+
+    existing.calories += entry.calories;
+    existing.protein += entry.protein;
+    existing.carbs += entry.carbs;
+    existing.fat += entry.fat;
+    existing.hasEntries = true;
+
+    if (entry.ingredient_category && FRUIT_VEG_CATEGORIES.includes(entry.ingredient_category.toLowerCase())) {
+      existing.fruitVegGrams += (entry.grams || 0);
+    }
+
+    dailyMacros.set(date, existing);
+  }
+
+  // Build daily water map
+  const dailyWater = new Map<string, number>();
+  for (const w of waterEntries || []) {
+    dailyWater.set(w.date, w.ounces_consumed);
+  }
+
+  // Generate 52 weekly data points
+  const weeks: WeeklySummaryDataPoint[] = [];
+
+  for (let i = 0; i < 52; i++) {
+    const weekStartDate = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - (51 - i) * 7, 12, 0, 0));
+    const weekStartStr = weekStartDate.toISOString().split('T')[0];
+
+    // Format week label (e.g., "Jan 6")
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const weekLabel = `${monthNames[weekStartDate.getUTCMonth()]} ${weekStartDate.getUTCDate()}`;
+
+    // Accumulate 7 days for this week
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+    let totalFruitVegGrams = 0;
+    let totalWaterOunces = 0;
+    let daysWithMealData = 0;
+    let daysWithWaterData = 0;
+
+    for (let d = 0; d < 7; d++) {
+      const dayDate = new Date(Date.UTC(
+        weekStartDate.getUTCFullYear(),
+        weekStartDate.getUTCMonth(),
+        weekStartDate.getUTCDate() + d,
+        12, 0, 0
+      ));
+      const dayStr = dayDate.toISOString().split('T')[0];
+
+      // Don't count future days
+      if (dayStr > todayStr) break;
+
+      const macroData = dailyMacros.get(dayStr);
+      if (macroData?.hasEntries) {
+        totalCalories += macroData.calories;
+        totalProtein += macroData.protein;
+        totalCarbs += macroData.carbs;
+        totalFat += macroData.fat;
+        totalFruitVegGrams += macroData.fruitVegGrams;
+        daysWithMealData++;
+      }
+
+      const waterOunces = dailyWater.get(dayStr);
+      if (waterOunces !== undefined && waterOunces > 0) {
+        totalWaterOunces += waterOunces;
+        daysWithWaterData++;
+      }
+    }
+
+    weeks.push({
+      weekStart: weekStartStr,
+      weekLabel,
+      avgCalories: daysWithMealData > 0 ? Math.round(totalCalories / daysWithMealData) : 0,
+      avgProtein: daysWithMealData > 0 ? Math.round((totalProtein / daysWithMealData) * 10) / 10 : 0,
+      avgCarbs: daysWithMealData > 0 ? Math.round((totalCarbs / daysWithMealData) * 10) / 10 : 0,
+      avgFat: daysWithMealData > 0 ? Math.round((totalFat / daysWithMealData) * 10) / 10 : 0,
+      daysWithData: daysWithMealData,
+      avgFruitVegGrams: daysWithMealData > 0 ? Math.round(totalFruitVegGrams / daysWithMealData) : 0,
+      avgWaterOunces: daysWithWaterData > 0 ? Math.round(totalWaterOunces / daysWithWaterData) : 0,
+    });
+  }
+
+  return {
+    weeks,
+    targets: {
+      calories: profile.target_calories,
+      protein: profile.target_protein,
+      carbs: profile.target_carbs,
+      fat: profile.target_fat,
+      fruitVegGrams: FRUIT_VEG_GOAL_GRAMS,
+      waterOunces: WATER_GOAL_OUNCES,
+    },
   };
 }
 

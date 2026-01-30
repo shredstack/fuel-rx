@@ -20,7 +20,7 @@ import type {
   EditableIngredient,
   IngredientWithNutrition,
 } from '@/lib/types';
-import { useLogMealData, useWeeklyConsumption, useMonthlyConsumption, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
+import { useLogMealData, useWeeklyConsumption, useMonthlyConsumption, useConsumptionSummary, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
 import { useMealIngredients } from '@/hooks/queries/useMealIngredients';
 import {
   useLogMeal,
@@ -48,6 +48,7 @@ import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import DailyAverageCard from '@/components/consumption/DailyAverageCard';
 import TrendChart from '@/components/consumption/TrendChart';
 import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
+import SummaryView from '@/components/consumption/SummaryView';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
 import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
@@ -178,6 +179,7 @@ export default function LogMealClient({
   const [year, month] = selectedDate.split('-').map(Number);
   const weeklyQuery = useWeeklyConsumption(selectedDate, selectedPeriod === 'weekly');
   const monthlyQuery = useMonthlyConsumption(year, month, selectedPeriod === 'monthly');
+  const summaryQuery = useConsumptionSummary(selectedPeriod === 'summary');
   const periodSummary = selectedPeriod === 'weekly'
     ? weeklyQuery.data ?? null
     : selectedPeriod === 'monthly'
@@ -187,7 +189,9 @@ export default function LogMealClient({
     ? weeklyQuery.isLoading
     : selectedPeriod === 'monthly'
       ? monthlyQuery.isLoading
-      : false;
+      : selectedPeriod === 'summary'
+        ? summaryQuery.isLoading
+        : false;
 
   // Modal states
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientToLog | null>(null);
@@ -977,12 +981,14 @@ export default function LogMealClient({
         {/* Page Title */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Log What I Ate</h1>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => handleDateChange(e.target.value)}
-            className="input-field w-auto"
-          />
+          {selectedPeriod !== 'summary' && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="input-field w-auto"
+            />
+          )}
         </div>
 
         {/* Period Tabs */}
@@ -996,7 +1002,7 @@ export default function LogMealClient({
         )}
 
         {/* Weekly/Monthly View */}
-        {selectedPeriod !== 'daily' && periodSummary && (
+        {(selectedPeriod === 'weekly' || selectedPeriod === 'monthly') && periodSummary && (
           <>
             <PeriodProgressCard summary={periodSummary} />
             <div className="mt-4">
@@ -1021,6 +1027,11 @@ export default function LogMealClient({
               />
             </div>
           </>
+        )}
+
+        {/* Summary View */}
+        {selectedPeriod === 'summary' && summaryQuery.data && (
+          <SummaryView data={summaryQuery.data} />
         )}
 
         {/* Daily View */}

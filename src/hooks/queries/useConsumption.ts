@@ -7,6 +7,7 @@ import type {
   ConsumptionEntry,
   MealType,
   PeriodConsumptionSummary,
+  ConsumptionSummaryData,
 } from '@/lib/types';
 
 // Type for previous entries by meal type (matches LogMealClient)
@@ -114,6 +115,23 @@ export function useMonthlyConsumption(year: number, month: number, enabled = tru
       return response.json();
     },
     staleTime: 2 * 60 * 1000, // 2 minutes
+    enabled,
+  });
+}
+
+/**
+ * Fetch rolling-year summary data for the Summary tab.
+ * @param enabled - Only fetch when the Summary tab is selected
+ */
+export function useConsumptionSummary(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.consumption.summary(),
+    queryFn: async (): Promise<ConsumptionSummaryData> => {
+      const response = await fetch('/api/consumption/summary');
+      if (!response.ok) throw new Error('Failed to fetch consumption summary');
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - summary data changes infrequently
     enabled,
   });
 }
