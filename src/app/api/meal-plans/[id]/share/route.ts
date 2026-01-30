@@ -103,6 +103,9 @@ export async function POST(
         theme_id: originalPlan.theme_id,
         core_ingredients: originalPlan.core_ingredients,
         prep_style: originalPlan.prep_style,
+        prep_sessions_day_of: originalPlan.prep_sessions_day_of,
+        prep_sessions_batch: originalPlan.prep_sessions_batch,
+        batch_prep_status: originalPlan.batch_prep_status,
         shared_from_user_id: user.id,
         shared_from_user_name: sharerName,
       })
@@ -150,6 +153,35 @@ export async function POST(
         // Clean up the created plan
         await serviceClient.from('meal_plans').delete().eq('id', newMealPlan.id)
         return NextResponse.json({ error: 'Failed to share meal plan' }, { status: 500 })
+      }
+    }
+
+    // Copy prep sessions from the original plan
+    const { data: originalPrepSessions } = await supabase
+      .from('prep_sessions')
+      .select('session_name, session_order, estimated_minutes, prep_items, feeds_meals, instructions, daily_assembly, display_order')
+      .eq('meal_plan_id', mealPlanId)
+
+    if (originalPrepSessions && originalPrepSessions.length > 0) {
+      const newPrepSessions = originalPrepSessions.map(session => ({
+        meal_plan_id: newMealPlan.id,
+        session_name: session.session_name,
+        session_order: session.session_order,
+        estimated_minutes: session.estimated_minutes,
+        prep_items: session.prep_items,
+        feeds_meals: session.feeds_meals,
+        instructions: session.instructions,
+        daily_assembly: session.daily_assembly,
+        display_order: session.display_order,
+      }))
+
+      const { error: prepSessionsError } = await serviceClient
+        .from('prep_sessions')
+        .insert(newPrepSessions)
+
+      if (prepSessionsError) {
+        console.error('Error copying prep sessions:', prepSessionsError)
+        // Non-blocking - continue with share
       }
     }
 
