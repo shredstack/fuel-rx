@@ -223,6 +223,84 @@ The log-meal flow uses Claude (Anthropic) for two AI-powered features. All LLM c
 - `src/app/api/consumption/extract-produce/route.ts` - API for meal plan meals
 - `src/app/api/consumption/extract-produce-from-photo/route.ts` - API for photo-analyzed meals
 
+### Native App Compatibility (Capacitor iOS)
+
+FuelRx runs as a native iOS app via Capacitor WebView. All features must work equally well on mobile as on web. The most common issue is **keyboard awareness** - when users tap into text inputs on mobile, the keyboard covers the input and users can't see what they're typing.
+
+#### Required Pattern for Text Inputs
+
+**Reference Implementation:** `src/components/CookingAssistant/ChatInput.tsx` and `src/components/CookingAssistant/CookingAssistantDrawer.tsx`
+
+When adding any `<input>` or `<textarea>` that users will type into:
+
+1. **Use keyboard hooks in the parent container:**
+```typescript
+   import { useKeyboard } from '@/hooks/useKeyboard';
+   import { usePlatform } from '@/hooks/usePlatform';
+
+   const { keyboardHeight, isKeyboardVisible } = useKeyboard();
+   const { isNative } = usePlatform();
+```
+
+2. **Adjust parent layout when keyboard is visible:**
+```typescript
+   // In a modal or drawer, add bottom padding to prevent content from being hidden
+   style={isNative && isKeyboardVisible ? { paddingBottom: keyboardHeight } : undefined}
+```
+
+3. **Scroll input into view on focus:**
+```typescript
+   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+   const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+     e.stopPropagation();
+     setTimeout(() => {
+       textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+     }, 300);
+   };
+```
+
+4. **Listen for viewport resize (web fallback):**
+```typescript
+   useEffect(() => {
+     const viewport = window.visualViewport;
+     if (!viewport) return;
+
+     const handleResize = () => {
+       if (document.activeElement === textareaRef.current) {
+         setTimeout(() => {
+           textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+         }, 100);
+       }
+     };
+
+     viewport.addEventListener('resize', handleResize);
+     return () => viewport.removeEventListener('resize', handleResize);
+   }, []);
+```
+
+5. **For long text content, ensure scrollability:**
+```typescript
+   <textarea
+     className="overflow-y-auto"
+     style={{ maxHeight: '128px' }}  // Or appropriate max height
+   />
+```
+
+#### Existing Utilities
+
+- `src/hooks/useKeyboard.ts` - Native keyboard height detection via Capacitor
+- `src/hooks/usePlatform.ts` - Detect native vs web
+- `src/components/KeyboardAwareView.tsx` - Wrapper component for simple cases
+
+#### Key Rules
+
+1. **Never add a text input without keyboard awareness** - If users type, they must see what they're typing
+2. **Test on actual iOS device** - Simulators don't perfectly replicate keyboard behavior
+3. **Modals need extra care** - Fixed/absolute positioned modals often have the worst keyboard issues
+4. **Long text needs scrolling** - If text can exceed the visible area, add `overflow-y-auto` and `maxHeight`
+5. **Use safe area insets** - Bottom padding should use `env(safe-area-inset-bottom)` for the home indicator
+
 ## Database migrations
 
 All database migrations live in supabase/migrations. New migrations should be generated using the following supabase command.

@@ -45,6 +45,7 @@ import MealPhotoModal from '@/components/consumption/MealPhotoModal';
 import MealPlanMealsSection from '@/components/consumption/MealPlanMealsSection';
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
+import DailyAverageCard from '@/components/consumption/DailyAverageCard';
 import TrendChart from '@/components/consumption/TrendChart';
 import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
@@ -997,7 +998,14 @@ export default function LogMealClient({
         {/* Weekly/Monthly View */}
         {selectedPeriod !== 'daily' && periodSummary && (
           <>
-            <PeriodProgressCard summary={periodSummary} dailyTargets={summary.targets} />
+            <PeriodProgressCard summary={periodSummary} />
+            <div className="mt-4">
+              <DailyAverageCard
+                averagePerDay={periodSummary.averagePerDay}
+                dailyTargets={summary.targets}
+                daysWithData={periodSummary.daysWithData}
+              />
+            </div>
             <div className="mt-4">
               <TrendChart
                 dailyData={periodSummary.dailyData}
