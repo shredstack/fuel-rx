@@ -792,13 +792,20 @@ export default function MealPlanClient({
                 </button>
               </div>
             )}
-            <p className="text-gray-600">
-              Week of {new Date(mealPlan.week_start_date).toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-gray-600">
+                Week of {new Date(mealPlan.week_start_date).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </p>
+              {mealPlan.shared_from_user_name && (
+                <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                  Shared by {mealPlan.shared_from_user_name}
+                </span>
+              )}
+            </div>
           </div>
           {/* Mobile: compact action row with favorite and share only */}
           <div className="flex gap-2 md:hidden">

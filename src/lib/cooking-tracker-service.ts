@@ -397,6 +397,84 @@ export async function resetSavedMealCookingStatus(mealId: string, userId: string
 }
 
 /**
+ * Update modification notes for a meal plan meal.
+ */
+export async function updateMealPlanMealNotes(
+  mealPlanMealId: string,
+  userId: string,
+  notes: string
+): Promise<void> {
+  const supabase = await createClient();
+
+  // Verify user owns this meal plan meal
+  const { data: mealSlot, error: verifyError } = await supabase
+    .from('meal_plan_meals')
+    .select(`
+      id,
+      meal_id,
+      meal_plans!inner(user_id)
+    `)
+    .eq('id', mealPlanMealId)
+    .single();
+
+  if (verifyError || !mealSlot) {
+    throw new Error('Meal slot not found');
+  }
+
+  const mealPlanData = mealSlot.meal_plans as unknown as { user_id: string };
+  if (mealPlanData.user_id !== userId) {
+    throw new Error('Unauthorized');
+  }
+
+  // Update cooking status notes
+  const { error: updateError } = await supabase
+    .from('meal_plan_meal_cooking_status')
+    .update({ modification_notes: notes })
+    .eq('meal_plan_meal_id', mealPlanMealId);
+
+  if (updateError) {
+    throw new Error(`Failed to update notes: ${updateError.message}`);
+  }
+}
+
+/**
+ * Update modification notes for a saved meal.
+ */
+export async function updateSavedMealNotes(
+  mealId: string,
+  userId: string,
+  notes: string
+): Promise<void> {
+  const supabase = await createClient();
+
+  // Verify user owns this meal
+  const { data: meal, error: verifyError } = await supabase
+    .from('meals')
+    .select('id, source_user_id')
+    .eq('id', mealId)
+    .single();
+
+  if (verifyError || !meal) {
+    throw new Error('Meal not found');
+  }
+
+  if (meal.source_user_id !== userId) {
+    throw new Error('Unauthorized');
+  }
+
+  // Update cooking status notes
+  const { error: updateError } = await supabase
+    .from('saved_meal_cooking_status')
+    .update({ modification_notes: notes })
+    .eq('meal_id', mealId)
+    .eq('user_id', userId);
+
+  if (updateError) {
+    throw new Error(`Failed to update notes: ${updateError.message}`);
+  }
+}
+
+/**
  * Helper to convert minutes to prep time string
  */
 function minutesToPrepTime(minutes: number | null): string | null {

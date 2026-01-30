@@ -269,6 +269,8 @@ export async function getMealPlanNormalized(mealPlanId: string): Promise<MealPla
       core_ingredients,
       is_favorite,
       created_at,
+      shared_from_user_id,
+      shared_from_user_name,
       meal_plan_themes (
         id,
         name,
@@ -427,6 +429,8 @@ export async function getMealPlanNormalized(mealPlanId: string): Promise<MealPla
     core_ingredients: mealPlan.core_ingredients as CoreIngredients | undefined,
     is_favorite: mealPlan.is_favorite,
     created_at: mealPlan.created_at,
+    shared_from_user_id: mealPlan.shared_from_user_id ?? undefined,
+    shared_from_user_name: mealPlan.shared_from_user_name ?? undefined,
     days,
     grocery_list: groceryList,
   };

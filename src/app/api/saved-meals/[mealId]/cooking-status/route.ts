@@ -13,6 +13,7 @@ import {
   markSavedMealCooked,
   getSavedMealCookingStatus,
   resetSavedMealCookingStatus,
+  updateSavedMealNotes,
 } from '@/lib/cooking-tracker-service';
 import type { MarkMealCookedRequest } from '@/lib/types';
 
@@ -54,6 +55,47 @@ export async function POST(
     return NextResponse.json(cookingStatus);
   } catch (error) {
     console.error('Error updating saved meal cooking status:', error);
+
+    if (error instanceof Error) {
+      if (error.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      }
+      if (error.message === 'Meal not found') {
+        return NextResponse.json({ error: 'Meal not found' }, { status: 404 });
+      }
+    }
+
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ mealId: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { mealId } = await params;
+    const body = await request.json();
+
+    if (typeof body.modification_notes !== 'string') {
+      return NextResponse.json({ error: 'modification_notes must be a string' }, { status: 400 });
+    }
+
+    await updateSavedMealNotes(mealId, user.id, body.modification_notes);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error updating saved meal cooking notes:', error);
 
     if (error instanceof Error) {
       if (error.message === 'Unauthorized') {

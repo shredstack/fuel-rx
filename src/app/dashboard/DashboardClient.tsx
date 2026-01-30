@@ -29,6 +29,8 @@ interface Props {
     is_favorite: boolean
     title: string | null
     theme?: { display_name: string; emoji: string | null } | null
+    shared_from_user_id?: string | null
+    shared_from_user_name?: string | null
   } | null
   hasLoggedFood: boolean
 }
@@ -547,6 +549,11 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">
                   {getMealPlanTitle(recentPlan)}
                 </h3>
+                {recentPlan.shared_from_user_name && (
+                  <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 mb-3">
+                    Shared by {recentPlan.shared_from_user_name}
+                  </span>
+                )}
                 <p className="text-gray-600 mb-1">
                   Week of {new Date(recentPlan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', {
                     month: 'long',

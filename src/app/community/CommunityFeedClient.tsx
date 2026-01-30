@@ -10,6 +10,7 @@ import {
   useSavePost,
   useUnsavePost,
   useDeletePost,
+  useEditPost,
 } from '@/hooks/queries/useSocialFeed'
 
 interface Props {
@@ -37,6 +38,7 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
   const savePostMutation = useSavePost()
   const unsavePostMutation = useUnsavePost()
   const deletePostMutation = useDeletePost()
+  const editPostMutation = useEditPost()
 
   // Flatten all pages into a single array of posts
   const posts = data?.pages.flatMap(page => page.posts) ?? []
@@ -63,6 +65,10 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
 
   const handleDelete = async (postId: string) => {
     await deletePostMutation.mutateAsync(postId)
+  }
+
+  const handleEdit = async (postId: string, userNotes: string) => {
+    await editPostMutation.mutateAsync({ postId, userNotes })
   }
 
   if (!socialEnabled) {
@@ -199,7 +205,7 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
               </Link>
             )}
             {filter === 'my_posts' && (
-              <Link href="/meals" className="btn-primary inline-block">
+              <Link href="/custom-meals" className="btn-primary inline-block">
                 Go to My Meals
               </Link>
             )}
@@ -214,6 +220,7 @@ export default function CommunityFeedClient({ socialEnabled, userName }: Props) 
                   onSave={handleSave}
                   onUnsave={handleUnsave}
                   onDelete={handleDelete}
+                  onEdit={handleEdit}
                 />
               ))}
             </div>

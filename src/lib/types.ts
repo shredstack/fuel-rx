@@ -1126,6 +1126,8 @@ export interface MealPlanNormalized {
   core_ingredients?: CoreIngredients;
   is_favorite: boolean;
   created_at: string;
+  shared_from_user_id?: string | null;
+  shared_from_user_name?: string | null;
   days: DayPlanNormalized[];
   grocery_list: Ingredient[];  // Legacy format - computed on-demand
   contextual_grocery_list?: GroceryItemWithContext[];  // New contextual format

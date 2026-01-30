@@ -36,7 +36,7 @@ export default async function DashboardPage() {
   // Get most recent meal plan - use maybeSingle() to handle no results gracefully
   const { data: recentPlan } = await supabase
     .from('meal_plans')
-    .select('id, week_start_date, created_at, is_favorite, title, theme_id')
+    .select('id, week_start_date, created_at, is_favorite, title, theme_id, shared_from_user_id, shared_from_user_name')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -50,6 +50,8 @@ export default async function DashboardPage() {
     is_favorite: boolean
     title: string | null
     theme?: { display_name: string; emoji: string | null } | null
+    shared_from_user_id?: string | null
+    shared_from_user_name?: string | null
   } | null = recentPlan ? { ...recentPlan, theme: null } : null
 
   if (recentPlan?.theme_id) {
