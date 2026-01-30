@@ -33,8 +33,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid year or month' }, { status: 400 });
   }
 
+  const todayStr = searchParams.get('today') || undefined;
+
   try {
-    const summary = await getMonthlyConsumption(user.id, year, month);
+    const summary = await getMonthlyConsumption(user.id, year, month, todayStr);
     return NextResponse.json(summary);
   } catch (error) {
     console.error('Error fetching monthly consumption:', error);

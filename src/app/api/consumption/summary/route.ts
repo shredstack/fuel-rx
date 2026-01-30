@@ -8,7 +8,7 @@ import { getConsumptionSummary } from '@/lib/consumption-service';
  * Get rolling-year weekly averages for macros, fruit/veg, and water.
  * Used by the Summary tab on the log-meal page.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
 
   const {
@@ -19,8 +19,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const todayStr = searchParams.get('today') || undefined;
+
   try {
-    const summary = await getConsumptionSummary(user.id);
+    const summary = await getConsumptionSummary(user.id, todayStr);
     return NextResponse.json(summary);
   } catch (error) {
     console.error('Error fetching consumption summary:', error);

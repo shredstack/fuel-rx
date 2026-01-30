@@ -1951,7 +1951,8 @@ export async function getWeeklyConsumption(
  */
 export async function getWeeklyConsumptionByDateStr(
   userId: string,
-  dateStr: string
+  dateStr: string,
+  todayStr?: string
 ): Promise<import('@/lib/types').PeriodConsumptionSummary> {
   const supabase = await createClient();
 
@@ -1989,13 +1990,26 @@ export async function getWeeklyConsumptionByDateStr(
     fat: dailyTargets.fat * dayCount,
   };
 
+  // Exclude today from averages since the user likely hasn't finished logging for the day
+  const todayData = todayStr ? dailyData.find((d) => d.date === todayStr) : undefined;
+  const todayHasData = todayData && todayData.entry_count > 0;
+  const avgTotals = todayHasData
+    ? {
+        calories: totals.calories - todayData.calories,
+        protein: totals.protein - todayData.protein,
+        carbs: totals.carbs - todayData.carbs,
+        fat: totals.fat - todayData.fat,
+      }
+    : totals;
+  const avgDaysWithData = todayHasData ? daysWithData - 1 : daysWithData;
+
   const averagePerDay: Macros =
-    daysWithData > 0
+    avgDaysWithData > 0
       ? {
-          calories: Math.round(totals.calories / daysWithData),
-          protein: Math.round((totals.protein / daysWithData) * 10) / 10,
-          carbs: Math.round((totals.carbs / daysWithData) * 10) / 10,
-          fat: Math.round((totals.fat / daysWithData) * 10) / 10,
+          calories: Math.round(avgTotals.calories / avgDaysWithData),
+          protein: Math.round((avgTotals.protein / avgDaysWithData) * 10) / 10,
+          carbs: Math.round((avgTotals.carbs / avgDaysWithData) * 10) / 10,
+          fat: Math.round((avgTotals.fat / avgDaysWithData) * 10) / 10,
         }
       : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -2031,7 +2045,8 @@ export async function getWeeklyConsumptionByDateStr(
 export async function getMonthlyConsumption(
   userId: string,
   year: number,
-  month: number
+  month: number,
+  todayStr?: string
 ): Promise<import('@/lib/types').PeriodConsumptionSummary> {
   const supabase = await createClient();
 
@@ -2067,13 +2082,26 @@ export async function getMonthlyConsumption(
     fat: dailyTargets.fat * dayCount,
   };
 
+  // Exclude today from averages since the user likely hasn't finished logging for the day
+  const todayData = todayStr ? dailyData.find((d) => d.date === todayStr) : undefined;
+  const todayHasData = todayData && todayData.entry_count > 0;
+  const avgTotals = todayHasData
+    ? {
+        calories: totals.calories - todayData.calories,
+        protein: totals.protein - todayData.protein,
+        carbs: totals.carbs - todayData.carbs,
+        fat: totals.fat - todayData.fat,
+      }
+    : totals;
+  const avgDaysWithData = todayHasData ? daysWithData - 1 : daysWithData;
+
   const averagePerDay: Macros =
-    daysWithData > 0
+    avgDaysWithData > 0
       ? {
-          calories: Math.round(totals.calories / daysWithData),
-          protein: Math.round((totals.protein / daysWithData) * 10) / 10,
-          carbs: Math.round((totals.carbs / daysWithData) * 10) / 10,
-          fat: Math.round((totals.fat / daysWithData) * 10) / 10,
+          calories: Math.round(avgTotals.calories / avgDaysWithData),
+          protein: Math.round((avgTotals.protein / avgDaysWithData) * 10) / 10,
+          carbs: Math.round((avgTotals.carbs / avgDaysWithData) * 10) / 10,
+          fat: Math.round((avgTotals.fat / avgDaysWithData) * 10) / 10,
         }
       : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -2109,7 +2137,7 @@ export async function getMonthlyConsumption(
  * Get rolling-year summary data with weekly averages for macros, fruit/veg, and water.
  * Used by the Summary tab on the log-meal page.
  */
-export async function getConsumptionSummary(userId: string): Promise<ConsumptionSummaryData> {
+export async function getConsumptionSummary(userId: string, todayStr?: string): Promise<ConsumptionSummaryData> {
   const supabase = await createClient();
 
   // Get user's daily macro targets
@@ -2122,8 +2150,10 @@ export async function getConsumptionSummary(userId: string): Promise<Consumption
   if (profileError || !profile) throw new Error('Profile not found');
 
   // Calculate date range: 52 weeks back from today (Monday-aligned)
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (!todayStr) {
+    const now = new Date();
+    todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
   const todayWeekStart = getWeekStartFromDateStr(todayStr);
 
   // Go back 51 more weeks from this week's Monday (52 weeks total including current)
@@ -2210,6 +2240,9 @@ export async function getConsumptionSummary(userId: string): Promise<Consumption
 
       // Don't count future days
       if (dayStr > todayStr) break;
+
+      // Skip today from averages since the user likely hasn't finished logging
+      if (dayStr === todayStr) continue;
 
       const macroData = dailyMacros.get(dayStr);
       if (macroData?.hasEntries) {
