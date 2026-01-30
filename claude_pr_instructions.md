@@ -68,6 +68,62 @@ Check that client-side data fetching follows our React Query patterns:
 - [ ] **Cache invalidation**: Mutations should invalidate related queries in `onSuccess` to keep UI updated
 - [ ] **Hook location**: Query/mutation hooks should live in `src/hooks/queries/`
 
+### Native App Compatibility Review
+
+FuelRx runs as a native iOS app via Capacitor WebView loading from the production URL. **Every feature must work on mobile.**
+
+#### Text Input Checklist
+
+If the PR adds or modifies any `<input>` or `<textarea>`:
+
+- [ ] **Keyboard Awareness**: Does the input scroll into view when focused on iOS?
+  - Parent component should use `useKeyboard` and `usePlatform` hooks
+  - Input should have `onFocus` handler that calls `scrollIntoView`
+  - Follow the pattern in `src/components/CookingAssistant/ChatInput.tsx`
+
+- [ ] **Keyboard Layout Adjustment**: Does the parent container adjust when keyboard opens?
+  - Modals/drawers should add `paddingBottom: keyboardHeight` when keyboard is visible
+  - Follow the pattern in `src/components/CookingAssistant/CookingAssistantDrawer.tsx`
+
+- [ ] **Long Text Scrolling**: Can users scroll to see all their text?
+  - Add `overflow-y-auto` and appropriate `maxHeight` for multi-line inputs
+  - Users must be able to see and edit all text on mobile
+
+- [ ] **Safe Area Insets**: Does the component respect the home indicator area?
+  - Use `padding-bottom: env(safe-area-inset-bottom)` or `max(1rem, env(safe-area-inset-bottom))`
+
+#### Modal/Drawer Checklist
+
+If the PR adds or modifies modals or drawers with interactive content:
+
+- [ ] **Keyboard-aware positioning**: Does the modal content remain visible when keyboard opens?
+- [ ] **Scroll container**: Is there a scrollable area for content that might overflow?
+- [ ] **Touch interactions**: Do buttons and inputs have adequate touch targets (min 44px)?
+
+#### Native-Specific Features
+
+If the PR uses device capabilities:
+
+- [ ] **Camera**: Uses `src/hooks/useCamera.ts` utilities, handles permissions
+- [ ] **Keyboard**: Uses `src/hooks/useKeyboard.ts` for keyboard events
+- [ ] **Platform detection**: Uses `src/hooks/usePlatform.ts` to conditionally apply native behavior
+
+#### Reference Implementations
+
+When reviewing text input implementations, compare against these working examples:
+- **Chat input**: `src/components/CookingAssistant/ChatInput.tsx`
+- **Full drawer with keyboard**: `src/components/CookingAssistant/CookingAssistantDrawer.tsx`
+- **Keyboard wrapper**: `src/components/KeyboardAwareView.tsx`
+
+#### Common Issues to Flag
+
+🚩 **Red flags in PRs:**
+- Raw `<textarea>` or `<input>` without any keyboard handling in a modal
+- Fixed/absolute positioned containers without keyboard height adjustment
+- Text inputs without `scrollIntoView` behavior
+- Missing `useKeyboard` or `usePlatform` imports when needed
+- Hard-coded bottom padding instead of using safe area insets
+
 ### Specific Feedback
 
 List specific issues, suggestions, or questions about particular lines of code. Reference file paths and line numbers.

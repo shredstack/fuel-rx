@@ -19,6 +19,7 @@ export const queryKeys = {
     monthly: (year: number, month: number) =>
       ['consumption', 'monthly', year, month] as const,
     water: (date: string) => ['consumption', 'water', date] as const,
+    summary: () => ['consumption', 'summary'] as const,
   },
 
   // Social feed domain

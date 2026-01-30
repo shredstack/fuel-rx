@@ -11,6 +11,7 @@ const TABS: { value: ConsumptionPeriodType; label: string }[] = [
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
+  { value: 'summary', label: 'Summary' },
 ];
 
 export default function PeriodTabs({ selected, onChange }: PeriodTabsProps) {

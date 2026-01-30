@@ -1,10 +1,9 @@
 'use client';
 
-import type { PeriodConsumptionSummary, Macros } from '@/lib/types';
+import type { PeriodConsumptionSummary } from '@/lib/types';
 
 interface PeriodProgressCardProps {
   summary: PeriodConsumptionSummary;
-  dailyTargets: Macros;
 }
 
 // Month names for hydration-safe date formatting
@@ -50,7 +49,7 @@ function ProgressBar({ value, max, color }: { value: number; max: number; color:
   );
 }
 
-export default function PeriodProgressCard({ summary, dailyTargets }: PeriodProgressCardProps) {
+export default function PeriodProgressCard({ summary }: PeriodProgressCardProps) {
   const remaining = summary.targets.calories - summary.consumed.calories;
   const dateRange = formatDateRange(summary.startDate, summary.endDate, summary.periodType);
 
@@ -149,24 +148,6 @@ export default function PeriodProgressCard({ summary, dailyTargets }: PeriodProg
         </div>
       </div>
 
-      {/* Daily Average */}
-      {summary.daysWithData > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-sm text-gray-600">
-            <span className="font-medium">Daily Average:</span>{' '}
-            {summary.averagePerDay.calories.toLocaleString()} cal
-            <span className="mx-2">|</span>
-            {summary.averagePerDay.protein}g P
-            <span className="mx-1">·</span>
-            {summary.averagePerDay.carbs}g C
-            <span className="mx-1">·</span>
-            {summary.averagePerDay.fat}g F
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            vs target: {dailyTargets.calories.toLocaleString()} cal / {dailyTargets.protein}g P / {dailyTargets.carbs}g C / {dailyTargets.fat}g F
-          </p>
-        </div>
-      )}
     </div>
   );
 }

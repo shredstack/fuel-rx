@@ -1992,7 +1992,7 @@ export type LogConsumptionRequest = LogMealRequest | LogIngredientRequest;
 // Period Consumption Summary Types (Weekly/Monthly)
 // ============================================
 
-export type ConsumptionPeriodType = 'daily' | 'weekly' | 'monthly';
+export type ConsumptionPeriodType = 'daily' | 'weekly' | 'monthly' | 'summary';
 
 /**
  * A single day's macro data for trend charts
@@ -2044,6 +2044,36 @@ export interface PeriodConsumptionSummary {
   dailyData: DailyDataPoint[]; // For line chart
   entry_count: number;
   byMealType: MealTypeBreakdown; // Breakdown by meal type
+}
+
+// ============================================
+// Summary View Types (Rolling Year Weekly Averages)
+// ============================================
+
+/** A single week's averaged data for the Summary charts */
+export interface WeeklySummaryDataPoint {
+  weekStart: string; // YYYY-MM-DD (Monday)
+  weekLabel: string; // e.g., "Jan 6"
+  avgCalories: number;
+  avgProtein: number;
+  avgCarbs: number;
+  avgFat: number;
+  daysWithData: number;
+  avgFruitVegGrams: number;
+  avgWaterOunces: number;
+}
+
+/** Response from /api/consumption/summary */
+export interface ConsumptionSummaryData {
+  weeks: WeeklySummaryDataPoint[];
+  targets: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    fruitVegGrams: number;
+    waterOunces: number;
+  };
 }
 
 // ============================================
