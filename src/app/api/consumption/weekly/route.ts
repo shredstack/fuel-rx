@@ -30,9 +30,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 });
   }
 
+  const todayStr = searchParams.get('today') || undefined;
+
   try {
     // Use timezone-safe function that works with date strings directly
-    const summary = await getWeeklyConsumptionByDateStr(user.id, dateStr);
+    const summary = await getWeeklyConsumptionByDateStr(user.id, dateStr, todayStr);
     return NextResponse.json(summary);
   } catch (error) {
     console.error('Error fetching weekly consumption:', error);

@@ -10,6 +10,12 @@ import type {
   ConsumptionSummaryData,
 } from '@/lib/types';
 
+/** Get user's local today as YYYY-MM-DD string */
+function getLocalTodayStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 // Type for previous entries by meal type (matches LogMealClient)
 export type PreviousEntriesByMealType = Record<
   MealType,
@@ -91,7 +97,8 @@ export function useWeeklyConsumption(date: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.consumption.weekly(date),
     queryFn: async (): Promise<PeriodConsumptionSummary> => {
-      const response = await fetch(`/api/consumption/weekly?date=${date}`);
+      const today = getLocalTodayStr();
+      const response = await fetch(`/api/consumption/weekly?date=${date}&today=${today}`);
       if (!response.ok) throw new Error('Failed to fetch weekly consumption');
       return response.json();
     },
@@ -110,7 +117,8 @@ export function useMonthlyConsumption(year: number, month: number, enabled = tru
   return useQuery({
     queryKey: queryKeys.consumption.monthly(year, month),
     queryFn: async (): Promise<PeriodConsumptionSummary> => {
-      const response = await fetch(`/api/consumption/monthly?year=${year}&month=${month}`);
+      const today = getLocalTodayStr();
+      const response = await fetch(`/api/consumption/monthly?year=${year}&month=${month}&today=${today}`);
       if (!response.ok) throw new Error('Failed to fetch monthly consumption');
       return response.json();
     },
@@ -127,7 +135,8 @@ export function useConsumptionSummary(enabled = true) {
   return useQuery({
     queryKey: queryKeys.consumption.summary(),
     queryFn: async (): Promise<ConsumptionSummaryData> => {
-      const response = await fetch('/api/consumption/summary');
+      const today = getLocalTodayStr();
+      const response = await fetch(`/api/consumption/summary?today=${today}`);
       if (!response.ok) throw new Error('Failed to fetch consumption summary');
       return response.json();
     },
