@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import type { CookingStatus } from '@/lib/types'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
@@ -47,6 +47,12 @@ export default function CookingStatusModal({
 
   // Share toggle state
   const [shareWithCommunity, setShareWithCommunity] = useState(true)
+
+  const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [])
 
   // Image validation modal state
   const [showImageValidationModal, setShowImageValidationModal] = useState(false)
@@ -455,6 +461,7 @@ export default function CookingStatusModal({
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                onFocus={handleTextareaFocus}
                 placeholder="Any thoughts about this meal..."
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
                 rows={2}

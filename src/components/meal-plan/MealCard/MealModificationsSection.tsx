@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Image from 'next/image'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
@@ -27,6 +27,12 @@ export function MealModificationsSection({
   const [displayedNotes, setDisplayedNotes] = useState(cookingStatusData.modification_notes || '')
   const [savingNotes, setSavingNotes] = useState(false)
   const queryClient = useQueryClient()
+
+  const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [])
 
   const hasModifications = displayedNotes || cookingStatusData.cooked_photo_url
 
@@ -153,6 +159,7 @@ export function MealModificationsSection({
             <textarea
               value={editedNotes}
               onChange={(e) => setEditedNotes(e.target.value)}
+              onFocus={handleTextareaFocus}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
               rows={2}
               placeholder="Add your notes..."

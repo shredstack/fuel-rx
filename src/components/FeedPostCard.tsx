@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { SocialFeedPost, ValidatedMealIngredient, PartyDish, PartyPrepPhase, MealType } from '@/lib/types'
@@ -133,6 +133,13 @@ export default function FeedPostCard({ post, onSave, onUnsave, onDelete, onEdit 
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [editedNotes, setEditedNotes] = useState(post.user_notes || '')
   const [savingEdit, setSavingEdit] = useState(false)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [])
 
   const authorName = post.author?.display_name || post.author?.name || 'Anonymous'
   const prepTimeLabel = CUSTOM_MEAL_PREP_TIME_OPTIONS.find(
@@ -269,8 +276,10 @@ export default function FeedPostCard({ post, onSave, onUnsave, onDelete, onEdit 
           {isEditingNotes ? (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
               <textarea
+                ref={editTextareaRef}
                 value={editedNotes}
                 onChange={(e) => setEditedNotes(e.target.value)}
+                onFocus={handleTextareaFocus}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
                 rows={2}
                 placeholder="Add your notes..."
