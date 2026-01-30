@@ -120,6 +120,51 @@ export function useUnsavePost() {
 }
 
 /**
+ * Mutation hook for editing a post's user_notes.
+ * Optimistically updates user_notes across all cached pages.
+ */
+export function useEditPost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ postId, userNotes }: { postId: string; userNotes: string }) => {
+      const response = await fetch(`/api/social-feed/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_notes: userNotes }),
+      });
+      if (!response.ok) throw new Error('Failed to update post');
+      return response.json();
+    },
+
+    onMutate: async ({ postId, userNotes }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.socialFeed.all });
+
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.socialFeed.all },
+        (old: unknown) => {
+          const data = old as { pages?: FeedResponse[]; pageParams?: number[] } | undefined;
+          if (!data?.pages) return old;
+          return {
+            ...data,
+            pages: data.pages.map((page: FeedResponse) => ({
+              ...page,
+              posts: page.posts.map((post: SocialFeedPost) =>
+                post.id === postId ? { ...post, user_notes: userNotes || null } : post
+              ),
+            })),
+          };
+        }
+      );
+    },
+
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.socialFeed.all });
+    },
+  });
+}
+
+/**
  * Mutation hook for deleting a post.
  * Optimistically removes the post from all cached pages.
  */

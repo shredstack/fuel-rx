@@ -175,6 +175,54 @@ Meal plan generation is an important part of the app. Due to the long-running ch
 - Users should always be able to safely navigate away while the job builds their meal plan
 
 
+### AI Features in Meal Logging
+
+The log-meal flow uses Claude (Anthropic) for two AI-powered features. All LLM calls are logged to the `llm_logs` table. The Anthropic client is configured in `src/lib/claude/client.ts`.
+
+#### 1. Meal Photo Analysis (Claude Vision)
+
+**Model:** `claude-sonnet-4-20250514`
+
+**What it does:** The "Snap a Meal" feature lets users photograph their meal. Claude Vision analyzes the photo to identify ingredients, estimate portion sizes, and calculate macros (calories, protein, carbs, fat) for each item. It also assigns confidence scores and classifies ingredients by category (protein, vegetable, fruit, grain, fat, dairy, other).
+
+**Flow:**
+1. User clicks "Snap a Meal" in `LogMealClient.tsx`
+2. `MealPhotoModal.tsx` captures/uploads photo to `/api/meal-photos/upload`
+3. Frontend calls `/api/meal-photos/[photoId]/analyze` (POST)
+4. Backend runs Claude Vision via `analyzeMealPhoto()` in `src/lib/claude/meal-photo-analysis.ts`
+5. `MealAnalysisReview.tsx` displays results for user editing
+6. User confirms and logs the meal
+
+**Key files:**
+- `src/components/consumption/MealPhotoModal.tsx` - Photo capture UI
+- `src/components/consumption/MealAnalysisReview.tsx` - Analysis results review
+- `src/app/api/meal-photos/[photoId]/analyze/route.ts` - API route
+- `src/lib/claude/meal-photo-analysis.ts` - Claude Vision call and system prompt
+
+**Access control:** Gated behind subscription check via `checkAiAccess()` in `src/lib/subscription/check-ai-access.ts` (returns 402 if no access).
+
+#### 2. Produce Weight Estimation (Claude Text)
+
+**Model:** `claude-sonnet-4-5-20250929`
+
+**What it does:** For the 800g fruit/vegetable tracking challenge, this feature detects produce items in a logged meal and estimates their weight in grams. It uses a two-tier approach: deterministic lookup first (from the `produce_weights` table), then Claude for unmatched items.
+
+**Two entry points:**
+- **From meal plan meals:** User logs a meal from today's plan -> calls `/api/consumption/extract-produce` with meal_id
+- **From photo meals:** After photo analysis -> calls `/api/consumption/extract-produce-from-photo` with ingredient array
+
+**Flow:**
+1. Ingredients are checked against the `produce_weights` lookup table (no AI)
+2. Already-categorized ingredients from the `ingredients` table are used when available
+3. Only unmatched items are sent to Claude for classification (fruit/vegetable/other) and gram estimation
+4. User sees a modal with checkboxes to select/adjust detected produce items
+
+**Key files:**
+- `src/lib/produce-extraction-service.ts` - Orchestration logic (deterministic lookup + Claude fallback)
+- `src/lib/claude/produce-estimation.ts` - Claude call and system prompt
+- `src/app/api/consumption/extract-produce/route.ts` - API for meal plan meals
+- `src/app/api/consumption/extract-produce-from-photo/route.ts` - API for photo-analyzed meals
+
 ## Database migrations
 
 All database migrations live in supabase/migrations. New migrations should be generated using the following supabase command.

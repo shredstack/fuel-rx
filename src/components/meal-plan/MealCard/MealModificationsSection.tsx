@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Image from 'next/image'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import type { MealPlanMealCookingStatus, MealEntity } from '@/lib/types'
 
 interface MealModificationsSectionProps {
@@ -20,8 +22,19 @@ export function MealModificationsSection({
   const [savingAsCustom, setSavingAsCustom] = useState(false)
   const [savedAsCustom, setSavedAsCustom] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [editedNotes, setEditedNotes] = useState(cookingStatusData.modification_notes || '')
+  const [displayedNotes, setDisplayedNotes] = useState(cookingStatusData.modification_notes || '')
+  const [savingNotes, setSavingNotes] = useState(false)
+  const queryClient = useQueryClient()
 
-  const hasModifications = cookingStatusData.modification_notes || cookingStatusData.cooked_photo_url
+  const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [])
+
+  const hasModifications = displayedNotes || cookingStatusData.cooked_photo_url
 
   const handleSaveAsCustomMeal = async () => {
     setSavingAsCustom(true)
@@ -50,6 +63,35 @@ export function MealModificationsSection({
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSavingAsCustom(false)
+    }
+  }
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true)
+    setError(null)
+
+    try {
+      const response = await fetch(
+        `/api/meal-plans/${mealPlanId}/meals/${mealSlotId}/cooking-status`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modification_notes: editedNotes }),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to update notes')
+      }
+
+      setDisplayedNotes(editedNotes)
+      setIsEditingNotes(false)
+      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.detail(mealPlanId) })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update notes')
+    } finally {
+      setSavingNotes(false)
     }
   }
 
@@ -111,12 +153,57 @@ export function MealModificationsSection({
         )}
 
         {/* Notes */}
-        {cookingStatusData.modification_notes && (
-          <div className="flex-1">
-            <p className="text-xs text-blue-700 font-medium mb-1">Your Notes</p>
-            <p className="text-sm text-gray-700">{cookingStatusData.modification_notes}</p>
+        {isEditingNotes ? (
+          <div className="flex-1 space-y-2">
+            <p className="text-xs text-blue-700 font-medium">Your Notes</p>
+            <textarea
+              value={editedNotes}
+              onChange={(e) => setEditedNotes(e.target.value)}
+              onFocus={handleTextareaFocus}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+              rows={2}
+              placeholder="Add your notes..."
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setEditedNotes(displayedNotes)
+                  setIsEditingNotes(false)
+                }}
+                disabled={savingNotes}
+                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNotes}
+                disabled={savingNotes}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingNotes ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
-        )}
+        ) : displayedNotes ? (
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs text-blue-700 font-medium">Your Notes</p>
+              <button
+                onClick={() => {
+                  setEditedNotes(displayedNotes)
+                  setIsEditingNotes(true)
+                }}
+                className="p-0.5 text-blue-500 hover:text-blue-700 transition-colors"
+                title="Edit notes"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-gray-700">{displayedNotes}</p>
+          </div>
+        ) : null}
       </div>
 
       {/* Cooked timestamp */}

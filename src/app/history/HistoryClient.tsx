@@ -37,7 +37,7 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [mealPlans, setMealPlans] = useState(initialPlans)
-  const [filter, setFilter] = useState<'all' | 'favorites'>('all')
+  const [filter, setFilter] = useState<'all' | 'favorites' | 'shared'>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [selectedPlanForShare, setSelectedPlanForShare] = useState<MealPlanSummary | null>(null)
@@ -49,6 +49,8 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
 
   const filteredPlans = filter === 'favorites'
     ? mealPlans.filter(p => p.is_favorite)
+    : filter === 'shared'
+    ? mealPlans.filter(p => !!p.shared_from_user_id)
     : mealPlans
 
   const handleDelete = async (id: string) => {
@@ -116,12 +118,24 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
         >
           Favorites ({mealPlans.filter(p => p.is_favorite).length})
         </button>
+        <button
+          onClick={() => setFilter('shared')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            filter === 'shared'
+              ? 'bg-primary-600 text-white'
+              : 'bg-white text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          Shared ({mealPlans.filter(p => !!p.shared_from_user_id).length})
+        </button>
       </div>
 
       {/* Plans list */}
       {filteredPlans.length === 0 ? (
         <div className="card text-center py-8">
-          <p className="text-gray-600">No favorite plans yet.</p>
+          <p className="text-gray-600">
+            {filter === 'favorites' ? 'No favorite plans yet.' : 'No shared plans yet.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">

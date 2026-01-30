@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { SocialFeedPost, ValidatedMealIngredient, PartyDish, PartyPrepPhase, MealType } from '@/lib/types'
@@ -121,14 +121,25 @@ interface Props {
   onSave: (postId: string) => Promise<void>
   onUnsave: (postId: string) => Promise<void>
   onDelete?: (postId: string) => Promise<void>
+  onEdit?: (postId: string, userNotes: string) => Promise<void>
 }
 
-export default function FeedPostCard({ post, onSave, onUnsave, onDelete }: Props) {
+export default function FeedPostCard({ post, onSave, onUnsave, onDelete, onEdit }: Props) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isSaved, setIsSaved] = useState(post.is_saved || false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [editedNotes, setEditedNotes] = useState(post.user_notes || '')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 300)
+  }, [])
 
   const authorName = post.author?.display_name || post.author?.name || 'Anonymous'
   const prepTimeLabel = CUSTOM_MEAL_PREP_TIME_OPTIONS.find(
@@ -191,6 +202,24 @@ export default function FeedPostCard({ post, onSave, onUnsave, onDelete }: Props
     }
   }
 
+  const handleEditNotes = async () => {
+    if (!onEdit) return
+    setSavingEdit(true)
+    try {
+      await onEdit(post.id, editedNotes)
+      setIsEditingNotes(false)
+    } catch (error) {
+      console.error('Error editing post:', error)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditedNotes(post.user_notes || '')
+    setIsEditingNotes(false)
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -244,11 +273,39 @@ export default function FeedPostCard({ post, onSave, onUnsave, onDelete }: Props
               className="object-contain"
             />
           </div>
-          {post.user_notes && (
+          {isEditingNotes ? (
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+              <textarea
+                ref={editTextareaRef}
+                value={editedNotes}
+                onChange={(e) => setEditedNotes(e.target.value)}
+                onFocus={handleTextareaFocus}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                rows={2}
+                placeholder="Add your notes..."
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={savingEdit}
+                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditNotes}
+                  disabled={savingEdit}
+                  className="px-3 py-1 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {savingEdit ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ) : post.user_notes ? (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg">
               <p className="text-sm text-gray-600 italic">&ldquo;{post.user_notes}&rdquo;</p>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
@@ -481,6 +538,20 @@ export default function FeedPostCard({ post, onSave, onUnsave, onDelete }: Props
         {post.is_own_post ? (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 italic">Your post</span>
+            {onEdit && !isEditingNotes && (
+              <button
+                onClick={() => {
+                  setEditedNotes(post.user_notes || '')
+                  setIsEditingNotes(true)
+                }}
+                className="flex items-center gap-1 px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </button>
+            )}
             {onDelete && (
               showDeleteConfirm ? (
                 <div className="flex items-center gap-2">

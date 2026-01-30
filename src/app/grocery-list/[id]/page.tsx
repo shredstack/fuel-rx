@@ -46,20 +46,49 @@ export default async function GroceryListPage({ params }: Props) {
     .eq('meal_plan_id', id)
     .order('created_at', { ascending: true })
 
-  // Get available staples not in this plan
-  const stapleIdsInPlan = planStaples?.map(ps => ps.staple_id) || []
+  // Auto-add any weekly staples not yet linked to this plan
+  const stapleIdsInPlan = new Set(planStaples?.map(ps => ps.staple_id) || [])
 
-  let availableQuery = supabase
+  const { data: allUserStaples } = await supabase
     .from('user_grocery_staples')
     .select('*')
     .eq('user_id', user.id)
     .order('times_added', { ascending: false })
 
-  if (stapleIdsInPlan.length > 0) {
-    availableQuery = availableQuery.not('id', 'in', `(${stapleIdsInPlan.join(',')})`)
+  const weeklyStaplesToAdd = (allUserStaples || []).filter(
+    s => s.add_frequency === 'every_week' && !stapleIdsInPlan.has(s.id)
+  )
+
+  if (weeklyStaplesToAdd.length > 0) {
+    const insertData = weeklyStaplesToAdd.map(s => ({
+      meal_plan_id: id,
+      staple_id: s.id,
+    }))
+
+    const { data: newlyAdded } = await supabase
+      .from('meal_plan_staples')
+      .upsert(insertData, { onConflict: 'meal_plan_id,staple_id' })
+      .select(`
+        id,
+        meal_plan_id,
+        staple_id,
+        is_checked,
+        created_at,
+        staple:user_grocery_staples(*)
+      `)
+
+    if (newlyAdded) {
+      planStaples?.push(...newlyAdded)
+      for (const s of newlyAdded) {
+        stapleIdsInPlan.add(s.staple_id)
+      }
+    }
   }
 
-  const { data: availableStaples } = await availableQuery
+  // Get available staples not in this plan (as_needed staples for manual adding)
+  const availableStaples = (allUserStaples || []).filter(
+    s => !stapleIdsInPlan.has(s.id)
+  )
 
   // Transform the nested staple array to a single object (Supabase returns array for single relations)
   const transformedStaples: MealPlanStapleWithDetails[] = (planStaples || []).map(ps => ({
