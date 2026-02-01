@@ -43,8 +43,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from auth pages
-  const authRoutes = ['/login', '/signup']
+  // Redirect authenticated users away from auth/landing pages
+  const authRoutes = ['/', '/login', '/signup']
   const isAuthRoute = authRoutes.some(route =>
     request.nextUrl.pathname === route
   )

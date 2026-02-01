@@ -193,10 +193,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       // Dynamically import to avoid issues on web
       import('@capacitor/app')
         .then(({ App }) => {
-          const listener = App.addListener('appStateChange', ({ isActive }) => {
+          const listener = App.addListener('appStateChange', async ({ isActive }) => {
             if (isActive && userIdRef.current) {
-              // App returned to foreground - invalidate consumption cache
-              // to ensure fresh data after potential WebSocket disconnection
+              // App returned to foreground - refresh session to ensure
+              // valid auth tokens before any server requests
+              const { data: { session } } = await supabase.auth.refreshSession();
+              if (!session) {
+                // Session expired completely, redirect to login
+                window.location.href = '/login';
+                return;
+              }
+              // Invalidate consumption cache to ensure fresh data
+              // after potential WebSocket disconnection
               queryClient.invalidateQueries({
                 queryKey: queryKeys.consumption.all,
               });
