@@ -284,6 +284,53 @@ export default function LogMealClient({
     // If the data is already cached, it will be served instantly
   };
 
+  // Navigate to previous/next week or month
+  const handlePeriodNavigate = useCallback((direction: 'prev' | 'next') => {
+    setSelectedDate((current) => {
+      const [y, m, d] = current.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+
+      if (selectedPeriod === 'weekly') {
+        date.setDate(date.getDate() + (direction === 'prev' ? -7 : 7));
+      } else if (selectedPeriod === 'monthly') {
+        date.setMonth(date.getMonth() + (direction === 'prev' ? -1 : 1));
+      }
+
+      // Cap at today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (date > today) {
+        return current;
+      }
+
+      const newYear = date.getFullYear();
+      const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+      const newDay = String(date.getDate()).padStart(2, '0');
+      return `${newYear}-${newMonth}-${newDay}`;
+    });
+  }, [selectedPeriod]);
+
+  // Check if navigating forward would go past the current week/month
+  const isNextPeriodDisabled = useMemo(() => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectedPeriod === 'weekly') {
+      const nextWeek = new Date(y, m - 1, d + 7);
+      // Disabled if the start of next week is after today
+      // Get Monday of the week containing nextWeek
+      const dayOfWeek = nextWeek.getDay();
+      const monday = new Date(nextWeek);
+      monday.setDate(nextWeek.getDate() - ((dayOfWeek + 6) % 7));
+      return monday > today;
+    } else if (selectedPeriod === 'monthly') {
+      // Disabled if we're already in the current month
+      return y === today.getFullYear() && m - 1 === today.getMonth();
+    }
+    return false;
+  }, [selectedDate, selectedPeriod]);
+
   // Start meal logging - show meal type selector first
   const handleLogMeal = async (meal: MealToLog) => {
     // Set pending meal and default to meal's original type
@@ -1004,7 +1051,12 @@ export default function LogMealClient({
         {/* Weekly/Monthly View */}
         {(selectedPeriod === 'weekly' || selectedPeriod === 'monthly') && periodSummary && (
           <>
-            <PeriodProgressCard summary={periodSummary} />
+            <PeriodProgressCard
+              summary={periodSummary}
+              onPrevious={() => handlePeriodNavigate('prev')}
+              onNext={() => handlePeriodNavigate('next')}
+              isNextDisabled={isNextPeriodDisabled}
+            />
             <div className="mt-4">
               <DailyAverageCard
                 averagePerDay={periodSummary.averagePerDay}

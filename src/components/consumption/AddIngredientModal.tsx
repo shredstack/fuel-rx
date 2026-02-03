@@ -13,6 +13,8 @@ import { MacroInput } from '@/components/ui';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
 import HealthScoreBadge, { DataTypeLabel } from './HealthScoreBadge';
+import UsdaFoodReviewPanel from './UsdaFoodReviewPanel';
+import { CATEGORY_OPTIONS } from '@/lib/constants';
 
 type TabType = 'search' | 'barcode' | 'manual';
 
@@ -21,17 +23,6 @@ interface AddIngredientModalProps {
   onClose: () => void;
   onSelectIngredient: (ingredient: IngredientToLog) => void;
 }
-
-const CATEGORY_OPTIONS: { value: IngredientCategoryType; label: string }[] = [
-  { value: 'protein', label: 'Protein' },
-  { value: 'vegetable', label: 'Vegetable' },
-  { value: 'fruit', label: 'Fruit' },
-  { value: 'grain', label: 'Grain' },
-  { value: 'fat', label: 'Fat' },
-  { value: 'dairy', label: 'Dairy' },
-  { value: 'pantry', label: 'Pantry' },
-  { value: 'other', label: 'Other' },
-];
 
 export default function AddIngredientModal({
   isOpen,
@@ -63,6 +54,19 @@ export default function AddIngredientModal({
     carbs: 0,
     fat: 0,
   });
+
+  // USDA review state
+  const [reviewingUsdaFood, setReviewingUsdaFood] = useState<USDASearchResultWithScore | null>(null);
+  const [usdaEditedName, setUsdaEditedName] = useState('');
+  const [usdaEditedCategory, setUsdaEditedCategory] = useState<IngredientCategoryType>('other');
+  const [usdaEditingMacros, setUsdaEditingMacros] = useState(false);
+  const [usdaEditedMacros, setUsdaEditedMacros] = useState({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  });
+  const [usdaImporting, setUsdaImporting] = useState(false);
 
   // Manual entry state
   const [manualForm, setManualForm] = useState({
@@ -134,6 +138,12 @@ export default function AddIngredientModal({
       setBarcodeEditedCategory('other');
       setBarcodeEditingMacros(false);
       setBarcodeEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+      setReviewingUsdaFood(null);
+      setUsdaEditedName('');
+      setUsdaEditedCategory('other');
+      setUsdaEditingMacros(false);
+      setUsdaEditedMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+      setUsdaImporting(false);
       setManualForm({
         name: '',
         category: 'other',
@@ -147,26 +157,72 @@ export default function AddIngredientModal({
     }
   }, [isOpen]);
 
-  // Handle selecting a USDA food (imports it first)
-  const handleSelectUsdaFood = async (usdaFood: USDASearchResultWithScore) => {
-    setImportingFdcId(usdaFood.fdcId);
+  // Handle selecting a USDA food - show review screen
+  const handleSelectUsdaFood = (usdaFood: USDASearchResultWithScore) => {
+    setReviewingUsdaFood(usdaFood);
+    // Pre-populate with USDA data
+    const name = usdaFood.description
+      .split(',')
+      .slice(0, 3)
+      .join(',')
+      .trim();
+    setUsdaEditedName(name);
+    setUsdaEditedCategory('other');
+    setUsdaEditedMacros({
+      calories: Math.round(usdaFood.nutrition_per_100g.calories),
+      protein: Math.round(usdaFood.nutrition_per_100g.protein),
+      carbs: Math.round(usdaFood.nutrition_per_100g.carbs),
+      fat: Math.round(usdaFood.nutrition_per_100g.fat),
+    });
+    setUsdaEditingMacros(false);
+  };
+
+  // Confirm and import the reviewed USDA food
+  const handleConfirmUsdaFood = async () => {
+    if (!reviewingUsdaFood || !usdaEditedName.trim()) return;
+
+    // Only send overrides for values that differ from the USDA defaults
+    const defaultName = reviewingUsdaFood.description
+      .split(',')
+      .slice(0, 3)
+      .join(',')
+      .trim();
+    const defaultMacros = {
+      calories: Math.round(reviewingUsdaFood.nutrition_per_100g.calories),
+      protein: Math.round(reviewingUsdaFood.nutrition_per_100g.protein),
+      carbs: Math.round(reviewingUsdaFood.nutrition_per_100g.carbs),
+      fat: Math.round(reviewingUsdaFood.nutrition_per_100g.fat),
+    };
+
+    const payload: Record<string, unknown> = {
+      fdcId: reviewingUsdaFood.fdcId,
+      category: usdaEditedCategory,
+    };
+    if (usdaEditedName.trim() !== defaultName) payload.nameOverride = usdaEditedName.trim();
+    if (usdaEditedMacros.calories !== defaultMacros.calories) payload.caloriesOverride = usdaEditedMacros.calories;
+    if (usdaEditedMacros.protein !== defaultMacros.protein) payload.proteinOverride = usdaEditedMacros.protein;
+    if (usdaEditedMacros.carbs !== defaultMacros.carbs) payload.carbsOverride = usdaEditedMacros.carbs;
+    if (usdaEditedMacros.fat !== defaultMacros.fat) payload.fatOverride = usdaEditedMacros.fat;
+
+    setUsdaImporting(true);
     try {
       const response = await fetch('/api/consumption/ingredients/import-usda', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fdcId: usdaFood.fdcId }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         const ingredient: IngredientToLog = await response.json();
         onSelectIngredient(ingredient);
+        setReviewingUsdaFood(null);
       } else {
         console.error('Failed to import USDA food');
       }
     } catch (error) {
       console.error('Error importing USDA food:', error);
     }
-    setImportingFdcId(null);
+    setUsdaImporting(false);
   };
 
   if (!isOpen) return null;
@@ -331,169 +387,191 @@ export default function AddIngredientModal({
           {/* Search Tab */}
           {activeTab === 'search' && (
             <div className="p-4">
-              <div className="relative mb-3">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search for an ingredient..."
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                  autoFocus
+              {/* USDA Review Screen */}
+              {reviewingUsdaFood ? (
+                <UsdaFoodReviewPanel
+                  food={reviewingUsdaFood}
+                  editedName={usdaEditedName}
+                  onNameChange={setUsdaEditedName}
+                  editedCategory={usdaEditedCategory}
+                  onCategoryChange={setUsdaEditedCategory}
+                  editingMacros={usdaEditingMacros}
+                  onEditingMacrosChange={setUsdaEditingMacros}
+                  editedMacros={usdaEditedMacros}
+                  onMacrosChange={setUsdaEditedMacros}
+                  isImporting={usdaImporting}
+                  onConfirm={handleConfirmUsdaFood}
+                  onCancel={() => setReviewingUsdaFood(null)}
                 />
-              </div>
-
-              {/* USDA Search Toggle */}
-              <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeUsda}
-                  onChange={(e) => setIncludeUsda(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-sm text-gray-600">
-                  Search all foods (USDA Database)
-                </span>
-              </label>
-
-              {searchLoading && (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-gray-500">
-                    {includeUsda ? 'Searching FuelRx & USDA...' : 'Searching...'}
-                  </div>
-                </div>
-              )}
-
-              {!searchLoading && query.length >= 2 && searchResults.length === 0 && usdaResults.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No ingredients found for &ldquo;{query}&rdquo;</p>
-                  {!includeUsda && (
-                    <button
-                      onClick={() => setIncludeUsda(true)}
-                      className="mt-2 text-primary-600 hover:text-primary-700 font-medium text-sm"
+              ) : (
+                <>
+                  <div className="relative mb-3">
+                    <svg
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      Try searching USDA database
-                    </button>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onFocus={(e) => {
+                        e.stopPropagation();
+                        setTimeout(() => {
+                          e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 300);
+                      }}
+                      placeholder="Search for an ingredient..."
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* USDA Search Toggle */}
+                  <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeUsda}
+                      onChange={(e) => setIncludeUsda(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-600">
+                      Search all foods (USDA Database)
+                    </span>
+                  </label>
+
+                  {searchLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-gray-500">
+                        {includeUsda ? 'Searching FuelRx & USDA...' : 'Searching...'}
+                      </div>
+                    </div>
                   )}
-                  <button
-                    onClick={() => {
-                      setManualForm((prev) => ({ ...prev, name: query }));
-                      setActiveTab('manual');
-                    }}
-                    className="mt-3 block mx-auto text-primary-600 hover:text-primary-700 font-medium"
-                  >
-                    Add &ldquo;{query}&rdquo; manually
-                  </button>
-                </div>
-              )}
 
-              {!searchLoading && query.length < 2 && (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">Type at least 2 characters to search</p>
-                </div>
-              )}
-
-              {!searchLoading && (searchResults.length > 0 || usdaResults.length > 0) && (
-                <div className="space-y-4">
-                  {/* FuelRx Results */}
-                  {searchResults.length > 0 && (
-                    <div>
-                      {includeUsda && (
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                          From FuelRx ({searchResults.length})
-                        </p>
+                  {!searchLoading && query.length >= 2 && searchResults.length === 0 && usdaResults.length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No ingredients found for &ldquo;{query}&rdquo;</p>
+                      {!includeUsda && (
+                        <button
+                          onClick={() => setIncludeUsda(true)}
+                          className="mt-2 text-primary-600 hover:text-primary-700 font-medium text-sm"
+                        >
+                          Try searching USDA database
+                        </button>
                       )}
-                      <div className="space-y-2">
-                        {searchResults.map((ingredient, index) => (
-                          <button
-                            key={`fuelrx-${ingredient.name}-${index}`}
-                            onClick={() => {
-                              onSelectIngredient(ingredient);
-                            }}
-                            className="w-full p-3 bg-gray-50 hover:bg-primary-50 rounded-lg text-left transition-colors"
-                          >
-                            <div className="flex items-center justify-between">
-                              <p className="font-medium text-gray-900">{ingredient.name}</p>
-                              {ingredient.is_user_added && (
-                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
-                                  User Added
-                                </span>
-                              )}
-                              {ingredient.is_validated && !ingredient.is_user_added && (
-                                <span className="text-green-500" title="FuelRx Validated">
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                  </svg>
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-500">
-                              {ingredient.calories_per_serving} cal per {ingredient.default_amount}{' '}
-                              {ingredient.default_unit}
-                              <span className="mx-2">|</span>
-                              {ingredient.protein_per_serving}g P, {ingredient.carbs_per_serving}g C,{' '}
-                              {ingredient.fat_per_serving}g F
-                            </p>
-                          </button>
-                        ))}
-                      </div>
+                      <button
+                        onClick={() => {
+                          setManualForm((prev) => ({ ...prev, name: query }));
+                          setActiveTab('manual');
+                        }}
+                        className="mt-3 block mx-auto text-primary-600 hover:text-primary-700 font-medium"
+                      >
+                        Add &ldquo;{query}&rdquo; manually
+                      </button>
                     </div>
                   )}
 
-                  {/* USDA Results */}
-                  {usdaResults.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                        From USDA Database ({usdaResults.length})
-                      </p>
-                      <div className="space-y-2">
-                        {usdaResults.map((food) => (
-                          <button
-                            key={`usda-${food.fdcId}`}
-                            onClick={() => handleSelectUsdaFood(food)}
-                            disabled={importingFdcId === food.fdcId}
-                            className="w-full p-3 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition-colors disabled:opacity-50"
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <HealthScoreBadge score={food.health_score} />
-                              <p className="font-medium text-gray-900 flex-1 truncate">
-                                {food.description}
-                              </p>
-                              {importingFdcId === food.fdcId && (
-                                <span className="text-xs text-primary-600">Adding...</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs mb-1">
-                              <DataTypeLabel
-                                dataType={food.dataType}
-                                brandOwner={food.brandOwner}
-                              />
-                            </div>
-                            <p className="text-sm text-gray-500">
-                              {Math.round(food.nutrition_per_100g.calories)} cal per 100g
-                              <span className="mx-2">|</span>
-                              {Math.round(food.nutrition_per_100g.protein)}g P,{' '}
-                              {Math.round(food.nutrition_per_100g.carbs)}g C,{' '}
-                              {Math.round(food.nutrition_per_100g.fat)}g F
-                            </p>
-                          </button>
-                        ))}
-                      </div>
+                  {!searchLoading && query.length < 2 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">Type at least 2 characters to search</p>
                     </div>
                   )}
-                </div>
+
+                  {!searchLoading && (searchResults.length > 0 || usdaResults.length > 0) && (
+                    <div className="space-y-4">
+                      {/* FuelRx Results */}
+                      {searchResults.length > 0 && (
+                        <div>
+                          {includeUsda && (
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                              From FuelRx ({searchResults.length})
+                            </p>
+                          )}
+                          <div className="space-y-2">
+                            {searchResults.map((ingredient, index) => (
+                              <button
+                                key={`fuelrx-${ingredient.name}-${index}`}
+                                onClick={() => {
+                                  onSelectIngredient(ingredient);
+                                }}
+                                className="w-full p-3 bg-gray-50 hover:bg-primary-50 rounded-lg text-left transition-colors"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <p className="font-medium text-gray-900">{ingredient.name}</p>
+                                  {ingredient.is_user_added && (
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
+                                      User Added
+                                    </span>
+                                  )}
+                                  {ingredient.is_validated && !ingredient.is_user_added && (
+                                    <span className="text-green-500" title="FuelRx Validated">
+                                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                      </svg>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                  {ingredient.calories_per_serving} cal per {ingredient.default_amount}{' '}
+                                  {ingredient.default_unit}
+                                  <span className="mx-2">|</span>
+                                  {ingredient.protein_per_serving}g P, {ingredient.carbs_per_serving}g C,{' '}
+                                  {ingredient.fat_per_serving}g F
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* USDA Results */}
+                      {usdaResults.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                            From USDA Database ({usdaResults.length})
+                          </p>
+                          <div className="space-y-2">
+                            {usdaResults.map((food) => (
+                              <button
+                                key={`usda-${food.fdcId}`}
+                                onClick={() => handleSelectUsdaFood(food)}
+                                className="w-full p-3 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition-colors"
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <HealthScoreBadge score={food.health_score} />
+                                  <p className="font-medium text-gray-900 flex-1 truncate">
+                                    {food.description}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs mb-1">
+                                  <DataTypeLabel
+                                    dataType={food.dataType}
+                                    brandOwner={food.brandOwner}
+                                  />
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                  {Math.round(food.nutrition_per_100g.calories)} cal per 100g
+                                  <span className="mx-2">|</span>
+                                  {Math.round(food.nutrition_per_100g.protein)}g P,{' '}
+                                  {Math.round(food.nutrition_per_100g.carbs)}g C,{' '}
+                                  {Math.round(food.nutrition_per_100g.fat)}g F
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -570,6 +648,12 @@ export default function AddIngredientModal({
                         type="text"
                         value={barcodeEditedName}
                         onChange={(e) => setBarcodeEditedName(e.target.value)}
+                        onFocus={(e) => {
+                          e.stopPropagation();
+                          setTimeout(() => {
+                            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 300);
+                        }}
                         className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                         placeholder="Enter ingredient name"
                       />
@@ -727,6 +811,12 @@ export default function AddIngredientModal({
                   type="text"
                   value={manualForm.name}
                   onChange={(e) => setManualForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onFocus={(e) => {
+                    e.stopPropagation();
+                    setTimeout(() => {
+                      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                  }}
                   placeholder="e.g., Chocolate Chip Cookie"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                   required
@@ -781,6 +871,12 @@ export default function AddIngredientModal({
                     onChange={(e) =>
                       setManualForm((prev) => ({ ...prev, serving_unit: e.target.value }))
                     }
+                    onFocus={(e) => {
+                      e.stopPropagation();
+                      setTimeout(() => {
+                        e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }, 300);
+                    }}
                     placeholder="e.g., serving, oz, cup"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     required

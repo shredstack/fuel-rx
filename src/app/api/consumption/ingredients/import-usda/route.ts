@@ -17,6 +17,11 @@ import type { IngredientToLog, IngredientCategoryType } from '@/lib/types';
 interface ImportUSDARequest {
   fdcId: number;
   category?: IngredientCategoryType;
+  nameOverride?: string;
+  caloriesOverride?: number;
+  proteinOverride?: number;
+  carbsOverride?: number;
+  fatOverride?: number;
 }
 
 export async function POST(request: Request) {
@@ -103,12 +108,19 @@ export async function POST(request: Request) {
     // Determine category using AI detection
     const category = body.category || await detectIngredientCategory(usdaFood.description, user.id);
 
+    // Track whether user provided any overrides
+    const hasUserOverrides = !!(body.nameOverride || body.caloriesOverride !== undefined ||
+      body.proteinOverride !== undefined || body.carbsOverride !== undefined ||
+      body.fatOverride !== undefined);
+
     // Create a clean name (remove excessive detail from USDA descriptions)
-    const cleanName = usdaFood.description
-      .split(',')
-      .slice(0, 3) // Keep first 3 parts
-      .join(',')
-      .trim();
+    // Use user-provided name override if available
+    const cleanName = body.nameOverride?.trim() ||
+      usdaFood.description
+        .split(',')
+        .slice(0, 3) // Keep first 3 parts
+        .join(',')
+        .trim();
 
     const normalizedName = cleanName.toLowerCase().trim();
 
@@ -138,8 +150,9 @@ export async function POST(request: Request) {
           name: cleanName,
           name_normalized: normalizedName,
           category,
-          is_user_added: false,
+          is_user_added: hasUserOverrides,
           health_score: healthScore.score,
+          ...(hasUserOverrides ? { added_by_user_id: user.id } : {}),
         })
         .select()
         .single();
@@ -189,6 +202,12 @@ export async function POST(request: Request) {
       fatPerServing = Math.round(nutritionPer100g.fat * multiplier * 10) / 10;
     }
 
+    // Apply user overrides for nutrition values if provided
+    if (body.caloriesOverride !== undefined) caloriesPerServing = body.caloriesOverride;
+    if (body.proteinOverride !== undefined) proteinPerServing = body.proteinOverride;
+    if (body.carbsOverride !== undefined) carbsPerServing = body.carbsOverride;
+    if (body.fatOverride !== undefined) fatPerServing = body.fatOverride;
+
     // Create nutrition record
     const { error: nutritionError } = await supabase
       .from('ingredient_nutrition')
@@ -207,8 +226,8 @@ export async function POST(request: Request) {
         usda_data_type: usdaFood.dataType,
         usda_brand_owner: usdaFood.brandOwner || null,
         usda_ingredients_list: usdaFood.ingredients || null,
-        confidence_score: 0.95, // High confidence for USDA data
-        validated: true,
+        confidence_score: hasUserOverrides ? 0.8 : 0.95, // Lower confidence when user modified USDA data
+        validated: !hasUserOverrides,
         usda_match_status: 'matched',
         usda_match_confidence: 1.0,
       });
@@ -236,8 +255,8 @@ export async function POST(request: Request) {
       carbs_per_serving: carbsPerServing,
       fat_per_serving: fatPerServing,
       source: 'usda',
-      is_user_added: false,
-      is_validated: true,
+      is_user_added: hasUserOverrides,
+      is_validated: !hasUserOverrides,
       category,
       usda_fdc_id: fdcIdStr,
       health_score: healthScore.score,
