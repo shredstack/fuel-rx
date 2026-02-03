@@ -37,6 +37,8 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
 - [Developer Tips](#developer-tips)
 - [Native App](#native-app)
   - [Developer Notes](#developer-notes)
+  - [Android](#android)
+  - [Android App Icons](#android-app-icons)
   - [App Icons](#app-icons)
   - [App Store Preparation](#app-store-preparation)
     - [Screenshot Tips](#screenshot-tips)
@@ -396,6 +398,52 @@ npx cap sync ios
 Then in Xcode:
 1. Clean the build (Product → Clean Build Folder, or ⌘+Shift+K)
 2. Rebuild and run the app (⌘+R)
+
+## Android
+
+Make sure you install [Android Studio](https://developer.android.com/studio).
+
+```bash
+# 1. Build for mobile
+npm run build:mobile android
+
+# 2. Open Android Studio
+npm run cap:open:android
+# OR npx cap open android
+
+# 3. In Android Studio:
+#    - Wait for Gradle sync to complete
+#    - Select a device/emulator
+#    - Press the Run button
+```
+
+**Running with local development server**
+
+Get your local ip address:
+```bash
+# macOS
+ipconfig getifaddr en0
+
+# Linux
+hostname -I | awk '{print $1}'
+```
+
+Then set the environment variable and sync:
+```bash
+CAPACITOR_SERVER_URL=http://<ip_address>:3000 npx cap sync android
+```
+
+Then in Android Studio:
+1. Clean the build (Build > Clean Project)
+2. Rebuild and run the app
+
+## Android App Icons
+
+After generating the base icon, use Android Studio's Image Asset Studio:
+1. Right-click `android/app/src/main/res` > New > Image Asset
+2. Select your 1024x1024 source icon
+3. Configure foreground and background layers
+4. Generate all density variants automatically
 
 ## App Icons
 

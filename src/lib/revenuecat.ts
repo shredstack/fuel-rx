@@ -45,9 +45,17 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
 
   if (isNative()) {
     // Native platform initialization (iOS/Android via Capacitor)
-    const apiKey = process.env.NEXT_PUBLIC_REVENUECAT_IOS_API_KEY;
+    const platform = Capacitor.getPlatform();
+    const apiKey = platform === 'android'
+      ? process.env.NEXT_PUBLIC_REVENUECAT_ANDROID_API_KEY
+      : process.env.NEXT_PUBLIC_REVENUECAT_IOS_API_KEY;
+
+    const envVarName = platform === 'android'
+      ? 'NEXT_PUBLIC_REVENUECAT_ANDROID_API_KEY'
+      : 'NEXT_PUBLIC_REVENUECAT_IOS_API_KEY';
+
     if (!apiKey) {
-      console.error('[RevenueCat] Missing NEXT_PUBLIC_REVENUECAT_IOS_API_KEY');
+      console.error(`[RevenueCat] Missing ${envVarName}`);
       return;
     }
 

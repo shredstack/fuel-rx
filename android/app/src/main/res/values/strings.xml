@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FuelRx</string>
+    <string name="title_activity_main">FuelRx</string>
+    <string name="package_name">com.shredstack.fuelrx</string>
+    <string name="custom_url_scheme">com.shredstack.fuelrx</string>
+</resources>
