@@ -188,6 +188,16 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     // Handle app returning from background on native platforms
     let appStateCleanup: (() => void) | null = null;
+    // Track the build ID that was active when the page loaded
+    let currentBuildId: string | null = null;
+    fetch('/api/version')
+      .then((res) => res.json())
+      .then((data) => {
+        currentBuildId = data.buildId;
+      })
+      .catch(() => {
+        // Non-critical — version check just won't work this session
+      });
 
     if (Capacitor.isNativePlatform()) {
       // Dynamically import to avoid issues on web
@@ -195,6 +205,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         .then(({ App }) => {
           const listener = App.addListener('appStateChange', async ({ isActive }) => {
             if (isActive && userIdRef.current) {
+              // Check if a new version has been deployed
+              try {
+                const res = await fetch('/api/version');
+                const { buildId } = await res.json();
+                if (currentBuildId && buildId !== currentBuildId) {
+                  // New deployment detected — reload to get latest version
+                  window.location.reload();
+                  return;
+                }
+              } catch {
+                // Version check failed — continue normally
+              }
+
               // App returned to foreground - refresh session to ensure
               // valid auth tokens before any server requests
               const { data: { session } } = await supabase.auth.refreshSession();
