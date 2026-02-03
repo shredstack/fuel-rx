@@ -923,7 +923,7 @@ export default function MealPlanClient({
         <NutritionDisclaimer className="mb-6" />
 
         {/* Mobile sticky action bar - key actions always visible */}
-        <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex gap-3 shadow-lg">
+        <div className="md:hidden fixed bottom-20 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex gap-3 shadow-lg">
           <Link
             href={`/prep-view/${mealPlan.id}`}
             className="btn-primary bg-gradient-to-r from-primary-600 to-primary-500 flex-1 text-center text-sm py-2"

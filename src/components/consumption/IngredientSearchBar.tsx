@@ -1,10 +1,22 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { IngredientToLog, USDASearchResultWithScore, EnhancedSearchResults } from '@/lib/types';
+import type { IngredientToLog, USDASearchResultWithScore, EnhancedSearchResults, IngredientCategoryType } from '@/lib/types';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
+import { MacroInput } from '@/components/ui';
 import HealthScoreBadge, { DataTypeLabel } from './HealthScoreBadge';
+
+const CATEGORY_OPTIONS: { value: IngredientCategoryType; label: string }[] = [
+  { value: 'protein', label: 'Protein' },
+  { value: 'vegetable', label: 'Vegetable' },
+  { value: 'fruit', label: 'Fruit' },
+  { value: 'grain', label: 'Grain' },
+  { value: 'fat', label: 'Fat' },
+  { value: 'dairy', label: 'Dairy' },
+  { value: 'pantry', label: 'Pantry' },
+  { value: 'other', label: 'Other' },
+];
 
 interface Props {
   frequentIngredients: IngredientToLog[];
@@ -30,7 +42,17 @@ export default function IngredientSearchBar({
   const [showDropdown, setShowDropdown] = useState(false);
   const [includeUsda, setIncludeUsda] = useState(true);
   const [importingFdcId, setImportingFdcId] = useState<number | null>(null);
-  const [showAllUsda, setShowAllUsda] = useState(false);
+  const [reviewingUsdaFood, setReviewingUsdaFood] = useState<USDASearchResultWithScore | null>(null);
+  const [usdaEditedName, setUsdaEditedName] = useState('');
+  const [usdaEditedCategory, setUsdaEditedCategory] = useState<IngredientCategoryType>('other');
+  const [usdaEditingMacros, setUsdaEditingMacros] = useState(false);
+  const [usdaEditedMacros, setUsdaEditedMacros] = useState({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  });
+  const [usdaImporting, setUsdaImporting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isKeyboardVisible, keyboardHeight } = useKeyboard();
@@ -63,7 +85,6 @@ export default function IngredientSearchBar({
     }
 
     setIsSearching(true);
-    setShowAllUsda(false);
     try {
       const url = searchUsda
         ? `/api/consumption/ingredients/search?q=${encodeURIComponent(searchQuery)}&include_usda=true`
@@ -99,14 +120,58 @@ export default function IngredientSearchBar({
     return () => clearTimeout(timer);
   }, [query, includeUsda, searchIngredients]);
 
-  // Handle selecting a USDA food (imports it first)
-  const handleSelectUsdaFood = async (usdaFood: USDASearchResultWithScore) => {
-    setImportingFdcId(usdaFood.fdcId);
+  // Handle selecting a USDA food - show review screen
+  const handleSelectUsdaFood = (usdaFood: USDASearchResultWithScore) => {
+    setReviewingUsdaFood(usdaFood);
+    const name = usdaFood.description
+      .split(',')
+      .slice(0, 3)
+      .join(',')
+      .trim();
+    setUsdaEditedName(name);
+    setUsdaEditedCategory('other');
+    setUsdaEditedMacros({
+      calories: Math.round(usdaFood.nutrition_per_100g.calories),
+      protein: Math.round(usdaFood.nutrition_per_100g.protein),
+      carbs: Math.round(usdaFood.nutrition_per_100g.carbs),
+      fat: Math.round(usdaFood.nutrition_per_100g.fat),
+    });
+    setUsdaEditingMacros(false);
+  };
+
+  // Confirm and import the reviewed USDA food
+  const handleConfirmUsdaFood = async () => {
+    if (!reviewingUsdaFood || !usdaEditedName.trim()) return;
+
+    // Only send overrides for values that differ from the USDA defaults
+    const defaultName = reviewingUsdaFood.description
+      .split(',')
+      .slice(0, 3)
+      .join(',')
+      .trim();
+    const defaultMacros = {
+      calories: Math.round(reviewingUsdaFood.nutrition_per_100g.calories),
+      protein: Math.round(reviewingUsdaFood.nutrition_per_100g.protein),
+      carbs: Math.round(reviewingUsdaFood.nutrition_per_100g.carbs),
+      fat: Math.round(reviewingUsdaFood.nutrition_per_100g.fat),
+    };
+
+    const payload: Record<string, unknown> = {
+      fdcId: reviewingUsdaFood.fdcId,
+      category: usdaEditedCategory,
+    };
+    if (usdaEditedName.trim() !== defaultName) payload.nameOverride = usdaEditedName.trim();
+    if (usdaEditedMacros.calories !== defaultMacros.calories) payload.caloriesOverride = usdaEditedMacros.calories;
+    if (usdaEditedMacros.protein !== defaultMacros.protein) payload.proteinOverride = usdaEditedMacros.protein;
+    if (usdaEditedMacros.carbs !== defaultMacros.carbs) payload.carbsOverride = usdaEditedMacros.carbs;
+    if (usdaEditedMacros.fat !== defaultMacros.fat) payload.fatOverride = usdaEditedMacros.fat;
+
+    setUsdaImporting(true);
     try {
       const response = await fetch('/api/consumption/ingredients/import-usda', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fdcId: usdaFood.fdcId }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -114,16 +179,24 @@ export default function IngredientSearchBar({
         onSelectIngredient(ingredient);
         setQuery('');
         setShowDropdown(false);
+        setReviewingUsdaFood(null);
       } else {
         console.error('Failed to import USDA food');
       }
     } catch (error) {
       console.error('Error importing USDA food:', error);
     }
-    setImportingFdcId(null);
+    setUsdaImporting(false);
   };
 
   const ValidationBadge = ({ ingredient }: { ingredient: IngredientToLog }) => {
+    if (ingredient.is_user_added) {
+      return (
+        <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] align-middle">
+          User Added
+        </span>
+      );
+    }
     if (ingredient.is_validated) {
       return (
         <span className="text-green-500 ml-1" title="FuelRx Validated">
@@ -241,18 +314,175 @@ export default function IngredientSearchBar({
           </span>
         </label>
 
+        {/* USDA Review Panel */}
+        {reviewingUsdaFood && (
+          <div
+            ref={dropdownRef}
+            className="absolute z-10 w-full mt-1 bg-white border border-gray-200
+                       rounded-lg shadow-lg overflow-y-auto p-4 space-y-3"
+            style={{
+              maxHeight: isNative && isKeyboardVisible && keyboardHeight > 0
+                ? `calc(100vh - ${keyboardHeight}px - 200px)`
+                : '28rem',
+            }}
+          >
+            <button
+              onClick={() => setReviewingUsdaFood(null)}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to results
+            </button>
+
+            <div className="bg-blue-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <DataTypeLabel
+                  dataType={reviewingUsdaFood.dataType}
+                  brandOwner={reviewingUsdaFood.brandOwner}
+                />
+              </div>
+
+              <div className="mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Ingredient Name
+                </label>
+                <input
+                  type="text"
+                  value={usdaEditedName}
+                  onChange={(e) => setUsdaEditedName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                  placeholder="Enter ingredient name"
+                />
+              </div>
+
+              <div className="mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Category
+                </label>
+                <select
+                  value={usdaEditedCategory}
+                  onChange={(e) => setUsdaEditedCategory(e.target.value as IngredientCategoryType)}
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                >
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {usdaEditingMacros ? (
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Nutrition per 100g
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <MacroInput
+                      macroType="calories"
+                      value={usdaEditedMacros.calories}
+                      onChange={(val) =>
+                        setUsdaEditedMacros((prev) => ({ ...prev, calories: val }))
+                      }
+                      size="sm"
+                    />
+                    <MacroInput
+                      macroType="protein"
+                      value={usdaEditedMacros.protein}
+                      onChange={(val) =>
+                        setUsdaEditedMacros((prev) => ({ ...prev, protein: val }))
+                      }
+                      size="sm"
+                    />
+                    <MacroInput
+                      macroType="carbs"
+                      value={usdaEditedMacros.carbs}
+                      onChange={(val) =>
+                        setUsdaEditedMacros((prev) => ({ ...prev, carbs: val }))
+                      }
+                      size="sm"
+                    />
+                    <MacroInput
+                      macroType="fat"
+                      value={usdaEditedMacros.fat}
+                      onChange={(val) =>
+                        setUsdaEditedMacros((prev) => ({ ...prev, fat: val }))
+                      }
+                      size="sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUsdaEditingMacros(false)}
+                    className="mt-1 text-xs text-gray-500 hover:text-gray-700 underline w-full text-center"
+                  >
+                    Done editing
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Nutrition per 100g
+                  </label>
+                  <div className="grid grid-cols-4 gap-1 text-center">
+                    <div className="bg-white rounded p-1.5">
+                      <p className="text-sm font-semibold text-gray-900">{usdaEditedMacros.calories}</p>
+                      <p className="text-[10px] text-gray-500">cal</p>
+                    </div>
+                    <div className="bg-white rounded p-1.5">
+                      <p className="text-sm font-semibold text-blue-600">{usdaEditedMacros.protein}g</p>
+                      <p className="text-[10px] text-gray-500">protein</p>
+                    </div>
+                    <div className="bg-white rounded p-1.5">
+                      <p className="text-sm font-semibold text-green-600">{usdaEditedMacros.carbs}g</p>
+                      <p className="text-[10px] text-gray-500">carbs</p>
+                    </div>
+                    <div className="bg-white rounded p-1.5">
+                      <p className="text-sm font-semibold text-amber-600">{usdaEditedMacros.fat}g</p>
+                      <p className="text-[10px] text-gray-500">fat</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUsdaEditingMacros(true)}
+                    className="mt-1 text-xs text-primary-600 hover:text-primary-700 underline w-full text-center"
+                  >
+                    Edit nutrition values
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setReviewingUsdaFood(null)}
+                className="flex-1 py-2 px-3 border border-gray-300 rounded-lg text-sm text-gray-700 font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmUsdaFood}
+                disabled={!usdaEditedName.trim() || usdaImporting}
+                className="flex-1 py-2 px-3 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {usdaImporting ? 'Adding...' : 'Add & Log'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Search Results Dropdown */}
-        {showDropdown && (results.length > 0 || usdaResults.length > 0) && (
+        {!reviewingUsdaFood && showDropdown && (results.length > 0 || usdaResults.length > 0) && (
           <div
             ref={dropdownRef}
             className="absolute z-10 w-full mt-1 bg-white border border-gray-200
                        rounded-lg shadow-lg overflow-y-auto"
             style={{
-              // When keyboard is visible on native, calculate available space
-              // Leave some padding (100px) for the input and header above
               maxHeight: isNative && isKeyboardVisible && keyboardHeight > 0
                 ? `calc(100vh - ${keyboardHeight}px - 200px)`
-                : '20rem', // Increased to accommodate both sections
+                : '20rem',
             }}
           >
             {/* FuelRx Results */}
@@ -297,23 +527,18 @@ export default function IngredientSearchBar({
                     From USDA Database ({usdaResults.length})
                   </span>
                 </div>
-                {(showAllUsda ? usdaResults : usdaResults.slice(0, 5)).map((food) => (
+                {usdaResults.map((food) => (
                   <button
                     key={`usda-${food.fdcId}`}
                     onClick={() => handleSelectUsdaFood(food)}
-                    disabled={importingFdcId === food.fdcId}
                     className="w-full px-4 py-3 text-left hover:bg-blue-50
-                               border-b border-gray-100 last:border-b-0
-                               disabled:opacity-50"
+                               border-b border-gray-100 last:border-b-0"
                   >
                     <div className="flex items-center gap-2">
                       <HealthScoreBadge score={food.health_score} />
                       <span className="font-medium text-gray-900 flex-1 truncate">
                         {food.description}
                       </span>
-                      {importingFdcId === food.fdcId && (
-                        <span className="text-xs text-primary-600 flex-shrink-0">Adding...</span>
-                      )}
                       <span className="text-sm text-gray-500 flex-shrink-0">
                         {Math.round(food.nutrition_per_100g.calories)} cal
                       </span>
@@ -326,15 +551,6 @@ export default function IngredientSearchBar({
                     </div>
                   </button>
                 ))}
-                {usdaResults.length > 5 && !showAllUsda && (
-                  <button
-                    onClick={() => setShowAllUsda(true)}
-                    className="w-full px-4 py-2 text-center text-sm text-blue-600 hover:bg-blue-50
-                               border-t border-gray-100"
-                  >
-                    Show {usdaResults.length - 5} more from USDA...
-                  </button>
-                )}
               </div>
             )}
 

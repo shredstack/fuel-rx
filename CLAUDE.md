@@ -165,6 +165,16 @@ Fast load times are critical since the app runs in a Capacitor WebView on mobile
 - Don't pass inline arrow functions as props to memoized children (defeats `React.memo`).
 - Keep large components from holding too many `useState` calls — when unrelated state changes force a full re-render, consider extracting sub-components with local state.
 
+### Hydration Safety (SSR/Client Mismatch)
+
+Next.js server-renders HTML before React hydrates on the client. If the server and client produce different output, React throws a hydration error. Avoid these common causes:
+
+- **`toLocaleString()` / `toLocaleDateString()` without an explicit locale** — the server and client can resolve to different default locales. Always pass a locale, e.g., `value.toLocaleString('en-US')`.
+- **`Date.now()` / `new Date()` in render** — the server timestamp differs from the client. If you need the current time, read it in a `useEffect` and store it in state.
+- **`Math.random()` in render** — produces different values on each call. Use a stable seed or move to `useEffect`.
+- **`typeof window !== 'undefined'` branches in render** — the server always takes the `false` branch while the client takes `true`, causing a mismatch. Use `useEffect` for client-only logic or the `suppressHydrationWarning` prop for intentional differences.
+- **Browser extensions** — can modify the DOM before React hydrates. Nothing we can do about this, but be aware it exists.
+
 ### Meal Plan Generation
 
 Meal plan generation is an important part of the app. Due to the long-running chain of llm requests, it takes roughly 5 or so minutes to complete one meal plan. We should always look for ways to optimize our llm chain requests without sacrificing quality. The meal plan generation is completely handled by Inngest with no client-side orchestration and should always stay that way.
