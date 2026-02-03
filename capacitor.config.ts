@@ -7,7 +7,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://fuel-rx.shredstack.net';
 
 const config: CapacitorConfig = {
-  appId: 'com.fuelrx.app',
+  appId: 'com.shredstack.fuelrx',
   appName: 'FuelRx',
   webDir: 'out',
 
@@ -23,6 +23,13 @@ const config: CapacitorConfig = {
     preferredContentMode: 'mobile',
     backgroundColor: '#18181b',
     allowsLinkPreview: false,
+  },
+
+  android: {
+    backgroundColor: '#18181b',
+    allowMixedContent: false,
+    captureInput: true,
+    webContentsDebuggingEnabled: !isProduction,
   },
 
   plugins: {

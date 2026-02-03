@@ -2,9 +2,16 @@
 
 # Build script for Capacitor mobile app
 # This approach uses a remote server (Vercel) rather than static export
-# The iOS app is a native wrapper that loads your web app from Vercel
+# The native apps are wrappers that load your web app from Vercel
+#
+# Usage:
+#   ./scripts/build-mobile.sh          # Syncs both platforms
+#   ./scripts/build-mobile.sh ios      # Syncs iOS only
+#   ./scripts/build-mobile.sh android  # Syncs Android only
 
 set -e
+
+PLATFORM=${1:-"all"}
 
 echo "Building FuelRx mobile app..."
 
@@ -69,11 +76,20 @@ echo "Created fallback HTML..."
 
 # Sync with Capacitor
 echo "Syncing with Capacitor..."
-npx cap sync
-
-echo "Mobile build complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Run 'npx cap open ios' to open Xcode"
-echo "  2. Select your development team in Signing & Capabilities"
-echo "  3. Build and run on simulator or device"
+if [ "$PLATFORM" = "ios" ]; then
+  npx cap sync ios
+  echo ""
+  echo "iOS build complete! Run 'npx cap open ios' to open Xcode."
+elif [ "$PLATFORM" = "android" ]; then
+  npx cap sync android
+  echo ""
+  echo "Android build complete! Run 'npx cap open android' to open Android Studio."
+else
+  npx cap sync
+  echo ""
+  echo "Mobile build complete for all platforms!"
+  echo ""
+  echo "Next steps:"
+  echo "  iOS:     npx cap open ios"
+  echo "  Android: npx cap open android"
+fi

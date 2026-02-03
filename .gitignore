@@ -56,5 +56,19 @@ ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 # iOS - Xcode user-specific settings
 xcuserdata/
 
+# Android
+android/app/build/
+android/.gradle/
+android/build/
+android/captures/
+android/.idea/
+android/local.properties
+android/app/google-services.json
+android/keystore.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
 # Local supabase queries
 supabase/snippets/*
