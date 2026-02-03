@@ -117,6 +117,11 @@ export default function MacroInput({
     setIsFocused(true);
     // Select all text on focus for easy replacement
     e.target.select();
+    // Scroll into view for native keyboard awareness
+    e.stopPropagation();
+    setTimeout(() => {
+      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
     props.onFocus?.(e);
   };
 

@@ -246,7 +246,13 @@ export default function IngredientSearchBar({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => query.length >= 2 && setShowDropdown(true)}
+              onFocus={(e) => {
+                if (query.length >= 2) setShowDropdown(true);
+                e.stopPropagation();
+                setTimeout(() => {
+                  inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+              }}
               placeholder="Search ingredients..."
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg
                          focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
@@ -352,6 +358,12 @@ export default function IngredientSearchBar({
                   type="text"
                   value={usdaEditedName}
                   onChange={(e) => setUsdaEditedName(e.target.value)}
+                  onFocus={(e) => {
+                    e.stopPropagation();
+                    setTimeout(() => {
+                      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                  }}
                   className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                   placeholder="Enter ingredient name"
                 />

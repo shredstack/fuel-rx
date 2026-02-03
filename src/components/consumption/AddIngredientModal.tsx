@@ -425,6 +425,12 @@ export default function AddIngredientModal({
                         type="text"
                         value={usdaEditedName}
                         onChange={(e) => setUsdaEditedName(e.target.value)}
+                        onFocus={(e) => {
+                          e.stopPropagation();
+                          setTimeout(() => {
+                            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 300);
+                        }}
                         className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                         placeholder="Enter ingredient name"
                       />
@@ -578,6 +584,12 @@ export default function AddIngredientModal({
                       type="text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
+                      onFocus={(e) => {
+                        e.stopPropagation();
+                        setTimeout(() => {
+                          e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 300);
+                      }}
                       placeholder="Search for an ingredient..."
                       className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                       autoFocus
@@ -797,6 +809,12 @@ export default function AddIngredientModal({
                         type="text"
                         value={barcodeEditedName}
                         onChange={(e) => setBarcodeEditedName(e.target.value)}
+                        onFocus={(e) => {
+                          e.stopPropagation();
+                          setTimeout(() => {
+                            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 300);
+                        }}
                         className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                         placeholder="Enter ingredient name"
                       />
@@ -954,6 +972,12 @@ export default function AddIngredientModal({
                   type="text"
                   value={manualForm.name}
                   onChange={(e) => setManualForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onFocus={(e) => {
+                    e.stopPropagation();
+                    setTimeout(() => {
+                      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                  }}
                   placeholder="e.g., Chocolate Chip Cookie"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                   required
@@ -1008,6 +1032,12 @@ export default function AddIngredientModal({
                     onChange={(e) =>
                       setManualForm((prev) => ({ ...prev, serving_unit: e.target.value }))
                     }
+                    onFocus={(e) => {
+                      e.stopPropagation();
+                      setTimeout(() => {
+                        e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }, 300);
+                    }}
                     placeholder="e.g., serving, oz, cup"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     required
