@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import confetti from 'canvas-confetti';
+import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import type {
@@ -40,15 +40,17 @@ import MealSourceSection from '@/components/consumption/MealSourceSection';
 import MealSection from '@/components/consumption/MealSection';
 import IngredientSearchBar from '@/components/consumption/IngredientSearchBar';
 import IngredientAmountPicker from '@/components/consumption/IngredientAmountPicker';
-import AddIngredientModal from '@/components/consumption/AddIngredientModal';
-import MealPhotoModal from '@/components/consumption/MealPhotoModal';
 import MealPlanMealsSection from '@/components/consumption/MealPlanMealsSection';
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import DailyAverageCard from '@/components/consumption/DailyAverageCard';
-import TrendChart from '@/components/consumption/TrendChart';
-import MealTypeBreakdownChart from '@/components/consumption/MealTypeBreakdownChart';
-import SummaryView from '@/components/consumption/SummaryView';
+
+// Lazy-load heavy components (charts use Recharts ~150KB, modals use barcode scanner ~150KB)
+const TrendChart = dynamic(() => import('@/components/consumption/TrendChart'), { ssr: false });
+const MealTypeBreakdownChart = dynamic(() => import('@/components/consumption/MealTypeBreakdownChart'), { ssr: false });
+const SummaryView = dynamic(() => import('@/components/consumption/SummaryView'), { ssr: false });
+const AddIngredientModal = dynamic(() => import('@/components/consumption/AddIngredientModal'), { ssr: false });
+const MealPhotoModal = dynamic(() => import('@/components/consumption/MealPhotoModal'), { ssr: false });
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
 import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
@@ -61,6 +63,12 @@ interface Props {
   initialAvailable: AvailableMealsToLog;
   initialPreviousEntries: PreviousEntriesByMealType;
   userMealTypes: SelectableMealType[];
+}
+
+// Lazily import confetti on first use (avoids ~10KB in initial bundle)
+async function fireConfetti(options: { particleCount?: number; angle?: number; spread?: number; origin?: { x: number; y: number }; colors?: string[] }) {
+  const confetti = (await import('canvas-confetti')).default;
+  confetti(options);
 }
 
 // Time-based meal type suggestions
@@ -843,19 +851,19 @@ export default function LogMealClient({
       const end = Date.now() + duration;
 
       const frame = () => {
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 60,
           spread: 55,
           origin: { x: 0, y: 0.7 },
-          colors: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0'],
+          colors: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'],
         });
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 120,
           spread: 55,
           origin: { x: 1, y: 0.7 },
-          colors: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0'],
+          colors: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'],
         });
 
         if (Date.now() < end) {
@@ -906,14 +914,14 @@ export default function LogMealClient({
       const end = Date.now() + duration;
 
       const frame = () => {
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 60,
           spread: 55,
           origin: { x: 0, y: 0.7 },
           colors: ['#22c55e', '#4ade80', '#86efac', '#bbf7d0'],  // Green palette
         });
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 120,
           spread: 55,
@@ -966,14 +974,14 @@ export default function LogMealClient({
       const end = Date.now() + duration;
 
       const frame = () => {
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 60,
           spread: 55,
           origin: { x: 0, y: 0.7 },
           colors: ['#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'],  // Blue palette
         });
-        confetti({
+        fireConfetti({
           particleCount: 3,
           angle: 120,
           spread: 55,
@@ -1572,10 +1580,10 @@ export default function LogMealClient({
                 </button>
                 <button
                   onClick={confirmLogMeal}
-                  disabled={!pendingMealType}
+                  disabled={!pendingMealType || isLoadingProduce}
                   className="flex-1 px-4 py-2 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
                 >
-                  Log
+                  {isLoadingProduce ? 'Detecting produce…' : 'Log'}
                 </button>
               </div>
             </div>

@@ -43,7 +43,7 @@ interface HighlightCardProps {
 
 function HighlightCard({ icon, label, value, subtext, trend }: HighlightCardProps) {
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm flex-1 min-w-[140px]">
+    <div className="bg-white rounded-xl p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-xl">{icon}</span>
         <span className="text-xs text-gray-500 font-medium">{label}</span>
@@ -367,7 +367,7 @@ export default function SummaryView({ data }: SummaryViewProps) {
       </div>
 
       {/* Streak Badges - dynamic based on selected macro */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
+      <div className="flex flex-wrap gap-2">
         {macroStats.streak > 1 && (
           <StreakBadge
             icon="🔥"
@@ -383,7 +383,7 @@ export default function SummaryView({ data }: SummaryViewProps) {
       </div>
 
       {/* Highlight Cards - dynamic based on selected macro */}
-      <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4">
+      <div className="grid grid-cols-2 gap-3">
         <HighlightCard
           icon={selectedMacro === 'calories' ? '⚡' : selectedMacro === 'protein' ? '🥩' : selectedMacro === 'carbs' ? '🍚' : '🥑'}
           label={`This Week ${config.label}`}

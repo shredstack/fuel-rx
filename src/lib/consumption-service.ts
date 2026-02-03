@@ -1349,15 +1349,51 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     };
   };
 
-  // 1. Get current week's meal plan
+  // Run all independent queries in parallel (todaysLogs already available)
   const weekStartStr = getWeekStartFromDateStr(dateStr);
-  const { data: currentPlan } = await supabase
-    .from('meal_plans')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('week_start_date', weekStartStr)
-    .single();
 
+  const [
+    { data: currentPlan },
+    { data: customMeals },
+    { data: quickCookMeals },
+    frequentIngredients,
+    pinnedIngredients,
+    latest_plan_meals,
+  ] = await Promise.all([
+    // 1. Get current week's meal plan
+    supabase
+      .from('meal_plans')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('week_start_date', weekStartStr)
+      .single(),
+    // 2. Get custom meals (user-created, excluding quick_cook and party_meal)
+    supabase
+      .from('meals')
+      .select('id, name, meal_type, calories, protein, carbs, fat')
+      .eq('source_user_id', userId)
+      .eq('is_user_created', true)
+      .neq('source_type', 'quick_cook')
+      .neq('source_type', 'party_meal')
+      .order('updated_at', { ascending: false })
+      .limit(10),
+    // 3. Get quick cook meals
+    supabase
+      .from('meals')
+      .select('id, name, meal_type, calories, protein, carbs, fat')
+      .eq('source_user_id', userId)
+      .eq('source_type', 'quick_cook')
+      .order('updated_at', { ascending: false })
+      .limit(10),
+    // 4. Get frequent ingredients
+    getFrequentIngredients(userId),
+    // 5. Get pinned ingredients (favorites)
+    getPinnedIngredients(userId),
+    // 6. Get latest meal plan meals
+    getLatestPlanMeals(userId, todaysLogs || []),
+  ]);
+
+  // Fetch plan meals (depends on currentPlan result)
   const from_todays_plan: MealToLog[] = [];
   const from_week_plan: MealToLog[] = [];
 
@@ -1421,17 +1457,6 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
   const mealTypeOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
   from_todays_plan.sort((a, b) => (mealTypeOrder[a.meal_type || 'snack'] || 4) - (mealTypeOrder[b.meal_type || 'snack'] || 4));
 
-  // 2. Get custom meals (user-created, excluding quick_cook and party_meal)
-  const { data: customMeals } = await supabase
-    .from('meals')
-    .select('id, name, meal_type, calories, protein, carbs, fat')
-    .eq('source_user_id', userId)
-    .eq('is_user_created', true)
-    .neq('source_type', 'quick_cook')
-    .neq('source_type', 'party_meal')
-    .order('updated_at', { ascending: false })
-    .limit(10);
-
   const custom_meals: MealToLog[] = (customMeals || []).map((m) => {
     const logInfo = getLoggedInfo(undefined, m.id);
     return {
@@ -1447,15 +1472,6 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
       ...logInfo,
     };
   });
-
-  // 3. Get quick cook meals
-  const { data: quickCookMeals } = await supabase
-    .from('meals')
-    .select('id, name, meal_type, calories, protein, carbs, fat')
-    .eq('source_user_id', userId)
-    .eq('source_type', 'quick_cook')
-    .order('updated_at', { ascending: false })
-    .limit(10);
 
   const quick_cook_meals: MealToLog[] = (quickCookMeals || []).map((m) => {
     const logInfo = getLoggedInfo(undefined, m.id);
@@ -1473,8 +1489,6 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     };
   });
 
-  // 4. Get frequent ingredients
-  const frequentIngredients = await getFrequentIngredients(userId);
   const frequent_ingredients: IngredientToLog[] = frequentIngredients.map((fi) => ({
     name: fi.ingredient_name,
     default_amount: fi.default_amount,
@@ -1490,8 +1504,6 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     default_grams: fi.default_grams,
   }));
 
-  // 5. Get pinned ingredients (favorites)
-  const pinnedIngredients = await getPinnedIngredients(userId);
   const pinned_ingredients: IngredientToLog[] = pinnedIngredients.map((fi) => ({
     name: fi.ingredient_name,
     default_amount: fi.default_amount,
@@ -1506,9 +1518,6 @@ export async function getAvailableMealsToLogByDateStr(userId: string, dateStr: s
     category: fi.category,
     default_grams: fi.default_grams,
   }));
-
-  // 6. Get latest meal plan meals (for the "Meal Plan Meals" section)
-  const latest_plan_meals = await getLatestPlanMeals(userId, todaysLogs || []);
 
   return {
     from_todays_plan,
