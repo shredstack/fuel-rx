@@ -13,6 +13,8 @@ import { MacroInput } from '@/components/ui';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
 import HealthScoreBadge, { DataTypeLabel } from './HealthScoreBadge';
+import UsdaFoodReviewPanel from './UsdaFoodReviewPanel';
+import { CATEGORY_OPTIONS } from '@/lib/constants';
 
 type TabType = 'search' | 'barcode' | 'manual';
 
@@ -21,17 +23,6 @@ interface AddIngredientModalProps {
   onClose: () => void;
   onSelectIngredient: (ingredient: IngredientToLog) => void;
 }
-
-const CATEGORY_OPTIONS: { value: IngredientCategoryType; label: string }[] = [
-  { value: 'protein', label: 'Protein' },
-  { value: 'vegetable', label: 'Vegetable' },
-  { value: 'fruit', label: 'Fruit' },
-  { value: 'grain', label: 'Grain' },
-  { value: 'fat', label: 'Fat' },
-  { value: 'dairy', label: 'Dairy' },
-  { value: 'pantry', label: 'Pantry' },
-  { value: 'other', label: 'Other' },
-];
 
 export default function AddIngredientModal({
   isOpen,
@@ -398,172 +389,20 @@ export default function AddIngredientModal({
             <div className="p-4">
               {/* USDA Review Screen */}
               {reviewingUsdaFood ? (
-                <div className="space-y-4">
-                  <button
-                    onClick={() => setReviewingUsdaFood(null)}
-                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Back to results
-                  </button>
-
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <DataTypeLabel
-                        dataType={reviewingUsdaFood.dataType}
-                        brandOwner={reviewingUsdaFood.brandOwner}
-                      />
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Ingredient Name
-                      </label>
-                      <input
-                        type="text"
-                        value={usdaEditedName}
-                        onChange={(e) => setUsdaEditedName(e.target.value)}
-                        onFocus={(e) => {
-                          e.stopPropagation();
-                          setTimeout(() => {
-                            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }, 300);
-                        }}
-                        className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                        placeholder="Enter ingredient name"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Edit if needed before saving
-                      </p>
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Category
-                      </label>
-                      <select
-                        value={usdaEditedCategory}
-                        onChange={(e) => setUsdaEditedCategory(e.target.value as IngredientCategoryType)}
-                        className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                      >
-                        {CATEGORY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Select &quot;Fruit&quot; or &quot;Vegetable&quot; to count toward 800g goal
-                      </p>
-                    </div>
-
-                    {usdaEditingMacros ? (
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Nutrition per 100g
-                        </label>
-                        <div className="grid grid-cols-4 gap-2">
-                          <MacroInput
-                            macroType="calories"
-                            value={usdaEditedMacros.calories}
-                            onChange={(val) =>
-                              setUsdaEditedMacros((prev) => ({ ...prev, calories: val }))
-                            }
-                            size="sm"
-                          />
-                          <MacroInput
-                            macroType="protein"
-                            value={usdaEditedMacros.protein}
-                            onChange={(val) =>
-                              setUsdaEditedMacros((prev) => ({ ...prev, protein: val }))
-                            }
-                            size="sm"
-                          />
-                          <MacroInput
-                            macroType="carbs"
-                            value={usdaEditedMacros.carbs}
-                            onChange={(val) =>
-                              setUsdaEditedMacros((prev) => ({ ...prev, carbs: val }))
-                            }
-                            size="sm"
-                          />
-                          <MacroInput
-                            macroType="fat"
-                            value={usdaEditedMacros.fat}
-                            onChange={(val) =>
-                              setUsdaEditedMacros((prev) => ({ ...prev, fat: val }))
-                            }
-                            size="sm"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setUsdaEditingMacros(false)}
-                          className="mt-2 text-sm text-gray-500 hover:text-gray-700 underline w-full text-center"
-                        >
-                          Done editing
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Nutrition per 100g
-                        </label>
-                        <div className="grid grid-cols-4 gap-2 text-center">
-                          <div className="bg-white rounded p-2">
-                            <p className="text-lg font-semibold text-gray-900">
-                              {usdaEditedMacros.calories}
-                            </p>
-                            <p className="text-xs text-gray-500">cal</p>
-                          </div>
-                          <div className="bg-white rounded p-2">
-                            <p className="text-lg font-semibold text-blue-600">
-                              {usdaEditedMacros.protein}g
-                            </p>
-                            <p className="text-xs text-gray-500">protein</p>
-                          </div>
-                          <div className="bg-white rounded p-2">
-                            <p className="text-lg font-semibold text-green-600">
-                              {usdaEditedMacros.carbs}g
-                            </p>
-                            <p className="text-xs text-gray-500">carbs</p>
-                          </div>
-                          <div className="bg-white rounded p-2">
-                            <p className="text-lg font-semibold text-amber-600">
-                              {usdaEditedMacros.fat}g
-                            </p>
-                            <p className="text-xs text-gray-500">fat</p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setUsdaEditingMacros(true)}
-                          className="mt-2 text-sm text-primary-600 hover:text-primary-700 underline w-full text-center"
-                        >
-                          Edit nutrition values
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setReviewingUsdaFood(null)}
-                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleConfirmUsdaFood}
-                      disabled={!usdaEditedName.trim() || usdaImporting}
-                      className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {usdaImporting ? 'Adding...' : 'Add & Log'}
-                    </button>
-                  </div>
-                </div>
+                <UsdaFoodReviewPanel
+                  food={reviewingUsdaFood}
+                  editedName={usdaEditedName}
+                  onNameChange={setUsdaEditedName}
+                  editedCategory={usdaEditedCategory}
+                  onCategoryChange={setUsdaEditedCategory}
+                  editingMacros={usdaEditingMacros}
+                  onEditingMacrosChange={setUsdaEditingMacros}
+                  editedMacros={usdaEditedMacros}
+                  onMacrosChange={setUsdaEditedMacros}
+                  isImporting={usdaImporting}
+                  onConfirm={handleConfirmUsdaFood}
+                  onCancel={() => setReviewingUsdaFood(null)}
+                />
               ) : (
                 <>
                   <div className="relative mb-3">
