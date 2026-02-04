@@ -183,6 +183,14 @@ export default function LogMealClient({
   // Period view state
   const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
 
+  // When switching back to Daily, reset to today so the user isn't stranded on a past date
+  const handlePeriodChange = useCallback((period: ConsumptionPeriodType) => {
+    setSelectedPeriod(period);
+    if (period === 'daily') {
+      setSelectedDate(getLocalTodayString());
+    }
+  }, []);
+
   // Period data via React Query (cached across tab switches)
   const [year, month] = selectedDate.split('-').map(Number);
   const weeklyQuery = useWeeklyConsumption(selectedDate, selectedPeriod === 'weekly');
@@ -1047,7 +1055,7 @@ export default function LogMealClient({
         </div>
 
         {/* Period Tabs */}
-        <PeriodTabs selected={selectedPeriod} onChange={setSelectedPeriod} />
+        <PeriodTabs selected={selectedPeriod} onChange={handlePeriodChange} />
 
         {/* Loading overlay */}
         {(loading || periodLoading) && (

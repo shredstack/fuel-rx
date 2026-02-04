@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { queryKeys } from '@/lib/queryKeys';
 import type {
   DailyConsumptionSummary,
@@ -25,11 +25,8 @@ export type PreviousEntriesByMealType = Record<
 /**
  * Fetch daily consumption summary for a specific date
  * @param date - Date string in YYYY-MM-DD format
- * @param hasInitialData - If true, skip refetch on initial mount (data already seeded from server)
  */
-export function useDailyConsumption(date: string, hasInitialData = false) {
-  const hasHydratedRef = useRef(hasInitialData);
-
+export function useDailyConsumption(date: string) {
   return useQuery({
     queryKey: queryKeys.consumption.daily(date),
     queryFn: async (): Promise<DailyConsumptionSummary> => {
@@ -37,21 +34,15 @@ export function useDailyConsumption(date: string, hasInitialData = false) {
       if (!response.ok) throw new Error('Failed to fetch daily consumption');
       return response.json();
     },
-    staleTime: 60 * 1000, // Consider fresh for 1 minute
-    // Only refetch on mount if we don't have initial data from SSR
-    // After first fetch, always refetch on navigation to ensure fresh data
-    refetchOnMount: hasHydratedRef.current ? false : 'always',
+    staleTime: 30 * 1000, // Consider fresh for 30 seconds
   });
 }
 
 /**
  * Fetch available meals to log for a specific date
  * @param date - Date string in YYYY-MM-DD format
- * @param hasInitialData - If true, skip refetch on initial mount (data already seeded from server)
  */
-export function useAvailableMeals(date: string, hasInitialData = false) {
-  const hasHydratedRef = useRef(hasInitialData);
-
+export function useAvailableMeals(date: string) {
   return useQuery({
     queryKey: queryKeys.consumption.available(date),
     queryFn: async (): Promise<AvailableMealsToLog> => {
@@ -59,20 +50,15 @@ export function useAvailableMeals(date: string, hasInitialData = false) {
       if (!response.ok) throw new Error('Failed to fetch available meals');
       return response.json();
     },
-    staleTime: 60 * 1000,
-    // Only refetch on mount if we don't have initial data from SSR
-    refetchOnMount: hasHydratedRef.current ? false : 'always',
+    staleTime: 30 * 1000,
   });
 }
 
 /**
  * Fetch previous entries by meal type for repeat functionality
  * @param date - Date string in YYYY-MM-DD format
- * @param hasInitialData - If true, skip refetch on initial mount (data already seeded from server)
  */
-export function usePreviousEntries(date: string, hasInitialData = false) {
-  const hasHydratedRef = useRef(hasInitialData);
-
+export function usePreviousEntries(date: string) {
   return useQuery({
     queryKey: queryKeys.consumption.previousByMealType(date),
     queryFn: async (): Promise<PreviousEntriesByMealType> => {
@@ -83,8 +69,6 @@ export function usePreviousEntries(date: string, hasInitialData = false) {
       return response.json();
     },
     staleTime: 5 * 60 * 1000, // Less frequently changing - 5 minutes
-    // Only refetch on mount if we don't have initial data from SSR
-    refetchOnMount: hasHydratedRef.current ? false : 'always',
   });
 }
 
@@ -159,8 +143,6 @@ export function useLogMealData(
   }
 ) {
   const queryClient = useQueryClient();
-  // Track if this is the initial date we received from server
-  const isInitialDateRef = useRef(initialData ? date === initialData.initialDate : false);
 
   // Seed cache with initial data from server (only on mount)
   useEffect(() => {
@@ -182,11 +164,9 @@ export function useLogMealData(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pass hasInitialData only for the initial date from server
-  const hasInitialData = isInitialDateRef.current && !!initialData;
-  const dailyQuery = useDailyConsumption(date, hasInitialData);
-  const availableQuery = useAvailableMeals(date, hasInitialData);
-  const previousQuery = usePreviousEntries(date, hasInitialData);
+  const dailyQuery = useDailyConsumption(date);
+  const availableQuery = useAvailableMeals(date);
+  const previousQuery = usePreviousEntries(date);
 
   return {
     summary: dailyQuery.data,
