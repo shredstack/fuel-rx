@@ -13,11 +13,13 @@ export function QueryProvider({ children }: { children: ReactNode }) {
           queries: {
             // Data is considered fresh for 30 seconds
             staleTime: 30 * 1000,
-            // Keep unused data in cache for 5 minutes
-            gcTime: 5 * 60 * 1000,
+            // Keep unused data in cache for 30 minutes
+            // Native apps can be backgrounded for extended periods, so we need
+            // longer cache retention to avoid data loss when resuming
+            gcTime: 30 * 60 * 1000,
             // Retry failed requests once
             retry: 1,
-            // Refetch on window focus for fresh data
+            // Refetch on window focus for fresh data (web only - native uses appStateChange)
             refetchOnWindowFocus: true,
           },
           mutations: {
