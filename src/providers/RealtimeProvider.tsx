@@ -226,10 +226,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
                 window.location.href = '/login';
                 return;
               }
-              // Invalidate consumption cache to ensure fresh data
-              // after potential WebSocket disconnection
-              queryClient.invalidateQueries({
+              // Force refetch consumption data to ensure fresh data
+              // after potential WebSocket disconnection.
+              // We use refetchQueries instead of invalidateQueries because:
+              // 1. invalidateQueries only marks as stale - doesn't fetch if no active observers
+              // 2. After extended backgrounding, cache may be garbage collected
+              // 3. refetchQueries forces actual network requests regardless of observer status
+              await queryClient.refetchQueries({
                 queryKey: queryKeys.consumption.all,
+              });
+              // Also refetch meal plans since they affect available meals
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.mealPlans.all,
               });
             }
           });
