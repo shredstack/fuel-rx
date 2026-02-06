@@ -2207,8 +2207,43 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   // Build daily aggregates for macros and fruit/veg
   const dailyMacros = new Map<string, { calories: number; protein: number; carbs: number; fat: number; fruitVegGrams: number; hasEntries: boolean }>();
 
+  // Debug: Log sample of consumed_date values from database to check format
+  if (entries && entries.length > 0) {
+    const sampleDates = entries.slice(0, 5).map(e => ({
+      raw: e.consumed_date,
+      type: typeof e.consumed_date,
+    }));
+    console.log('[Summary Debug] Sample consumed_date values from DB:', JSON.stringify(sampleDates));
+  }
+
+  // Helper to normalize date to YYYY-MM-DD format
+  // Handles various formats: Date objects, ISO strings, YYYY-MM-DD strings
+  const normalizeDate = (date: unknown): string => {
+    if (!date) return '';
+    if (typeof date === 'string') {
+      // If already in YYYY-MM-DD format, return as-is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return date;
+      }
+      // If it's an ISO datetime string, extract the date part
+      if (date.includes('T')) {
+        return date.split('T')[0];
+      }
+      // Try to parse and reformat
+      const parsed = new Date(date);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+    }
+    if (date instanceof Date && !isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    // Return as string as fallback
+    return String(date);
+  };
+
   for (const entry of entries || []) {
-    const date = entry.consumed_date;
+    const date = normalizeDate(entry.consumed_date);
     const existing = dailyMacros.get(date) || { calories: 0, protein: 0, carbs: 0, fat: 0, fruitVegGrams: 0, hasEntries: false };
 
     existing.calories += entry.calories;
@@ -2227,8 +2262,11 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   // Build daily water map
   const dailyWater = new Map<string, number>();
   for (const w of waterEntries || []) {
-    dailyWater.set(w.date, w.ounces_consumed);
+    dailyWater.set(normalizeDate(w.date), w.ounces_consumed);
   }
+
+  // Debug: Log all dates that have entries
+  console.log('[Summary Debug] Dates with entries in dailyMacros:', Array.from(dailyMacros.keys()).sort());
 
   // Generate 52 weekly data points
   const weeks: WeeklySummaryDataPoint[] = [];
@@ -2267,6 +2305,12 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
       if (dayStr === todayStr) continue;
 
       const macroData = dailyMacros.get(dayStr);
+
+      // Debug: Log lookup details for recent weeks
+      if (weekLabel.includes('Jan 2') || weekLabel.includes('Feb')) {
+        console.log(`[Summary Debug] Week "${weekLabel}" day ${d}: looking up "${dayStr}", found: ${macroData?.hasEntries ?? false}`);
+      }
+
       if (macroData?.hasEntries) {
         totalCalories += macroData.calories;
         totalProtein += macroData.protein;
@@ -2281,6 +2325,11 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
         totalWaterOunces += waterOunces;
         daysWithWaterData++;
       }
+    }
+
+    // Debug: Log week summary
+    if (weekLabel.includes('Jan 2') || weekLabel.includes('Feb')) {
+      console.log(`[Summary Debug] Week "${weekLabel}": ${daysWithMealData} days with data, total calories: ${totalCalories}`);
     }
 
     weeks.push({
