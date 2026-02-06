@@ -24,6 +24,9 @@ import type {
   IngredientCategoryType,
   ConsumptionSummaryData,
   WeeklySummaryDataPoint,
+  ContributorItem,
+  MacroContributors,
+  TopContributorsData,
 } from '@/lib/types';
 
 // Categories that count toward the 800g goal
@@ -2031,6 +2034,10 @@ export async function getWeeklyConsumptionByDateStr(
     fat: weeklyTargets.fat > 0 ? Math.round((totals.fat / weeklyTargets.fat) * 100) : 0,
   };
 
+  // Compute top contributors
+  const contributorEntries = await getConsumptionEntriesForContributors(userId, weekStartStr, weekEndStr);
+  const topContributors = await computeTopContributorsData(contributorEntries, userId);
+
   return {
     periodType: 'weekly',
     startDate: weekStartStr,
@@ -2044,6 +2051,7 @@ export async function getWeeklyConsumptionByDateStr(
     dailyData,
     entry_count: entryCount,
     byMealType,
+    topContributors,
   };
 }
 
@@ -2126,6 +2134,10 @@ export async function getMonthlyConsumption(
     fat: monthlyTargets.fat > 0 ? Math.round((totals.fat / monthlyTargets.fat) * 100) : 0,
   };
 
+  // Compute top contributors
+  const contributorEntries = await getConsumptionEntriesForContributors(userId, startStr, endStr);
+  const topContributors = await computeTopContributorsData(contributorEntries, userId);
+
   return {
     periodType: 'monthly',
     startDate: startStr,
@@ -2139,6 +2151,7 @@ export async function getMonthlyConsumption(
     dailyData,
     entry_count: entryCount,
     byMealType,
+    topContributors,
   };
 }
 
@@ -2369,4 +2382,330 @@ export async function addWater(userId: string, dateStr: string, ounces: number):
       goalCelebrated: false,
     };
   }
+}
+
+// ============================================
+// Top Macro Contributors Functions
+// ============================================
+
+/** Type for consumption entries with fields needed for contributor calculation */
+type ContributorEntry = {
+  entry_type: string;
+  meal_id: string | null;
+  ingredient_name: string | null;
+  display_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  grams: number | null;
+  ingredient_category: string | null;
+};
+
+/** Type for aggregated contribution data */
+type ContributionData = {
+  name: string;
+  displayName: string; // First-seen casing for display
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  entryCount: number;
+};
+
+/**
+ * Rank contributions by each macro and return top N + "Others" aggregate.
+ * This is a pure function with no database calls.
+ */
+function computeTopContributors(
+  contributions: ContributionData[],
+  topN: number = 10
+): MacroContributors {
+  const macroKeys = ['calories', 'protein', 'carbs', 'fat'] as const;
+  const result: MacroContributors = {
+    calories: [],
+    protein: [],
+    carbs: [],
+    fat: [],
+  };
+
+  for (const macro of macroKeys) {
+    // Calculate total for this macro
+    const total = contributions.reduce((sum, c) => sum + c[macro], 0);
+
+    // Sort contributions by this macro (descending)
+    const sorted = [...contributions]
+      .filter((c) => c[macro] > 0)
+      .sort((a, b) => b[macro] - a[macro]);
+
+    // Take top N
+    const topItems = sorted.slice(0, topN);
+    const rest = sorted.slice(topN);
+
+    // Build result items
+    const items: ContributorItem[] = topItems.map((item) => ({
+      name: item.displayName,
+      value: macro === 'calories' ? Math.round(item[macro]) : Math.round(item[macro] * 10) / 10,
+      percentage: total > 0 ? Math.round((item[macro] / total) * 100) : 0,
+      entryCount: item.entryCount,
+    }));
+
+    // Add "Others" row if there are remaining items with positive values
+    if (rest.length > 0) {
+      const othersValue = rest.reduce((sum, c) => sum + c[macro], 0);
+      const othersCount = rest.reduce((sum, c) => sum + c.entryCount, 0);
+      if (othersValue > 0) {
+        items.push({
+          name: `Others (${rest.length} ${rest.length === 1 ? 'item' : 'items'})`,
+          value: macro === 'calories' ? Math.round(othersValue) : Math.round(othersValue * 10) / 10,
+          percentage: total > 0 ? Math.round((othersValue / total) * 100) : 0,
+          entryCount: othersCount,
+          isAggregate: true,
+          aggregateCount: rest.length,
+        });
+      }
+    }
+
+    result[macro] = items;
+  }
+
+  return result;
+}
+
+/**
+ * Resolve consumption entries into ingredient-level contributions.
+ * For meal entries: look up meal's ingredients JSONB and scale by portion ratio
+ * For ingredient entries: use directly
+ */
+async function resolveIngredientContributions(
+  entries: ContributorEntry[],
+  userId: string
+): Promise<ContributionData[]> {
+  const supabase = await createClient();
+
+  // Filter out 800g-only entries (0 calories, has grams, is fruit/vegetable)
+  const filteredEntries = entries.filter((e) => {
+    const is800gOnly =
+      e.calories === 0 &&
+      e.grams !== null &&
+      e.grams > 0 &&
+      e.ingredient_category &&
+      FRUIT_VEG_CATEGORIES.includes(e.ingredient_category);
+    return !is800gOnly;
+  });
+
+  // Collect unique meal_ids from meal-based entries
+  const mealIds = new Set<string>();
+  for (const entry of filteredEntries) {
+    if (entry.entry_type !== 'ingredient' && entry.meal_id) {
+      mealIds.add(entry.meal_id);
+    }
+  }
+
+  // Batch fetch meals with ingredients
+  type MealWithIngredients = {
+    id: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    ingredients: Array<{
+      name: string;
+      calories?: number;
+      protein?: number;
+      carbs?: number;
+      fat?: number;
+    }>;
+  };
+  const mealsMap = new Map<string, MealWithIngredients>();
+
+  if (mealIds.size > 0) {
+    const { data: meals } = await supabase
+      .from('meals')
+      .select('id, calories, protein, carbs, fat, ingredients')
+      .in('id', Array.from(mealIds));
+
+    if (meals) {
+      for (const meal of meals) {
+        mealsMap.set(meal.id, meal as MealWithIngredients);
+      }
+    }
+  }
+
+  // Aggregation map: normalized name -> contribution data
+  const aggregationMap = new Map<string, ContributionData>();
+
+  for (const entry of filteredEntries) {
+    if (entry.entry_type === 'ingredient') {
+      // Direct ingredient entry
+      const key = normalizeIngredientName(entry.ingredient_name || entry.display_name);
+      const existing = aggregationMap.get(key);
+
+      if (existing) {
+        existing.calories += entry.calories;
+        existing.protein += entry.protein;
+        existing.carbs += entry.carbs;
+        existing.fat += entry.fat;
+        existing.entryCount += 1;
+      } else {
+        aggregationMap.set(key, {
+          name: key,
+          displayName: entry.ingredient_name || entry.display_name,
+          calories: entry.calories,
+          protein: entry.protein,
+          carbs: entry.carbs,
+          fat: entry.fat,
+          entryCount: 1,
+        });
+      }
+    } else if (entry.meal_id && mealsMap.has(entry.meal_id)) {
+      // Meal-based entry with ingredient data available
+      const meal = mealsMap.get(entry.meal_id)!;
+
+      // Compute scale factor: how much did user modify the portion?
+      const scaleFactor = meal.calories > 0 ? entry.calories / meal.calories : 1;
+
+      // Process each ingredient
+      const ingredients = meal.ingredients || [];
+      for (const ing of ingredients) {
+        const key = normalizeIngredientName(ing.name);
+        const scaledCalories = (ing.calories || 0) * scaleFactor;
+        const scaledProtein = (ing.protein || 0) * scaleFactor;
+        const scaledCarbs = (ing.carbs || 0) * scaleFactor;
+        const scaledFat = (ing.fat || 0) * scaleFactor;
+
+        const existing = aggregationMap.get(key);
+        if (existing) {
+          existing.calories += scaledCalories;
+          existing.protein += scaledProtein;
+          existing.carbs += scaledCarbs;
+          existing.fat += scaledFat;
+          existing.entryCount += 1;
+        } else {
+          aggregationMap.set(key, {
+            name: key,
+            displayName: ing.name,
+            calories: scaledCalories,
+            protein: scaledProtein,
+            carbs: scaledCarbs,
+            fat: scaledFat,
+            entryCount: 1,
+          });
+        }
+      }
+    } else {
+      // Meal entry but meal was deleted or not found - treat as single item
+      const key = normalizeIngredientName(entry.display_name);
+      const existing = aggregationMap.get(key);
+
+      if (existing) {
+        existing.calories += entry.calories;
+        existing.protein += entry.protein;
+        existing.carbs += entry.carbs;
+        existing.fat += entry.fat;
+        existing.entryCount += 1;
+      } else {
+        aggregationMap.set(key, {
+          name: key,
+          displayName: entry.display_name,
+          calories: entry.calories,
+          protein: entry.protein,
+          carbs: entry.carbs,
+          fat: entry.fat,
+          entryCount: 1,
+        });
+      }
+    }
+  }
+
+  return Array.from(aggregationMap.values());
+}
+
+/**
+ * Build meal-level contributions directly from entries.
+ * Aggregates by display_name (meal name).
+ */
+function buildMealContributions(entries: ContributorEntry[]): ContributionData[] {
+  // Filter out 800g-only entries
+  const filteredEntries = entries.filter((e) => {
+    const is800gOnly =
+      e.calories === 0 &&
+      e.grams !== null &&
+      e.grams > 0 &&
+      e.ingredient_category &&
+      FRUIT_VEG_CATEGORIES.includes(e.ingredient_category);
+    return !is800gOnly;
+  });
+
+  // Aggregation map: normalized name -> contribution data
+  const aggregationMap = new Map<string, ContributionData>();
+
+  for (const entry of filteredEntries) {
+    const key = normalizeIngredientName(entry.display_name);
+    const existing = aggregationMap.get(key);
+
+    if (existing) {
+      existing.calories += entry.calories;
+      existing.protein += entry.protein;
+      existing.carbs += entry.carbs;
+      existing.fat += entry.fat;
+      existing.entryCount += 1;
+    } else {
+      aggregationMap.set(key, {
+        name: key,
+        displayName: entry.display_name,
+        calories: entry.calories,
+        protein: entry.protein,
+        carbs: entry.carbs,
+        fat: entry.fat,
+        entryCount: 1,
+      });
+    }
+  }
+
+  return Array.from(aggregationMap.values());
+}
+
+/**
+ * Compute both ingredient-level and meal-level top contributors.
+ */
+export async function computeTopContributorsData(
+  entries: ContributorEntry[],
+  userId: string
+): Promise<TopContributorsData> {
+  // Resolve ingredient-level contributions
+  const ingredientContributions = await resolveIngredientContributions(entries, userId);
+
+  // Build meal-level contributions
+  const mealContributions = buildMealContributions(entries);
+
+  return {
+    byIngredient: computeTopContributors(ingredientContributions),
+    byMeal: computeTopContributors(mealContributions),
+  };
+}
+
+/**
+ * Get consumption entries with additional fields needed for top contributors.
+ * This is separate from getConsumptionRangeByDateStr to keep the original function lean.
+ */
+export async function getConsumptionEntriesForContributors(
+  userId: string,
+  startStr: string,
+  endStr: string
+): Promise<ContributorEntry[]> {
+  const supabase = await createClient();
+
+  const { data: entries, error } = await supabase
+    .from('meal_consumption_log')
+    .select(
+      'entry_type, meal_id, ingredient_name, display_name, calories, protein, carbs, fat, grams, ingredient_category'
+    )
+    .eq('user_id', userId)
+    .gte('consumed_date', startStr)
+    .lte('consumed_date', endStr);
+
+  if (error) throw new Error(`Failed to fetch entries for contributors: ${error.message}`);
+
+  return (entries || []) as ContributorEntry[];
 }

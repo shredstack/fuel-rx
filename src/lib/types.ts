@@ -2044,6 +2044,43 @@ export interface PeriodConsumptionSummary {
   dailyData: DailyDataPoint[]; // For line chart
   entry_count: number;
   byMealType: MealTypeBreakdown; // Breakdown by meal type
+  topContributors?: TopContributorsData; // Top macro contributors by ingredient and by meal
+}
+
+// ============================================
+// Top Macro Contributors Types
+// ============================================
+
+/** A single food or meal that contributes to macro totals */
+export interface ContributorItem {
+  /** Display name of the food/meal */
+  name: string;
+  /** Total macro value for the period (calories as int, others 1 decimal) */
+  value: number;
+  /** Percentage of total for this macro (0-100, rounded to nearest int) */
+  percentage: number;
+  /** Number of times this item appeared (meals it was in, or times logged) */
+  entryCount: number;
+  /** True for the "Others" aggregate row */
+  isAggregate?: boolean;
+  /** For aggregate rows: how many distinct items are grouped */
+  aggregateCount?: number;
+}
+
+/** Ranked contributor lists for each macro */
+export interface MacroContributors {
+  calories: ContributorItem[];
+  protein: ContributorItem[];
+  carbs: ContributorItem[];
+  fat: ContributorItem[];
+}
+
+/** Both ingredient-level and meal-level contributor views */
+export interface TopContributorsData {
+  /** Ingredient-level: looks through meals to individual ingredients */
+  byIngredient: MacroContributors;
+  /** Meal-level: whole meals/foods as logged units */
+  byMeal: MacroContributors;
 }
 
 // ============================================
