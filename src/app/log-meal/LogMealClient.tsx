@@ -43,6 +43,7 @@ import IngredientAmountPicker from '@/components/consumption/IngredientAmountPic
 import MealPlanMealsSection from '@/components/consumption/MealPlanMealsSection';
 import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
+import TopContributors from '@/components/consumption/TopContributors';
 import DailyAverageCard from '@/components/consumption/DailyAverageCard';
 
 // Lazy-load heavy components (charts use Recharts ~150KB, modals use barcode scanner ~150KB)
@@ -1073,6 +1074,12 @@ export default function LogMealClient({
               onNext={() => handlePeriodNavigate('next')}
               isNextDisabled={isNextPeriodDisabled}
             />
+            {periodSummary.topContributors && (
+              <TopContributors
+                data={periodSummary.topContributors}
+                periodLabel={selectedPeriod === 'weekly' ? 'This Week' : 'This Month'}
+              />
+            )}
             <div className="mt-4">
               <DailyAverageCard
                 averagePerDay={periodSummary.averagePerDay}
