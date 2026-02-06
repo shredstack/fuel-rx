@@ -2183,22 +2183,17 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   const rangeStart = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - 51 * 7, 12, 0, 0));
   const rangeStartStr = rangeStart.toISOString().split('T')[0];
 
-  // Debug: Log query parameters
-  console.log('[Summary Debug] Query range:', { rangeStartStr, todayStr, todayWeekStart });
-
   // Fetch all consumption entries in the range
-  // IMPORTANT: Need to disable default row limit (1000) to get all entries for 52 weeks
+  // NOTE: Default Supabase limit is 1000 rows. Users logging ~15 items/day can exceed this
+  // over 52 weeks, so we increase the limit to ensure all entries are returned.
   const { data: entries, error: entriesError } = await supabase
     .from('meal_consumption_log')
     .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
     .eq('user_id', userId)
     .gte('consumed_date', rangeStartStr)
     .lte('consumed_date', todayStr)
-    .order('consumed_date', { ascending: false })  // Order by most recent first so we don't miss recent data if limited
-    .limit(10000);  // Increase limit to handle heavy loggers
-
-  // Debug: Log how many entries were returned
-  console.log('[Summary Debug] Entries returned from DB:', entries?.length ?? 0);
+    .order('consumed_date', { ascending: true })
+    .limit(10000);
 
   if (entriesError) throw new Error(`Failed to fetch consumption entries: ${entriesError.message}`);
 
@@ -2215,15 +2210,6 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
 
   // Build daily aggregates for macros and fruit/veg
   const dailyMacros = new Map<string, { calories: number; protein: number; carbs: number; fat: number; fruitVegGrams: number; hasEntries: boolean }>();
-
-  // Debug: Log sample of consumed_date values from database to check format
-  if (entries && entries.length > 0) {
-    const sampleDates = entries.slice(0, 5).map(e => ({
-      raw: e.consumed_date,
-      type: typeof e.consumed_date,
-    }));
-    console.log('[Summary Debug] Sample consumed_date values from DB:', JSON.stringify(sampleDates));
-  }
 
   // Helper to normalize date to YYYY-MM-DD format
   // Handles various formats: Date objects, ISO strings, YYYY-MM-DD strings
@@ -2274,11 +2260,12 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
     dailyWater.set(normalizeDate(w.date), w.ounces_consumed);
   }
 
-  // Debug: Log all dates that have entries
-  console.log('[Summary Debug] Dates with entries in dailyMacros:', Array.from(dailyMacros.keys()).sort());
-
   // Generate 52 weekly data points
   const weeks: WeeklySummaryDataPoint[] = [];
+
+  // Debug: Log all dates in dailyMacros that start with 2025-11
+  const novDates = Array.from(dailyMacros.keys()).filter(d => d.startsWith('2025-11'));
+  console.log('[Summary Debug] November 2025 dates in dailyMacros:', novDates);
 
   for (let i = 0; i < 52; i++) {
     const weekStartDate = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - (51 - i) * 7, 12, 0, 0));
@@ -2287,6 +2274,11 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
     // Format week label (e.g., "Jan 6")
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const weekLabel = `${monthNames[weekStartDate.getUTCMonth()]} ${weekStartDate.getUTCDate()}`;
+
+    // Debug: Log November weeks specifically
+    if (weekStartStr.startsWith('2025-11')) {
+      console.log(`[Summary Debug] November week: ${weekLabel} (${weekStartStr})`);
+    }
 
     // Accumulate 7 days for this week
     let totalCalories = 0;
@@ -2315,9 +2307,9 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
 
       const macroData = dailyMacros.get(dayStr);
 
-      // Debug: Log lookup details for recent weeks
-      if (weekLabel.includes('Jan 2') || weekLabel.includes('Feb')) {
-        console.log(`[Summary Debug] Week "${weekLabel}" day ${d}: looking up "${dayStr}", found: ${macroData?.hasEntries ?? false}`);
+      // Debug: Log November day lookups
+      if (dayStr.startsWith('2025-11')) {
+        console.log(`[Summary Debug] Looking up ${dayStr}: found=${!!macroData?.hasEntries}, calories=${macroData?.calories ?? 0}`);
       }
 
       if (macroData?.hasEntries) {
@@ -2336,9 +2328,9 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
       }
     }
 
-    // Debug: Log week summary
-    if (weekLabel.includes('Jan 2') || weekLabel.includes('Feb')) {
-      console.log(`[Summary Debug] Week "${weekLabel}": ${daysWithMealData} days with data, total calories: ${totalCalories}`);
+    // Debug: Log November week results
+    if (weekStartStr.startsWith('2025-11')) {
+      console.log(`[Summary Debug] Week ${weekLabel} result: daysWithMealData=${daysWithMealData}, totalCalories=${totalCalories}`);
     }
 
     weeks.push({
