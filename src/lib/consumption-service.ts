@@ -2183,14 +2183,22 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   const rangeStart = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - 51 * 7, 12, 0, 0));
   const rangeStartStr = rangeStart.toISOString().split('T')[0];
 
+  // Debug: Log query parameters
+  console.log('[Summary Debug] Query range:', { rangeStartStr, todayStr, todayWeekStart });
+
   // Fetch all consumption entries in the range
+  // IMPORTANT: Need to disable default row limit (1000) to get all entries for 52 weeks
   const { data: entries, error: entriesError } = await supabase
     .from('meal_consumption_log')
     .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
     .eq('user_id', userId)
     .gte('consumed_date', rangeStartStr)
     .lte('consumed_date', todayStr)
-    .order('consumed_date', { ascending: true });
+    .order('consumed_date', { ascending: false })  // Order by most recent first so we don't miss recent data if limited
+    .limit(10000);  // Increase limit to handle heavy loggers
+
+  // Debug: Log how many entries were returned
+  console.log('[Summary Debug] Entries returned from DB:', entries?.length ?? 0);
 
   if (entriesError) throw new Error(`Failed to fetch consumption entries: ${entriesError.message}`);
 
@@ -2200,7 +2208,8 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
     .select('date, ounces_consumed')
     .eq('user_id', userId)
     .gte('date', rangeStartStr)
-    .lte('date', todayStr);
+    .lte('date', todayStr)
+    .limit(500);  // Water has at most 1 entry per day, 500 is plenty for ~365 days
 
   if (waterError) throw new Error(`Failed to fetch water entries: ${waterError.message}`);
 
