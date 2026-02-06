@@ -402,9 +402,9 @@ export function MealCard({
                   </button>
                 )}
               </div>
-              <ol className="space-y-2">
+              <ol className="space-y-3">
                 {meal.instructions.map((step, idx) => (
-                  <li key={idx} className="text-sm text-gray-600">
+                  <li key={idx} className="text-base text-gray-600">
                     <span className="font-medium text-gray-700">{idx + 1}.</span> {step}
                   </li>
                 ))}
