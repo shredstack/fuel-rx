@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import type { CookingStatus } from '@/lib/types'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
+import { useKeyboard } from '@/hooks/useKeyboard'
+import { usePlatform } from '@/hooks/usePlatform'
 
 interface Props {
   isOpen: boolean
@@ -48,11 +50,50 @@ export default function CookingStatusModal({
   // Share toggle state
   const [shareWithCommunity, setShareWithCommunity] = useState(true)
 
+  // Keyboard handling for native iOS
+  const { keyboardHeight: nativeKeyboardHeight, isKeyboardVisible: isNativeKeyboardVisible } = useKeyboard()
+  const { isNative } = usePlatform()
+  const [webKeyboardHeight, setWebKeyboardHeight] = useState(0)
+  const notesTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Use native keyboard height on Capacitor, fallback to visualViewport for web
+  const keyboardHeight = isNative ? nativeKeyboardHeight : webKeyboardHeight
+  const isKeyboardVisible = isNative ? isNativeKeyboardVisible : webKeyboardHeight > 0
+
   const handleTextareaFocus = useCallback((e: React.FocusEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation()
     setTimeout(() => {
       e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 300)
   }, [])
+
+  // Handle keyboard visibility for web (visualViewport API)
+  useEffect(() => {
+    if (isNative || !isOpen) return
+
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const handleResize = () => {
+      const keyboardH = window.innerHeight - viewport.height
+      setWebKeyboardHeight(keyboardH > 0 ? keyboardH : 0)
+
+      // When keyboard opens, scroll textarea into view
+      if (document.activeElement === notesTextareaRef.current && keyboardH > 0) {
+        setTimeout(() => {
+          notesTextareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 100)
+      }
+    }
+
+    viewport.addEventListener('resize', handleResize)
+    viewport.addEventListener('scroll', handleResize)
+
+    return () => {
+      viewport.removeEventListener('resize', handleResize)
+      viewport.removeEventListener('scroll', handleResize)
+    }
+  }, [isNative, isOpen])
 
   // Image validation modal state
   const [showImageValidationModal, setShowImageValidationModal] = useState(false)
@@ -263,8 +304,17 @@ export default function CookingStatusModal({
   const isCooked = selectedStatus !== 'not_cooked'
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 pb-safe">
-      <div className="bg-white rounded-lg w-full max-w-lg max-h-[85vh] md:max-h-[90vh] overflow-y-auto mb-4 md:mb-0">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 pb-safe"
+      style={isKeyboardVisible ? { paddingBottom: `${keyboardHeight}px` } : undefined}
+    >
+      <div
+        className="bg-white rounded-lg w-full max-w-lg overflow-y-auto mb-4 md:mb-0"
+        style={{
+          maxHeight: isKeyboardVisible ? `calc(100vh - ${keyboardHeight + 32}px)` : '85vh',
+          transition: 'max-height 0.15s ease-out',
+        }}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-lg">
           <div className="flex items-center justify-between">
@@ -459,6 +509,7 @@ export default function CookingStatusModal({
                 Notes (optional)
               </label>
               <textarea
+                ref={notesTextareaRef}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 onFocus={handleTextareaFocus}
