@@ -2263,9 +2263,11 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   // Generate 52 weekly data points
   const weeks: WeeklySummaryDataPoint[] = [];
 
-  // Debug: Log all dates in dailyMacros that start with 2025-11
-  const novDates = Array.from(dailyMacros.keys()).filter(d => d.startsWith('2025-11'));
-  console.log('[Summary Debug] November 2025 dates in dailyMacros:', novDates);
+  // Debug: Log entry count and date range
+  const allDates = Array.from(dailyMacros.keys()).sort();
+  console.log(`[Summary Debug] Total days with data: ${allDates.length}`);
+  console.log(`[Summary Debug] Date range: ${allDates[0]} to ${allDates[allDates.length - 1]}`);
+  console.log(`[Summary Debug] Total entries fetched: ${entries?.length ?? 0}`);
 
   for (let i = 0; i < 52; i++) {
     const weekStartDate = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - (51 - i) * 7, 12, 0, 0));
