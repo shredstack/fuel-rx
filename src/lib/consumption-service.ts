@@ -5,6 +5,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { paginateQuery } from '@/lib/supabase/pagination';
 import type {
   ConsumptionEntry,
   DailyConsumptionSummary,
@@ -1567,16 +1568,28 @@ export async function getConsumptionRange(
   const startStr = startDate.toISOString().split('T')[0];
   const endStr = endDate.toISOString().split('T')[0];
 
-  // Get all entries in date range (including meal_type for breakdown)
-  const { data: entries, error } = await supabase
-    .from('meal_consumption_log')
-    .select('consumed_date, meal_type, calories, protein, carbs, fat')
-    .eq('user_id', userId)
-    .gte('consumed_date', startStr)
-    .lte('consumed_date', endStr)
-    .order('consumed_date', { ascending: true });
+  // Get all entries in date range using pagination (Supabase has 1000-row server limit)
+  // While weekly/monthly views are typically safe, we paginate defensively for arbitrary ranges
+  const entries = await paginateQuery<{
+    consumed_date: string;
+    meal_type: string | null;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>(async (offset, pageSize) => {
+    const { data, error } = await supabase
+      .from('meal_consumption_log')
+      .select('consumed_date, meal_type, calories, protein, carbs, fat')
+      .eq('user_id', userId)
+      .gte('consumed_date', startStr)
+      .lte('consumed_date', endStr)
+      .order('consumed_date', { ascending: true })
+      .range(offset, offset + pageSize - 1);
 
-  if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+    if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+    return data || [];
+  });
 
   // Type for per-day data including meal type breakdown
   type DailyAccumulator = {
@@ -1730,16 +1743,28 @@ export async function getConsumptionRangeByDateStr(
 }> {
   const supabase = await createClient();
 
-  // Get all entries in date range (including meal_type for breakdown)
-  const { data: entries, error } = await supabase
-    .from('meal_consumption_log')
-    .select('consumed_date, meal_type, calories, protein, carbs, fat')
-    .eq('user_id', userId)
-    .gte('consumed_date', startStr)
-    .lte('consumed_date', endStr)
-    .order('consumed_date', { ascending: true });
+  // Get all entries in date range using pagination (Supabase has 1000-row server limit)
+  // While weekly/monthly views are typically safe, we paginate defensively for arbitrary ranges
+  const entries = await paginateQuery<{
+    consumed_date: string;
+    meal_type: string | null;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>(async (offset, pageSize) => {
+    const { data, error } = await supabase
+      .from('meal_consumption_log')
+      .select('consumed_date, meal_type, calories, protein, carbs, fat')
+      .eq('user_id', userId)
+      .gte('consumed_date', startStr)
+      .lte('consumed_date', endStr)
+      .order('consumed_date', { ascending: true })
+      .range(offset, offset + pageSize - 1);
 
-  if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+    if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
+    return data || [];
+  });
 
   // Type for per-day data including meal type breakdown
   type DailyAccumulator = {
@@ -2186,32 +2211,27 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   // Fetch all consumption entries in the range using pagination
   // NOTE: Supabase has a server-side max_rows limit (default 1000) that cannot be exceeded
   // by the client .limit() call. We must paginate to get all entries.
-  const PAGE_SIZE = 1000;
-  let entries: { consumed_date: string; calories: number; protein: number; carbs: number; fat: number; grams: number | null; ingredient_category: string | null }[] = [];
-  let offset = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const { data: batch, error: batchError } = await supabase
+  const entries = await paginateQuery<{
+    consumed_date: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    grams: number | null;
+    ingredient_category: string | null;
+  }>(async (offset, pageSize) => {
+    const { data, error } = await supabase
       .from('meal_consumption_log')
       .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
       .eq('user_id', userId)
       .gte('consumed_date', rangeStartStr)
       .lte('consumed_date', todayStr)
       .order('consumed_date', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
+      .range(offset, offset + pageSize - 1);
 
-    if (batchError) throw new Error(`Failed to fetch consumption entries: ${batchError.message}`);
-
-    if (batch && batch.length > 0) {
-      entries = entries.concat(batch);
-      offset += batch.length;
-      // If we got fewer than PAGE_SIZE, we've reached the end
-      hasMore = batch.length === PAGE_SIZE;
-    } else {
-      hasMore = false;
-    }
-  }
+    if (error) throw new Error(`Failed to fetch consumption entries: ${error.message}`);
+    return data || [];
+  });
 
   // Fetch all water entries in the range
   const { data: waterEntries, error: waterError } = await supabase
@@ -2279,12 +2299,6 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   // Generate 52 weekly data points
   const weeks: WeeklySummaryDataPoint[] = [];
 
-  // Debug: Log entry count and date range
-  const allDates = Array.from(dailyMacros.keys()).sort();
-  console.log(`[Summary Debug] Total days with data: ${allDates.length}`);
-  console.log(`[Summary Debug] Date range: ${allDates[0]} to ${allDates[allDates.length - 1]}`);
-  console.log(`[Summary Debug] Total entries fetched: ${entries?.length ?? 0}`);
-
   for (let i = 0; i < 52; i++) {
     const weekStartDate = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - (51 - i) * 7, 12, 0, 0));
     const weekStartStr = weekStartDate.toISOString().split('T')[0];
@@ -2292,11 +2306,6 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
     // Format week label (e.g., "Jan 6")
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const weekLabel = `${monthNames[weekStartDate.getUTCMonth()]} ${weekStartDate.getUTCDate()}`;
-
-    // Debug: Log November weeks specifically
-    if (weekStartStr.startsWith('2025-11')) {
-      console.log(`[Summary Debug] November week: ${weekLabel} (${weekStartStr})`);
-    }
 
     // Accumulate 7 days for this week
     let totalCalories = 0;
@@ -2324,12 +2333,6 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
       if (dayStr === todayStr) continue;
 
       const macroData = dailyMacros.get(dayStr);
-
-      // Debug: Log November day lookups
-      if (dayStr.startsWith('2025-11')) {
-        console.log(`[Summary Debug] Looking up ${dayStr}: found=${!!macroData?.hasEntries}, calories=${macroData?.calories ?? 0}`);
-      }
-
       if (macroData?.hasEntries) {
         totalCalories += macroData.calories;
         totalProtein += macroData.protein;
@@ -2344,11 +2347,6 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
         totalWaterOunces += waterOunces;
         daysWithWaterData++;
       }
-    }
-
-    // Debug: Log November week results
-    if (weekStartStr.startsWith('2025-11')) {
-      console.log(`[Summary Debug] Week ${weekLabel} result: daysWithMealData=${daysWithMealData}, totalCalories=${totalCalories}`);
     }
 
     weeks.push({
@@ -2764,16 +2762,21 @@ export async function getConsumptionEntriesForContributors(
 ): Promise<ContributorEntry[]> {
   const supabase = await createClient();
 
-  const { data: entries, error } = await supabase
-    .from('meal_consumption_log')
-    .select(
-      'entry_type, meal_id, ingredient_name, display_name, calories, protein, carbs, fat, grams, ingredient_category'
-    )
-    .eq('user_id', userId)
-    .gte('consumed_date', startStr)
-    .lte('consumed_date', endStr);
+  // Use pagination to handle Supabase's 1000-row server limit
+  // This function is typically called for weekly views which are safe,
+  // but we paginate defensively for arbitrary date ranges
+  return paginateQuery<ContributorEntry>(async (offset, pageSize) => {
+    const { data, error } = await supabase
+      .from('meal_consumption_log')
+      .select(
+        'entry_type, meal_id, ingredient_name, display_name, calories, protein, carbs, fat, grams, ingredient_category'
+      )
+      .eq('user_id', userId)
+      .gte('consumed_date', startStr)
+      .lte('consumed_date', endStr)
+      .range(offset, offset + pageSize - 1);
 
-  if (error) throw new Error(`Failed to fetch entries for contributors: ${error.message}`);
-
-  return (entries || []) as ContributorEntry[];
+    if (error) throw new Error(`Failed to fetch entries for contributors: ${error.message}`);
+    return (data || []) as ContributorEntry[];
+  });
 }

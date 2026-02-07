@@ -146,6 +146,53 @@ useRealtimeSubscription({
 });
 ```
 
+### Supabase Query Pagination
+
+Supabase has a server-side `max_rows` limit (default 1000) that **cannot be bypassed** by client-side `.limit()` calls. Any query that could return more than 1000 rows will be silently truncated, causing data loss bugs.
+
+**When to use pagination:**
+- Consumption logs (~15 entries/day → exceeds 1000 in ~67 days)
+- Historical data across long date ranges (e.g., 52 weeks of data)
+- Any user-generated content that accumulates over time
+- Queries without strict date bounds
+
+**Utility:** `src/lib/supabase/pagination.ts`
+
+```typescript
+import { paginateQuery } from '@/lib/supabase/pagination';
+
+// Instead of:
+const { data } = await supabase
+  .from('meal_consumption_log')
+  .select('consumed_date, calories')
+  .eq('user_id', userId);
+
+// Use:
+const data = await paginateQuery<{ consumed_date: string; calories: number }>(
+  async (offset, pageSize) => {
+    const { data, error } = await supabase
+      .from('meal_consumption_log')
+      .select('consumed_date, calories')
+      .eq('user_id', userId)
+      .order('consumed_date', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+);
+```
+
+**Safe queries (no pagination needed):**
+- Single-day queries (bounded by date)
+- Queries with explicit small limits (e.g., `.limit(50)`)
+- Water logs (max 1 entry/day → `.limit(500)` covers ~1.4 years)
+- Weekly/monthly views with bounded date ranges
+
+**Key files:**
+- `src/lib/supabase/pagination.ts` - The `paginateQuery` utility
+- `src/lib/consumption-service.ts` - Reference implementations
+
 ### UI Performance
 
 Fast load times are critical since the app runs in a Capacitor WebView on mobile. Follow these principles when adding or updating client-side code:

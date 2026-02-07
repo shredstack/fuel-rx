@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { paginateQuery } from '@/lib/supabase/pagination';
 
 /**
  * User stats/wins for the profile page
@@ -75,7 +76,7 @@ const MACRO_HIT_THRESHOLD = 0.9;
  *
  * Get aggregated user stats for the profile wins section.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
 
   const {
@@ -87,6 +88,10 @@ export async function GET() {
   }
 
   try {
+    // Get user's local date from query param (client passes their timezone-aware date)
+    const { searchParams } = new URL(request.url);
+    const clientDate = searchParams.get('date');
+
     // Get user's daily macro targets
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
@@ -98,41 +103,64 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    // Calculate date ranges
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // Use client-provided date if valid, otherwise fall back to server date
+    // Client date ensures timezone consistency with consumed_date in the database
+    let todayStr: string;
+    if (clientDate && /^\d{4}-\d{2}-\d{2}$/.test(clientDate)) {
+      todayStr = clientDate;
+    } else {
+      const today = new Date();
+      todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
 
-    // Week start (Monday)
-    const dayOfWeek = today.getDay();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    const weekStartStr = weekStart.toISOString().split('T')[0];
+    // Parse the date for week/month/year calculations
+    const [year, month, day] = todayStr.split('-').map(Number);
+    const todayDate = new Date(year, month - 1, day);
+
+    // Week start (Monday) - calculate using the parsed date
+    const dayOfWeek = todayDate.getDay();
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(year, month - 1, day - daysToSubtract);
+    const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
 
     // Month start
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
 
     // Year start
-    const yearStart = new Date(today.getFullYear(), 0, 1);
-    const yearStartStr = yearStart.toISOString().split('T')[0];
+    const yearStartStr = `${year}-01-01`;
 
-    // Fetch all consumption data (we'll filter in memory for different periods)
-    const { data: entries, error: entriesError } = await supabase
-      .from('meal_consumption_log')
-      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category, meal_type')
-      .eq('user_id', user.id)
-      .lte('consumed_date', todayStr)
-      .order('consumed_date', { ascending: true });
+    // Fetch all consumption data using pagination (Supabase has 1000-row server limit)
+    // We filter in memory for different time periods
+    const entries = await paginateQuery<{
+      consumed_date: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      grams: number | null;
+      ingredient_category: string | null;
+      meal_type: string | null;
+    }>(async (offset, pageSize) => {
+      const { data, error } = await supabase
+        .from('meal_consumption_log')
+        .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category, meal_type')
+        .eq('user_id', user.id)
+        .lte('consumed_date', todayStr)
+        .order('consumed_date', { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-    if (entriesError) throw entriesError;
+      if (error) throw new Error(`Failed to fetch consumption entries: ${error.message}`);
+      return data || [];
+    });
 
-    // Fetch all water data
+    // Fetch all water data (max 1 entry per day, so limit of 500 is safe for ~1.4 years)
     const { data: waterEntries, error: waterError } = await supabase
       .from('daily_water_log')
       .select('date, ounces_consumed')
       .eq('user_id', user.id)
       .lte('date', todayStr)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .limit(500);
 
     if (waterError) throw waterError;
 
@@ -310,7 +338,7 @@ export async function GET() {
           // Check if this is consecutive (or first day)
           if (prevDate === null) {
             // First day - check if it's today or yesterday
-            const diffFromToday = Math.floor((today.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+            const diffFromToday = Math.floor((todayDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
             if (diffFromToday <= 1) {
               current = 1;
               prevDate = currentDate;

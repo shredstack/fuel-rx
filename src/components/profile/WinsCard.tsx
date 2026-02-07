@@ -13,7 +13,10 @@ export default function WinsCard() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('/api/consumption/stats')
+        // Pass client's local date to ensure timezone consistency
+        const today = new Date()
+        const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+        const res = await fetch(`/api/consumption/stats?date=${dateStr}`)
         if (res.ok) {
           const data = await res.json()
           setStats(data)

@@ -68,6 +68,25 @@ Check that client-side data fetching follows our React Query patterns:
 - [ ] **Cache invalidation**: Mutations should invalidate related queries in `onSuccess` to keep UI updated
 - [ ] **Hook location**: Query/mutation hooks should live in `src/hooks/queries/`
 
+### Supabase Query Pagination Review
+
+Supabase has a server-side `max_rows` limit (default 1000) that silently truncates results. Check for:
+
+- [ ] **Unbounded queries on accumulating data**: Any query on `meal_consumption_log` or similar tables that could exceed 1000 rows over time must use `paginateQuery()` from `src/lib/supabase/pagination.ts`
+- [ ] **Historical data queries**: Queries spanning long date ranges (e.g., 52 weeks, all-time) need pagination
+- [ ] **No reliance on client `.limit()`**: Client-side `.limit(5000)` does NOT override the server's 1000-row cap
+
+🚩 **Red flags:**
+- Direct queries on `meal_consumption_log` without date bounds or pagination
+- Queries that fetch "all entries" for a user without pagination
+- Using `.limit()` with values over 1000 (false sense of security)
+
+✅ **Safe patterns (no pagination needed):**
+- Single-day queries (bounded by specific date)
+- Queries with small explicit limits (e.g., `.limit(50)`)
+- Water logs with `.limit(500)` (max 1 entry/day)
+- Weekly/monthly views with bounded date ranges
+
 ### Native App Compatibility Review
 
 FuelRx runs as a native iOS app via Capacitor WebView loading from the production URL. **Every feature must work on mobile.**
