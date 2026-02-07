@@ -2183,19 +2183,35 @@ export async function getConsumptionSummary(userId: string, todayStr?: string): 
   const rangeStart = new Date(Date.UTC(twsYear, twsMonth - 1, twsDay - 51 * 7, 12, 0, 0));
   const rangeStartStr = rangeStart.toISOString().split('T')[0];
 
-  // Fetch all consumption entries in the range
-  // NOTE: Default Supabase limit is 1000 rows. Users logging ~15 items/day can exceed this
-  // over 52 weeks, so we increase the limit to ensure all entries are returned.
-  const { data: entries, error: entriesError } = await supabase
-    .from('meal_consumption_log')
-    .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
-    .eq('user_id', userId)
-    .gte('consumed_date', rangeStartStr)
-    .lte('consumed_date', todayStr)
-    .order('consumed_date', { ascending: true })
-    .limit(10000);
+  // Fetch all consumption entries in the range using pagination
+  // NOTE: Supabase has a server-side max_rows limit (default 1000) that cannot be exceeded
+  // by the client .limit() call. We must paginate to get all entries.
+  const PAGE_SIZE = 1000;
+  let entries: { consumed_date: string; calories: number; protein: number; carbs: number; fat: number; grams: number | null; ingredient_category: string | null }[] = [];
+  let offset = 0;
+  let hasMore = true;
 
-  if (entriesError) throw new Error(`Failed to fetch consumption entries: ${entriesError.message}`);
+  while (hasMore) {
+    const { data: batch, error: batchError } = await supabase
+      .from('meal_consumption_log')
+      .select('consumed_date, calories, protein, carbs, fat, grams, ingredient_category')
+      .eq('user_id', userId)
+      .gte('consumed_date', rangeStartStr)
+      .lte('consumed_date', todayStr)
+      .order('consumed_date', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (batchError) throw new Error(`Failed to fetch consumption entries: ${batchError.message}`);
+
+    if (batch && batch.length > 0) {
+      entries = entries.concat(batch);
+      offset += batch.length;
+      // If we got fewer than PAGE_SIZE, we've reached the end
+      hasMore = batch.length === PAGE_SIZE;
+    } else {
+      hasMore = false;
+    }
+  }
 
   // Fetch all water entries in the range
   const { data: waterEntries, error: waterError } = await supabase
