@@ -74,6 +74,8 @@ export default function QuickCookClient({ profile }: Props) {
   const [guestCount, setGuestCount] = useState(8)
   const [partyType, setPartyType] = useState<PartyType>('casual_gathering')
   const [recipeUrl, setRecipeUrl] = useState('')
+  const [dishCount, setDishCount] = useState<number | undefined>(undefined)
+  const [sameDayPrepOnly, setSameDayPrepOnly] = useState(false)
 
   // Generation state
   const [generating, setGenerating] = useState(false)
@@ -143,6 +145,8 @@ export default function QuickCookClient({ profile }: Props) {
           guestCount: mode === 'party' ? guestCount : undefined,
           partyType: mode === 'party' ? partyType : undefined,
           recipeUrl: mode === 'party' && recipeUrl.trim() ? recipeUrl.trim() : undefined,
+          dishCount: mode === 'party' ? dishCount : undefined,
+          sameDayPrepOnly: mode === 'party' ? sameDayPrepOnly : undefined,
           themeId,
           customInstructions: customInstructions.trim() || undefined,
           selectedIngredients: mode === 'normal' && ingredientSelection.selectedIngredients.length > 0
@@ -482,6 +486,40 @@ export default function QuickCookClient({ profile }: Props) {
                       onChange={setPartyType}
                       disabled={generating}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      How many dishes?
+                    </label>
+                    <select
+                      value={dishCount ?? ''}
+                      onChange={(e) => setDishCount(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                      disabled={generating}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all disabled:bg-gray-50 disabled:cursor-not-allowed bg-white"
+                    >
+                      <option value="">Auto (based on party type)</option>
+                      <option value="1">1 dish</option>
+                      <option value="2">2 dishes</option>
+                      <option value="3">3 dishes</option>
+                      <option value="4">4 dishes</option>
+                      <option value="5">5 dishes</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="sameDayPrepOnly"
+                      checked={sameDayPrepOnly}
+                      onChange={(e) => setSameDayPrepOnly(e.target.checked)}
+                      disabled={generating}
+                      className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:cursor-not-allowed"
+                    />
+                    <label htmlFor="sameDayPrepOnly" className="text-sm text-gray-700">
+                      <span className="font-medium">Same-day prep only</span>
+                      <span className="text-gray-500 block text-xs">No &quot;days before&quot; tasks - all prep fits in one day</span>
+                    </label>
                   </div>
 
                   <div>

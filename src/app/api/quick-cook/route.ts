@@ -32,6 +32,8 @@ export async function POST(request: Request) {
       selectedIngredients,
       ingredientUsageMode,
       recipeUrl,
+      dishCount,
+      sameDayPrepOnly,
     } = body as {
       mode: 'normal' | 'party';
       mealType?: MealType;
@@ -42,6 +44,8 @@ export async function POST(request: Request) {
       selectedIngredients?: string[];
       ingredientUsageMode?: IngredientUsageMode;
       recipeUrl?: string;
+      dishCount?: number;
+      sameDayPrepOnly?: boolean;
     };
 
     // Validate mode
@@ -131,6 +135,8 @@ export async function POST(request: Request) {
         customInstructions,
         dietaryConsiderations: profile.dietary_prefs || [],
         fetchedRecipeContent,
+        dishCount,
+        sameDayPrepOnly,
       });
 
       return NextResponse.json({ guide: result });
