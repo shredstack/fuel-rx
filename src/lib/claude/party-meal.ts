@@ -21,6 +21,10 @@ export interface PartyMealGenerationParams {
   customInstructions?: string;
   dietaryConsiderations?: string[];
   fetchedRecipeContent?: string;
+  /** Number of dishes to generate (1-5). If not specified, uses party type defaults. */
+  dishCount?: number;
+  /** If true, all prep instructions will be for day-of only (no "days before" tasks). */
+  sameDayPrepOnly?: boolean;
 }
 
 const partyPrepTool: Tool = {
@@ -158,7 +162,7 @@ const PARTY_TYPE_DESCRIPTIONS: Record<PartyType, string> = {
 };
 
 function buildPartyMealPrompt(params: PartyMealGenerationParams): string {
-  const { profile, guestCount, partyType, theme, customInstructions, dietaryConsiderations, fetchedRecipeContent } = params;
+  const { profile, guestCount, partyType, theme, customInstructions, dietaryConsiderations, fetchedRecipeContent, dishCount, sameDayPrepOnly } = params;
 
   const partyDescription = PARTY_TYPE_DESCRIPTIONS[partyType];
 
@@ -212,9 +216,16 @@ ${customInstructions}
 `;
   }
 
-  // Adjust dish count based on party type
+  // Adjust dish count based on explicit dishCount or party type defaults
   let dishGuidance = '';
-  if (partyType === 'potluck_contribution') {
+  if (dishCount !== undefined && dishCount >= 1) {
+    // User explicitly specified how many dishes they want
+    if (dishCount === 1) {
+      dishGuidance = 'Create exactly ONE dish that serves the guest count.';
+    } else {
+      dishGuidance = `Create exactly ${dishCount} dishes that complement each other and serve the guest count.`;
+    }
+  } else if (partyType === 'potluck_contribution') {
     dishGuidance = 'Create ONE impressive dish that travels well and serves the guest count.';
   } else if (partyType === 'casual_gathering' || partyType === 'game_day') {
     dishGuidance = 'Create 2-3 shareable dishes (appetizers, dips, finger foods) that are easy to grab.';
@@ -222,15 +233,27 @@ ${customInstructions}
     dishGuidance = 'Create a cohesive menu with a main course and 1-2 complementary sides.';
   }
 
+  // Build timeline guidance based on sameDayPrepOnly flag
+  let timelineGuidance = '';
+  if (sameDayPrepOnly) {
+    timelineGuidance = `3. Organize prep into SAME-DAY timeline phases only (no tasks for days before):
+   - Day Of Morning: Early prep tasks (chopping, mise en place, anything that can be done early)
+   - 1-2 Hours Before: Main cooking and assembly
+   - Right Before Serving: Last touches, plating, warming
+   NOTE: The "days_before" phase should have an empty tasks array since all prep must be same-day.`;
+  } else {
+    timelineGuidance = `3. Organize prep into timeline phases:
+   - 1-2 Days Before: Make-ahead components (marinades, sauces, anything that stores well)
+   - Day Of Morning: Early prep tasks (chopping, assembling cold items)
+   - 1-2 Hours Before: Final cooking and assembly
+   - Right Before Serving: Last touches, plating, warming`;
+  }
+
   prompt += `
 ## Requirements
 1. ${dishGuidance}
 2. Scale ALL quantities for ${guestCount} guests
-3. Organize prep into timeline phases:
-   - 1-2 Days Before: Make-ahead components (marinades, sauces, anything that stores well)
-   - Day Of Morning: Early prep tasks (chopping, assembling cold items)
-   - 1-2 Hours Before: Final cooking and assembly
-   - Right Before Serving: Last touches, plating, warming
+${timelineGuidance}
 4. Include a complete shopping list with practical quantities for ${guestCount} people
 5. Provide 3-5 pro tips for success
 6. Keep it achievable for a home cook - no professional equipment required
