@@ -85,8 +85,9 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
   };
 
   const adjustAmount = (delta: number) => {
-    const newAmount = Math.max(0.5, amount + delta);
-    setAmount(Math.round(newAmount * 10) / 10);
+    const newAmount = Math.max(0.25, amount + delta);
+    // Round to nearest 0.25 (quarter)
+    setAmount(Math.round(newAmount * 4) / 4);
   };
 
   return (
@@ -105,7 +106,7 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
         {/* Amount Picker */}
         <div className="flex items-center justify-center gap-4 mb-6">
           <button
-            onClick={() => adjustAmount(-0.5)}
+            onClick={() => adjustAmount(-0.25)}
             className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-2xl font-bold text-gray-600"
           >
             -
@@ -115,7 +116,7 @@ export default function IngredientAmountPicker({ ingredient, isOpen, onClose, on
             <p className="text-gray-500">{ingredient.default_unit}</p>
           </div>
           <button
-            onClick={() => adjustAmount(0.5)}
+            onClick={() => adjustAmount(0.25)}
             className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-2xl font-bold text-gray-600"
           >
             +

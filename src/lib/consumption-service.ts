@@ -914,9 +914,8 @@ export async function searchIngredients(userId: string, query: string): Promise<
     .limit(5);
 
   if (frequent && frequent.length > 0) {
-    // Look up current categories from the ingredients table
-    // This ensures we use the admin-updated category, not the cached one
-    // Also filter out soft-deleted ingredients
+    // Look up current ingredients from the ingredients table
+    // This ensures we use the admin-updated category and filter out soft-deleted ingredients
     const frequentNames = frequent.map((f) => f.ingredient_name_normalized);
     const { data: currentIngredients } = await supabase
       .from('ingredients')
@@ -925,6 +924,7 @@ export async function searchIngredients(userId: string, query: string): Promise<
       .is('deleted_at', null);
 
     // Build a map of normalized name -> current category
+    // Only non-deleted ingredients will be in this map
     const categoryMap = new Map<string, string | null>();
     if (currentIngredients) {
       for (const ing of currentIngredients) {
@@ -933,9 +933,11 @@ export async function searchIngredients(userId: string, query: string): Promise<
     }
 
     results.push(
-      ...frequent.map((f) => {
-        // Use the current category from ingredients table if available,
-        // otherwise fall back to the cached category in frequent ingredients
+      ...frequent
+        // Filter out frequent ingredients whose underlying ingredient has been deleted
+        .filter((f) => categoryMap.has(f.ingredient_name_normalized))
+        .map((f) => {
+        // Use the current category from ingredients table
         const currentCategory = categoryMap.get(f.ingredient_name_normalized);
         const category = currentCategory !== undefined
           ? currentCategory
@@ -975,12 +977,17 @@ export async function searchIngredients(userId: string, query: string): Promise<
       ...cached
         .filter((c) => !existingNames.has(c.ingredient_name.toLowerCase()))
         .map((c) => {
-          // Format the unit to include serving size for clarity
-          // e.g., "4oz" instead of default_amount=4, default_unit="oz"
-          // This ensures default_amount is always 1 (one serving)
-          const unit = c.serving_size === 1
-            ? c.serving_unit
-            : `${c.serving_size}${c.serving_unit}`;
+          // Normalize macros to "per 1 unit" so users can intuitively select amounts.
+          // If serving_size is 0.5 avocado with 160 cal, we want:
+          // - default_amount: 0.5 (actual serving)
+          // - default_unit: "avocado" (clean unit name)
+          // - calories_per_serving: 320 (per 1 whole avocado)
+          // This way users see "0.5 avocado = 160 cal" and can change to "1 avocado = 320 cal"
+          const servingSize = c.serving_size || 1;
+          const normalizedCalories = servingSize !== 0 ? c.calories / servingSize : c.calories;
+          const normalizedProtein = servingSize !== 0 ? c.protein / servingSize : c.protein;
+          const normalizedCarbs = servingSize !== 0 ? c.carbs / servingSize : c.carbs;
+          const normalizedFat = servingSize !== 0 ? c.fat / servingSize : c.fat;
 
           // Determine validation status:
           // - System ingredients (not user_added) are considered validated
@@ -990,12 +997,12 @@ export async function searchIngredients(userId: string, query: string): Promise<
 
           return {
             name: c.ingredient_name,
-            default_amount: 1,
-            default_unit: unit,
-            calories_per_serving: c.calories,
-            protein_per_serving: c.protein,
-            carbs_per_serving: c.carbs,
-            fat_per_serving: c.fat,
+            default_amount: servingSize,
+            default_unit: c.serving_unit,
+            calories_per_serving: normalizedCalories,
+            protein_per_serving: normalizedProtein,
+            carbs_per_serving: normalizedCarbs,
+            fat_per_serving: normalizedFat,
             source: 'cache' as const,
             is_user_added: isUserAdded,
             is_validated: isValidated,

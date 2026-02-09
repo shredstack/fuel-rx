@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { QueryProvider } from '@/providers/QueryProvider'
 import { RealtimeProvider } from '@/providers/RealtimeProvider'
+import { SplashScreenProvider } from '@/providers/SplashScreenProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -31,9 +32,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <QueryProvider>
           <RealtimeProvider>
-            <main className="min-h-screen bg-gray-50">
-              {children}
-            </main>
+            <SplashScreenProvider>
+              <main className="min-h-screen bg-gray-50">
+                {children}
+              </main>
+            </SplashScreenProvider>
           </RealtimeProvider>
         </QueryProvider>
       </body>
