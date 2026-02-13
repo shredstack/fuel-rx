@@ -48,6 +48,7 @@ export const queryKeys = {
     all: ['meal-plans'] as const,
     detail: (planId: string) => ['meal-plans', planId] as const,
     recent: () => ['meal-plans', 'recent'] as const,
+    forFilter: () => ['meal-plans', 'filter'] as const,
     batchPrepStatus: (mealPlanId: string | null) =>
       ['meal-plans', 'batchPrepStatus', mealPlanId] as const,
   },

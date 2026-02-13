@@ -94,6 +94,7 @@ export async function GET(request: Request) {
       fat: Math.round(meal.fat),
       plan_week_start: plan.week_start_date,
       plan_title: plan.title,
+      plan_id: pm.meal_plan_id,
       day_of_week: pm.day,
       day_label: dayLabels[pm.day] || pm.day,
       meal_id: pm.meal_id,

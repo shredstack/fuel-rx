@@ -1846,6 +1846,7 @@ export interface MealToLog {
 export interface MealPlanMealToLog extends MealToLog {
   plan_week_start: string;      // e.g., "2026-01-06"
   plan_title?: string;          // e.g., "Mediterranean Week"
+  plan_id: string;              // The meal plan id for filtering
   day_of_week: string;          // e.g., "monday"
   day_label: string;            // e.g., "Mon"
   meal_id: string;              // The underlying meal id for deduplication
