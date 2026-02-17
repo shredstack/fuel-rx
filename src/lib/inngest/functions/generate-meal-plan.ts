@@ -5,6 +5,7 @@ import {
   generateMealsFromCoreIngredients,
   generatePrepSessions,
   organizeMealsIntoDays,
+  extractSpicesFromInstructions,
 } from '@/lib/claude';
 import type { UserProfile, IngredientCategory, MealPlanTheme, ThemeSelectionContext, SelectedTheme, MealType, DayOfWeek, ProteinFocusConstraint } from '@/lib/types';
 import { DEFAULT_INGREDIENT_VARIETY_PREFS } from '@/lib/types';
@@ -384,6 +385,7 @@ export const generateMealPlanFunction = inngest.createFunction(
               theme_id: null,
               is_favorite: false,
               prep_style: userData.profile.prep_style || 'day_of',
+              spices_and_seasonings: [], // Fixture mode doesn't extract spices
             })
             .select()
             .single();
@@ -563,7 +565,17 @@ export const generateMealPlanFunction = inngest.createFunction(
       const { title: generatedTitle } = mealsResult;
       const days = organizeMealsIntoDays(mealsResult);
 
-      // Step 4: Update status for prep generation
+      // Step 4: Extract spices from meal instructions
+      // This runs in parallel with prep generation for efficiency
+      const extractedSpices = await step.run('extract-spices', async () => {
+        // Collect all instructions from all meals
+        const allInstructions = days.flatMap(d =>
+          d.meals.flatMap(m => m.instructions || [])
+        );
+        return await extractSpicesFromInstructions(allInstructions, userId);
+      });
+
+      // Step 5: Update status for prep generation
       // NOTE: Grocery list is now computed on-demand from normalized meal data
       await step.run('update-status-prep', async () => {
         await updateJobStatus(jobId, 'generating_prep', 'Building prep schedule...');
@@ -648,6 +660,7 @@ export const generateMealPlanFunction = inngest.createFunction(
             prep_style: userData.profile.prep_style || 'day_of',
             title: generatedTitle || null,
             protein_focus: proteinFocus || null,
+            spices_and_seasonings: extractedSpices || [],
           })
           .select()
           .single();

@@ -1212,11 +1212,19 @@ export interface GroceryListHouseholdInfo {
 }
 
 /**
+ * A spice or seasoning needed for the meal plan
+ */
+export interface ExtractedSpice {
+  name: string;
+}
+
+/**
  * The full contextual grocery list with optional household context
  */
 export interface ContextualGroceryList {
   items: GroceryItemWithContext[];
   householdInfo?: GroceryListHouseholdInfo;
+  spices?: ExtractedSpice[];
 }
 
 /**

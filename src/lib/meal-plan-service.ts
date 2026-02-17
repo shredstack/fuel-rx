@@ -564,13 +564,18 @@ export async function getContextualGroceryListWithHousehold(
 ): Promise<ContextualGroceryList> {
   const supabase = await createClient();
 
-  // Fetch grocery items and user profile in parallel
-  const [groceryItems, profileResult] = await Promise.all([
+  // Fetch grocery items, user profile, and spices in parallel
+  const [groceryItems, profileResult, mealPlanResult] = await Promise.all([
     computeContextualGroceryList(mealPlanId),
     supabase
       .from('user_profiles')
       .select('household_servings')
       .eq('id', userId)
+      .single(),
+    supabase
+      .from('meal_plans')
+      .select('spices_and_seasonings')
+      .eq('id', mealPlanId)
       .single()
   ]);
 
@@ -590,9 +595,13 @@ export async function getContextualGroceryListWithHousehold(
     }
   }
 
+  // Extract spices from meal plan
+  const spices = (mealPlanResult.data?.spices_and_seasonings as ContextualGroceryList['spices']) || [];
+
   return {
     items: groceryItems,
     householdInfo,
+    spices,
   };
 }
 
