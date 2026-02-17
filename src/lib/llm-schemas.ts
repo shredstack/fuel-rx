@@ -406,3 +406,31 @@ export const consolidatedGrocerySchema: Tool = {
     required: ['grocery_list'],
   },
 };
+
+// ============================================
+// Spice Extraction Schema
+// ============================================
+
+const spiceItemSchema = {
+  type: 'object' as const,
+  properties: {
+    name: { type: 'string', description: 'Spice or seasoning name (e.g., "Cumin", "Smoked Paprika")' },
+  },
+  required: ['name'],
+};
+
+export const spiceExtractionSchema: Tool = {
+  name: 'extract_spices',
+  description: 'Extract spices and seasonings from recipe instructions',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      spices: {
+        type: 'array',
+        items: spiceItemSchema,
+        description: 'Array of spices and seasonings found in the instructions',
+      },
+    },
+    required: ['spices'],
+  },
+};

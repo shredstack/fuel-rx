@@ -29,6 +29,7 @@ export { generateCoreIngredients } from './core-ingredients';
 export { generateMealsFromCoreIngredients } from './meals-generation';
 export { generateGroceryListFromCoreIngredients, consolidateGroceryListWithLLM } from './grocery-list';
 export { generatePrepSessions } from './prep-sessions';
+export { extractSpicesFromInstructions } from './spice-extraction';
 
 // Utility functions
 export { organizeMealsIntoDays, collectRawIngredients, getMealTypesForPlan } from './helpers';
