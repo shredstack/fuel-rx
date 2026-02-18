@@ -39,8 +39,17 @@ export default function MealPlanMealsSection({
   const [searchResults, setSearchResults] = useState<MealPlanMealToLog[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isPlanDropdownOpen, setIsPlanDropdownOpen] = useState(false);
+  const [isMobileScreen, setIsMobileScreen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Detect mobile screen size for bottom sheet dropdown
+  useEffect(() => {
+    const checkMobile = () => setIsMobileScreen(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Filter state - start with 'pending' until we know the latest plan
   const [selectedPlanId, setSelectedPlanId] = useState<string | 'all' | 'pending'>('pending');
@@ -289,11 +298,11 @@ export default function MealPlanMealsSection({
                   </svg>
                 </button>
 
-                {/* Dropdown Menu - Native: bottom sheet style, Web: standard dropdown */}
+                {/* Dropdown Menu - Mobile (native or small screen): bottom sheet, Desktop: standard dropdown */}
                 {isPlanDropdownOpen && (
                   <>
-                    {isNative ? (
-                      /* Native: Full-screen overlay with bottom sheet */
+                    {isNative || isMobileScreen ? (
+                      /* Mobile (native or small screen): Full-screen overlay with bottom sheet */
                       <div className="fixed inset-0 z-40">
                         {/* Backdrop */}
                         <div
@@ -366,7 +375,7 @@ export default function MealPlanMealsSection({
                         </div>
                       </div>
                     ) : (
-                      /* Web: Standard dropdown */
+                      /* Desktop: Standard dropdown */
                       <div className="absolute z-20 mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg
                                       max-h-64 overflow-y-auto overflow-x-hidden">
                         {/* All Plans option */}
