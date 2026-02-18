@@ -73,6 +73,11 @@ function ingredientsToEditable(ingredients: IngredientWithNutrition[]): Editable
       protein: ing.protein,
       carbs: ing.carbs,
       fat: ing.fat,
+      // Store original macros so we can recalculate after setting to 0
+      originalCalories: ing.calories,
+      originalProtein: ing.protein,
+      originalCarbs: ing.carbs,
+      originalFat: ing.fat,
       isIncluded: true,
     };
   });
@@ -180,13 +185,19 @@ export default function LogMealConfirmationModal({
   };
 
   // Calculate dynamic max height for modal when keyboard is visible
+  // On native, we need to account for safe area insets (home indicator)
   const modalMaxHeight =
     isNative && isKeyboardVisible && keyboardHeight > 0
       ? `calc(100vh - ${keyboardHeight}px - 32px)`
-      : '90vh';
+      : isNative
+        ? 'calc(90vh - env(safe-area-inset-bottom))'
+        : '90vh';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      style={{ paddingBottom: isNative ? 'env(safe-area-inset-bottom)' : undefined }}
+    >
       <div
         className="bg-white rounded-t-xl sm:rounded-xl max-w-md w-full shadow-xl flex flex-col"
         style={{ maxHeight: modalMaxHeight }}
