@@ -32,16 +32,16 @@ export default function MealIngredientEditor({
     // Calculate new amount (minimum 0)
     const newAmount = Math.max(0, ingredient.amount + delta);
 
-    // Scale macros based on the ratio to original
+    // Scale macros based on the ratio to original, using stored original macros
     const scale = originalAmount > 0 ? newAmount / originalAmount : 0;
 
     updated[index] = {
       ...ingredient,
       amount: Math.round(newAmount * 10) / 10,
-      calories: Math.round((ingredient.calories / (ingredient.amount / originalAmount || 1)) * scale),
-      protein: Math.round((ingredient.protein / (ingredient.amount / originalAmount || 1)) * scale * 10) / 10,
-      carbs: Math.round((ingredient.carbs / (ingredient.amount / originalAmount || 1)) * scale * 10) / 10,
-      fat: Math.round((ingredient.fat / (ingredient.amount / originalAmount || 1)) * scale * 10) / 10,
+      calories: Math.round(ingredient.originalCalories * scale),
+      protein: Math.round(ingredient.originalProtein * scale * 10) / 10,
+      carbs: Math.round(ingredient.originalCarbs * scale * 10) / 10,
+      fat: Math.round(ingredient.originalFat * scale * 10) / 10,
     };
     onChange(updated);
   };
@@ -52,22 +52,16 @@ export default function MealIngredientEditor({
     const originalAmount = ingredient.originalAmount;
     const newAmount = Math.max(0, parseFloat(value) || 0);
 
-    // Scale macros based on the ratio to original
+    // Scale macros based on the ratio to original, using stored original macros
     const scale = originalAmount > 0 ? newAmount / originalAmount : 0;
-    // Get the original macros by reverse-calculating from current state
-    const currentScale = ingredient.amount / originalAmount || 1;
-    const originalCalories = ingredient.calories / currentScale;
-    const originalProtein = ingredient.protein / currentScale;
-    const originalCarbs = ingredient.carbs / currentScale;
-    const originalFat = ingredient.fat / currentScale;
 
     updated[index] = {
       ...ingredient,
       amount: newAmount,
-      calories: Math.round(originalCalories * scale),
-      protein: Math.round(originalProtein * scale * 10) / 10,
-      carbs: Math.round(originalCarbs * scale * 10) / 10,
-      fat: Math.round(originalFat * scale * 10) / 10,
+      calories: Math.round(ingredient.originalCalories * scale),
+      protein: Math.round(ingredient.originalProtein * scale * 10) / 10,
+      carbs: Math.round(ingredient.originalCarbs * scale * 10) / 10,
+      fat: Math.round(ingredient.originalFat * scale * 10) / 10,
     };
     onChange(updated);
   };

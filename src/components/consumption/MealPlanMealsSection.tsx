@@ -289,58 +289,134 @@ export default function MealPlanMealsSection({
                   </svg>
                 </button>
 
-                {/* Dropdown Menu */}
+                {/* Dropdown Menu - Mobile: bottom sheet style, Desktop: standard dropdown */}
                 {isPlanDropdownOpen && (
-                  <div className="absolute z-20 mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg
-                                  max-h-64 overflow-y-auto overflow-x-hidden">
-                    {/* All Plans option */}
-                    <button
-                      onClick={() => handlePlanSelect('all')}
-                      className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
-                        ${selectedPlanId === 'all' ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
-                    >
-                      <span className="flex-1">All Plans</span>
-                      {selectedPlanId === 'all' && (
-                        <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Divider */}
-                    <div className="border-t border-gray-100" />
-
-                    {/* Plan options */}
-                    {displayPlans.map((plan) => (
-                      <button
-                        key={plan.id}
-                        onClick={() => handlePlanSelect(plan.id)}
-                        className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
-                          ${selectedPlanId === plan.id ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
+                  <>
+                    {/* Mobile: Full-screen overlay with bottom sheet */}
+                    <div className="sm:hidden fixed inset-0 z-40">
+                      {/* Backdrop */}
+                      <div
+                        className="absolute inset-0 bg-black/50"
+                        onClick={() => setIsPlanDropdownOpen(false)}
+                      />
+                      {/* Bottom sheet */}
+                      <div
+                        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-lg
+                                   max-h-[70vh] overflow-y-auto"
+                        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
                       >
-                        <div className="flex-1 min-w-0 flex items-center gap-2">
-                          <span className="truncate flex-1 min-w-0">
-                            {plan.title || formatWeekLabel(plan.week_start_date)}
-                          </span>
-                          {plan.is_latest && (
-                            <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded flex-shrink-0">
-                              Latest
-                            </span>
-                          )}
-                          {plan.is_favorite && (
-                            <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+                          <span className="font-medium text-gray-900">Select Meal Plan</span>
+                          <button
+                            onClick={() => setIsPlanDropdownOpen(false)}
+                            className="p-1 text-gray-400 hover:text-gray-600"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        {/* All Plans option */}
+                        <button
+                          onClick={() => handlePlanSelect('all')}
+                          className={`w-full px-4 py-4 text-left text-base hover:bg-gray-50 flex items-center gap-3
+                            ${selectedPlanId === 'all' ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
+                        >
+                          <span className="flex-1">All Plans</span>
+                          {selectedPlanId === 'all' && (
+                            <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                           )}
-                        </div>
-                        {selectedPlanId === plan.id && (
+                        </button>
+                        <div className="border-t border-gray-100" />
+                        {/* Plan options */}
+                        {displayPlans.map((plan) => (
+                          <button
+                            key={plan.id}
+                            onClick={() => handlePlanSelect(plan.id)}
+                            className={`w-full px-4 py-4 text-left text-base hover:bg-gray-50 flex items-center gap-3
+                              ${selectedPlanId === plan.id ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate">
+                                  {plan.title || formatWeekLabel(plan.week_start_date)}
+                                </span>
+                                {plan.is_latest && (
+                                  <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded flex-shrink-0">
+                                    Latest
+                                  </span>
+                                )}
+                                {plan.is_favorite && (
+                                  <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                            {selectedPlanId === plan.id && (
+                              <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Desktop: Standard dropdown */}
+                    <div className="hidden sm:block absolute z-20 mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg
+                                    max-h-64 overflow-y-auto overflow-x-hidden">
+                      {/* All Plans option */}
+                      <button
+                        onClick={() => handlePlanSelect('all')}
+                        className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
+                          ${selectedPlanId === 'all' ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
+                      >
+                        <span className="flex-1">All Plans</span>
+                        {selectedPlanId === 'all' && (
                           <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         )}
                       </button>
-                    ))}
-                  </div>
+
+                      {/* Divider */}
+                      <div className="border-t border-gray-100" />
+
+                      {/* Plan options */}
+                      {displayPlans.map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() => handlePlanSelect(plan.id)}
+                          className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
+                            ${selectedPlanId === plan.id ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
+                        >
+                          <div className="flex-1 min-w-0 flex items-center gap-2">
+                            <span className="truncate flex-1 min-w-0">
+                              {plan.title || formatWeekLabel(plan.week_start_date)}
+                            </span>
+                            {plan.is_latest && (
+                              <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded flex-shrink-0">
+                                Latest
+                              </span>
+                            )}
+                            {plan.is_favorite && (
+                              <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            )}
+                          </div>
+                          {selectedPlanId === plan.id && (
+                            <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
 

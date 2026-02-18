@@ -1972,6 +1972,11 @@ export interface EditableIngredient {
   protein: number;
   carbs: number;
   fat: number;
+  // Store original macros so we can recalculate after setting to 0
+  originalCalories: number;
+  originalProtein: number;
+  originalCarbs: number;
+  originalFat: number;
   isIncluded: boolean;
 }
 
