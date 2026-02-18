@@ -5,7 +5,6 @@ import type { MealType, EditableIngredient, IngredientWithNutrition } from '@/li
 import { useMealIngredients } from '@/hooks/queries/useMealIngredients';
 import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
 import MealTypeSelector from '@/components/consumption/MealTypeSelector';
-import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
 
 // Type for produce tracking
@@ -113,7 +112,6 @@ export default function LogMealConfirmationModal({
   onConfirm,
   isLogging,
 }: LogMealConfirmationModalProps) {
-  const { keyboardHeight, isKeyboardVisible } = useKeyboard();
   const { isNative } = usePlatform();
 
   // Ingredient editing state
@@ -184,27 +182,19 @@ export default function LogMealConfirmationModal({
     onClose();
   };
 
-  // Calculate dynamic max height for modal when keyboard is visible
-  // On native, we need to account for safe area insets (home indicator)
-  const modalMaxHeight =
-    isNative && isKeyboardVisible && keyboardHeight > 0
-      ? `calc(100vh - ${keyboardHeight}px - 32px)`
-      : isNative
-        ? 'calc(90vh - env(safe-area-inset-bottom))'
-        : '90vh';
-
+  // Simple modal that scrolls as a whole - more reliable on mobile
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       style={{ paddingBottom: isNative ? 'env(safe-area-inset-bottom)' : undefined }}
+      onClick={handleClose}
     >
       <div
-        className="bg-white rounded-t-xl sm:rounded-xl max-w-md w-full shadow-xl flex flex-col"
-        style={{ maxHeight: modalMaxHeight }}
+        className="bg-white rounded-xl max-w-md w-full shadow-xl max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Fixed header */}
-        <div className="flex-shrink-0 p-4 sm:p-6 pb-0 sm:pb-0">
+        {/* Header */}
+        <div className="p-4 sm:p-6 pb-0 sm:pb-0">
           <h3 className="text-lg font-semibold text-gray-900 mb-1">
             Log &ldquo;{mealName}&rdquo;
           </h3>
@@ -220,8 +210,8 @@ export default function LogMealConfirmationModal({
           </div>
         </div>
 
-        {/* Scrollable content area */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
+        {/* Content area */}
+        <div className="px-4 sm:px-6">
           {/* Adjust portions toggle - only if mealId is provided */}
           {mealId && (
             <div className="mb-4">
@@ -454,26 +444,21 @@ export default function LogMealConfirmationModal({
           </div>
         </div>
 
-        {/* Fixed footer with action buttons */}
-        <div
-          className="flex-shrink-0 p-4 sm:p-6 pt-4 border-t border-gray-100 bg-white rounded-b-xl"
-          style={{ paddingBottom: isNative ? 'max(1rem, env(safe-area-inset-bottom))' : undefined }}
-        >
-          <div className="flex gap-3">
-            <button
-              onClick={handleClose}
-              className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={isLogging || isLoadingProduce}
-              className="flex-1 px-4 py-3 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {isLogging ? 'Logging...' : isLoadingProduce ? 'Detecting produce…' : 'Log'}
-            </button>
-          </div>
+        {/* Footer with action buttons */}
+        <div className="p-4 sm:p-6 pt-4 flex gap-3">
+          <button
+            onClick={handleClose}
+            className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={isLogging || isLoadingProduce}
+            className="flex-1 px-4 py-3 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            {isLogging ? 'Logging...' : isLoadingProduce ? 'Detecting produce…' : 'Log'}
+          </button>
         </div>
       </div>
     </div>
