@@ -17,11 +17,8 @@ import type {
   MealType,
   IngredientCategoryType,
   SelectableMealType,
-  EditableIngredient,
-  IngredientWithNutrition,
 } from '@/lib/types';
 import { useLogMealData, useWeeklyConsumption, useMonthlyConsumption, useConsumptionSummary, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
-import { useMealIngredients } from '@/hooks/queries/useMealIngredients';
 import {
   useLogMeal,
   useDeleteConsumptionEntry,
@@ -45,6 +42,10 @@ import PeriodTabs from '@/components/consumption/PeriodTabs';
 import PeriodProgressCard from '@/components/consumption/PeriodProgressCard';
 import TopContributors from '@/components/consumption/TopContributors';
 import DailyAverageCard from '@/components/consumption/DailyAverageCard';
+import LogMealConfirmationModal, {
+  type DetectedProduceItem,
+  type LogMealConfirmData,
+} from '@/components/consumption/LogMealConfirmationModal';
 
 // Lazy-load heavy components (charts use Recharts ~150KB, modals use barcode scanner ~150KB)
 const TrendChart = dynamic(() => import('@/components/consumption/TrendChart'), { ssr: false });
@@ -52,8 +53,6 @@ const MealTypeBreakdownChart = dynamic(() => import('@/components/consumption/Me
 const SummaryView = dynamic(() => import('@/components/consumption/SummaryView'), { ssr: false });
 const AddIngredientModal = dynamic(() => import('@/components/consumption/AddIngredientModal'), { ssr: false });
 const MealPhotoModal = dynamic(() => import('@/components/consumption/MealPhotoModal'), { ssr: false });
-import MealTypeSelector from '@/components/consumption/MealTypeSelector';
-import MealIngredientEditor from '@/components/consumption/MealIngredientEditor';
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Navbar from '@/components/Navbar';
 import MobileTabBar from '@/components/MobileTabBar';
@@ -90,55 +89,6 @@ function getLocalTodayString(): string {
   return `${year}-${month}-${day}`;
 }
 
-// Type for produce tracking in the meal log modal
-interface DetectedProduceItem {
-  name: string;
-  amount: string;
-  unit: string;
-  category: 'fruit' | 'vegetable';
-  estimatedGrams: number;
-  isSelected: boolean;
-  adjustedGrams: number;
-}
-
-// Convert meal ingredients to editable format
-function ingredientsToEditable(ingredients: IngredientWithNutrition[]): EditableIngredient[] {
-  return ingredients.map((ing) => {
-    const amount = parseFloat(ing.amount) || 0;
-    return {
-      name: ing.name,
-      amount,
-      originalAmount: amount,
-      unit: ing.unit,
-      category: ing.category || 'other',
-      calories: ing.calories,
-      protein: ing.protein,
-      carbs: ing.carbs,
-      fat: ing.fat,
-      isIncluded: true,
-    };
-  });
-}
-
-// Calculate total macros from editable ingredients
-function calculateTotalMacros(ingredients: EditableIngredient[]): {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-} {
-  return ingredients
-    .filter((ing) => ing.isIncluded && ing.amount > 0)
-    .reduce(
-      (acc, ing) => ({
-        calories: acc.calories + ing.calories,
-        protein: acc.protein + ing.protein,
-        carbs: acc.carbs + ing.carbs,
-        fat: acc.fat + ing.fat,
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 }
-    );
-}
 
 export default function LogMealClient({
   initialDate,
@@ -220,18 +170,6 @@ export default function LogMealClient({
   const [pendingLogMeal, setPendingLogMeal] = useState<MealToLog | null>(null);
   const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
 
-  // Ingredient editing state for meal plan meals
-  const [showIngredientEditor, setShowIngredientEditor] = useState(false);
-  const [editedIngredients, setEditedIngredients] = useState<EditableIngredient[] | null>(null);
-
-  // Fetch meal ingredients when ingredient editor is shown
-  const pendingMealId = pendingLogMeal?.source === 'meal_plan' && 'meal_id' in pendingLogMeal
-    ? (pendingLogMeal as MealPlanMealToLog).meal_id
-    : null;
-  const { data: mealWithIngredients, isLoading: ingredientsLoading } = useMealIngredients(
-    showIngredientEditor ? pendingMealId : null
-  );
-
   // For adding new entry with pre-selected meal type
   const [addingToMealType, setAddingToMealType] = useState<MealType | null>(null);
 
@@ -286,13 +224,6 @@ export default function LogMealClient({
     // Only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Initialize editable ingredients when meal data loads
-  useEffect(() => {
-    if (showIngredientEditor && mealWithIngredients?.ingredients && !editedIngredients) {
-      setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients));
-    }
-  }, [showIngredientEditor, mealWithIngredients, editedIngredients]);
 
   // Handle date change - React Query automatically fetches data for the new date
   const handleDateChange = (newDate: string) => {
@@ -419,29 +350,23 @@ export default function LogMealClient({
   };
 
   // Actually log the meal after type confirmation
-  const confirmLogMeal = async () => {
-    if (!pendingLogMeal || !pendingMealType) return;
+  const confirmLogMeal = async (data: LogMealConfirmData) => {
+    if (!pendingLogMeal) return;
 
     const meal = pendingLogMeal;
-    const mealType = pendingMealType;
+    const mealType = data.mealType;
 
-    // Calculate macros - use edited ingredients if modified, otherwise use original meal macros
-    const customMacros = editedIngredients ? calculateTotalMacros(editedIngredients) : null;
-    const macrosToLog = customMacros || {
+    // Calculate macros - use custom macros if provided, otherwise use original meal macros
+    const macrosToLog = data.customMacros || {
       calories: meal.calories,
       protein: meal.protein,
       carbs: meal.carbs,
       fat: meal.fat,
     };
 
-    // Capture selected produce items before clearing state
-    const selectedProduceItems = detectedProduce.filter(p => p.isSelected && p.adjustedGrams > 0);
-
-    // Clear pending state and ingredient editor
+    // Clear pending state
     setPendingLogMeal(null);
     setPendingMealType(null);
-    setShowIngredientEditor(false);
-    setEditedIngredients(null);
     setDetectedProduce([]);
 
     // Optimistic update with potentially modified macros
@@ -488,31 +413,22 @@ export default function LogMealClient({
     if (meal.source === 'meal_plan' && 'meal_id' in meal) {
       payload.meal_id = (meal as MealPlanMealToLog).meal_id;
     }
-    // Include custom macros if user modified portions
-    if (customMacros) {
-      payload.custom_macros = {
-        calories: Math.round(customMacros.calories),
-        protein: Math.round(customMacros.protein * 10) / 10,
-        carbs: Math.round(customMacros.carbs * 10) / 10,
-        fat: Math.round(customMacros.fat * 10) / 10,
-      };
+    // Include custom macros if provided
+    if (data.customMacros) {
+      payload.custom_macros = data.customMacros;
     }
 
     try {
       await logMealMutation.mutateAsync(payload as Parameters<typeof logMealMutation.mutateAsync>[0]);
 
-      // Log selected produce items for 800g tracking (inline, no modal)
-      if (selectedProduceItems.length > 0) {
+      // Log selected produce items for 800g tracking
+      if (data.selectedProduce.length > 0) {
         try {
           const produceResponse = await fetch('/api/consumption/log-produce', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ingredients: selectedProduceItems.map((item) => ({
-                name: item.name,
-                category: item.category,
-                grams: item.adjustedGrams,
-              })),
+              ingredients: data.selectedProduce,
               meal_type: mealType,
               consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
             }),
@@ -524,7 +440,7 @@ export default function LogMealClient({
 
             // Optimistically update fruit/veg progress
             if (produceEntries.length > 0) {
-              const totalGrams = selectedProduceItems.reduce((sum, p) => sum + p.adjustedGrams, 0);
+              const totalGrams = data.selectedProduce.reduce((sum, p) => sum + p.grams, 0);
               queryClient.setQueryData<DailyConsumptionSummary>(
                 queryKeys.consumption.daily(selectedDate),
                 (prev) => {
@@ -1371,239 +1287,34 @@ export default function LogMealClient({
         )}
 
         {/* Meal Type Confirmation Modal */}
-        {pendingLogMeal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                Log &ldquo;{pendingLogMeal.name}&rdquo;
-              </h3>
-
-              {/* Macro summary - shows edited or original macros */}
-              {(() => {
-                const displayMacros = editedIngredients
-                  ? calculateTotalMacros(editedIngredients)
-                  : { calories: pendingLogMeal.calories, protein: pendingLogMeal.protein, carbs: pendingLogMeal.carbs, fat: pendingLogMeal.fat };
-                const isModified = editedIngredients && (
-                  displayMacros.calories !== pendingLogMeal.calories ||
-                  displayMacros.protein !== pendingLogMeal.protein ||
-                  displayMacros.carbs !== pendingLogMeal.carbs ||
-                  displayMacros.fat !== pendingLogMeal.fat
-                );
-                return (
-                  <div className={`text-sm mb-4 p-2 rounded ${isModified ? 'bg-amber-50 border border-amber-200' : 'text-gray-500'}`}>
-                    {isModified && <span className="text-amber-600 font-medium">Modified: </span>}
-                    {Math.round(displayMacros.calories)} cal | {Math.round(displayMacros.protein * 10) / 10}g P | {Math.round(displayMacros.carbs * 10) / 10}g C | {Math.round(displayMacros.fat * 10) / 10}g F
-                  </div>
-                );
-              })()}
-
-              {/* Adjust portions toggle - only for meal_plan meals with meal_id */}
-              {pendingLogMeal.source === 'meal_plan' && 'meal_id' in pendingLogMeal && (
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (showIngredientEditor) {
-                        // Collapse and reset
-                        setShowIngredientEditor(false);
-                        setEditedIngredients(null);
-                      } else {
-                        // Expand
-                        setShowIngredientEditor(true);
-                        // Initialize editable ingredients when meal data is available
-                        if (mealWithIngredients?.ingredients) {
-                          setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients));
-                        }
-                      }
-                    }}
-                    className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-transform ${showIngredientEditor ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    {showIngredientEditor ? 'Hide ingredients' : 'Adjust portions'}
-                  </button>
-
-                  {/* Ingredient editor section */}
-                  {showIngredientEditor && (
-                    <div className="mt-3 border-t border-gray-100 pt-3">
-                      {ingredientsLoading ? (
-                        <div className="text-center py-4 text-gray-500">
-                          <svg className="animate-spin h-5 w-5 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Loading ingredients...
-                        </div>
-                      ) : editedIngredients && editedIngredients.length > 0 ? (
-                        <MealIngredientEditor
-                          ingredients={editedIngredients}
-                          onChange={setEditedIngredients}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-500 text-center py-2">
-                          No ingredients available for this meal.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Inline Produce Tracking for 800g Goal */}
-              {(pendingLogMeal.source === 'meal_plan' || pendingLogMeal.source === 'custom_meal' || pendingLogMeal.source === 'quick_cook') && (
-                <div className="mb-4">
-                  {isLoadingProduce ? (
-                    <div className="bg-green-50 rounded-lg p-3 flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span className="text-sm text-green-700">Detecting fruits & veggies...</span>
-                    </div>
-                  ) : detectedProduce.length > 0 ? (
-                    <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">🥬</span>
-                        <span className="font-medium text-green-800 text-sm">Add to 800g Goal</span>
-                        <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
-                          +{detectedProduce.filter(p => p.isSelected).reduce((sum, p) => sum + p.adjustedGrams, 0)}g
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {detectedProduce.map((item, index) => (
-                          <div
-                            key={`${item.name}-${index}`}
-                            className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-                              item.isSelected
-                                ? 'bg-white border border-green-200'
-                                : 'bg-green-50/50 opacity-60'
-                            }`}
-                          >
-                            {/* Checkbox */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDetectedProduce(prev =>
-                                  prev.map((p, i) =>
-                                    i === index ? { ...p, isSelected: !p.isSelected } : p
-                                  )
-                                );
-                              }}
-                              className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                                item.isSelected
-                                  ? 'bg-green-600 border-green-600 text-white'
-                                  : 'border-gray-300 bg-white'
-                              }`}
-                            >
-                              {item.isSelected && (
-                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </button>
-
-                            {/* Name */}
-                            <div className="flex-1 min-w-0 flex items-center gap-1">
-                              <span className="text-sm">{item.category === 'fruit' ? '🍎' : '🥬'}</span>
-                              <span className={`text-sm truncate ${item.isSelected ? 'text-gray-900' : 'text-gray-500'}`}>
-                                {item.name}
-                              </span>
-                            </div>
-
-                            {/* Gram adjuster */}
-                            {item.isSelected && (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDetectedProduce(prev =>
-                                      prev.map((p, i) =>
-                                        i === index ? { ...p, adjustedGrams: Math.max(0, p.adjustedGrams - 25) } : p
-                                      )
-                                    );
-                                  }}
-                                  className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
-                                >
-                                  -
-                                </button>
-                                <input
-                                  type="number"
-                                  value={item.adjustedGrams}
-                                  onChange={(e) => {
-                                    const newGrams = parseInt(e.target.value) || 0;
-                                    setDetectedProduce(prev =>
-                                      prev.map((p, i) =>
-                                        i === index ? { ...p, adjustedGrams: Math.max(0, newGrams) } : p
-                                      )
-                                    );
-                                  }}
-                                  className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-semibold"
-                                />
-                                <span className="text-xs text-gray-500">g</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDetectedProduce(prev =>
-                                      prev.map((p, i) =>
-                                        i === index ? { ...p, adjustedGrams: p.adjustedGrams + 25 } : p
-                                      )
-                                    );
-                                  }}
-                                  className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Log as:
-                </label>
-                <MealTypeSelector
-                  value={pendingMealType}
-                  onChange={setPendingMealType}
-                  suggestedTypes={suggestedMealTypes}
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setPendingLogMeal(null);
-                    setPendingMealType(null);
-                    setShowIngredientEditor(false);
-                    setEditedIngredients(null);
-                    setDetectedProduce([]);
-                  }}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmLogMeal}
-                  disabled={!pendingMealType || isLoadingProduce}
-                  className="flex-1 px-4 py-2 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
-                >
-                  {isLoadingProduce ? 'Detecting produce…' : 'Log'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <LogMealConfirmationModal
+          isOpen={!!pendingLogMeal}
+          onClose={() => {
+            setPendingLogMeal(null);
+            setPendingMealType(null);
+            setDetectedProduce([]);
+          }}
+          mealName={pendingLogMeal?.name || ''}
+          mealMacros={{
+            calories: pendingLogMeal?.calories || 0,
+            protein: pendingLogMeal?.protein || 0,
+            carbs: pendingLogMeal?.carbs || 0,
+            fat: pendingLogMeal?.fat || 0,
+          }}
+          mealId={
+            pendingLogMeal?.source === 'meal_plan' && 'meal_id' in (pendingLogMeal || {})
+              ? (pendingLogMeal as MealPlanMealToLog).meal_id
+              : null
+          }
+          mealType={pendingMealType || 'breakfast'}
+          onMealTypeChange={setPendingMealType}
+          suggestedMealTypes={suggestedMealTypes}
+          detectedProduce={detectedProduce}
+          onProduceChange={setDetectedProduce}
+          isLoadingProduce={isLoadingProduce}
+          onConfirm={confirmLogMeal}
+          isLogging={logMealMutation.isPending}
+        />
 
         {/* Ingredient Amount Picker Modal */}
         {selectedIngredient && (
