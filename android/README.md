@@ -107,3 +107,4 @@ The app uses a remote server approach:
 - Android Studio
 - Android SDK configured
 - Node.js and npm
+
