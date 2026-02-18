@@ -7,6 +7,8 @@ import { useLogMeal } from '@/hooks/queries/useConsumptionMutations'
 import { useMealIngredients } from '@/hooks/queries/useMealIngredients'
 import MealIngredientEditor from '@/components/consumption/MealIngredientEditor'
 import MealTypeSelector from '@/components/consumption/MealTypeSelector'
+import { useKeyboard } from '@/hooks/useKeyboard'
+import { usePlatform } from '@/hooks/usePlatform'
 
 interface LogMealModalProps {
   isOpen: boolean
@@ -95,6 +97,8 @@ export function LogMealModal({
 }: LogMealModalProps) {
   const meal = mealSlot.meal
   const logMealMutation = useLogMeal()
+  const { keyboardHeight, isKeyboardVisible } = useKeyboard()
+  const { isNative } = usePlatform()
 
   // Meal type selection
   const [selectedMealType, setSelectedMealType] = useState<MealType>(
@@ -252,256 +256,274 @@ export function LogMealModal({
       displayMacros.carbs !== meal.carbs ||
       displayMacros.fat !== meal.fat)
 
+  // Calculate dynamic max height for modal content when keyboard is visible
+  const modalMaxHeight = isNative && isKeyboardVisible && keyboardHeight > 0
+    ? `calc(100vh - ${keyboardHeight}px - 32px)`
+    : '90vh'
+
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-t-xl sm:rounded-xl max-w-md w-full shadow-xl flex flex-col"
+        style={{ maxHeight: modalMaxHeight }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">Log &ldquo;{meal.name}&rdquo;</h3>
+        {/* Fixed header */}
+        <div className="flex-shrink-0 p-4 sm:p-6 pb-0 sm:pb-0">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Log &ldquo;{meal.name}&rdquo;</h3>
 
-        {/* Macro summary - shows edited or original macros */}
-        <div
-          className={`text-sm mb-4 p-2 rounded ${isModified ? 'bg-amber-50 border border-amber-200' : 'text-gray-500'}`}
-        >
-          {isModified && <span className="text-amber-600 font-medium">Modified: </span>}
-          {Math.round(displayMacros.calories)} cal | {Math.round(displayMacros.protein * 10) / 10}g
-          P | {Math.round(displayMacros.carbs * 10) / 10}g C |{' '}
-          {Math.round(displayMacros.fat * 10) / 10}g F
-        </div>
-
-        {/* Adjust portions toggle */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => {
-              if (showIngredientEditor) {
-                // Collapse and reset
-                setShowIngredientEditor(false)
-                setEditedIngredients(null)
-              } else {
-                // Expand
-                setShowIngredientEditor(true)
-                // Initialize editable ingredients when meal data is available
-                if (mealWithIngredients?.ingredients) {
-                  setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients))
-                }
-              }
-            }}
-            className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+          {/* Macro summary - shows edited or original macros */}
+          <div
+            className={`text-sm mb-4 p-2 rounded ${isModified ? 'bg-amber-50 border border-amber-200' : 'text-gray-500'}`}
           >
-            <svg
-              className={`w-4 h-4 transition-transform ${showIngredientEditor ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-            {showIngredientEditor ? 'Hide ingredients' : 'Adjust portions'}
-          </button>
-
-          {/* Ingredient editor section */}
-          {showIngredientEditor && (
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              {ingredientsLoading ? (
-                <div className="text-center py-4 text-gray-500">
-                  <svg className="animate-spin h-5 w-5 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  Loading ingredients...
-                </div>
-              ) : editedIngredients && editedIngredients.length > 0 ? (
-                <MealIngredientEditor ingredients={editedIngredients} onChange={setEditedIngredients} />
-              ) : (
-                <p className="text-sm text-gray-500 text-center py-2">
-                  No ingredients available for this meal.
-                </p>
-              )}
-            </div>
-          )}
+            {isModified && <span className="text-amber-600 font-medium">Modified: </span>}
+            {Math.round(displayMacros.calories)} cal | {Math.round(displayMacros.protein * 10) / 10}g
+            P | {Math.round(displayMacros.carbs * 10) / 10}g C |{' '}
+            {Math.round(displayMacros.fat * 10) / 10}g F
+          </div>
         </div>
 
-        {/* Inline Produce Tracking for 800g Goal */}
-        <div className="mb-4">
-          {isLoadingProduce ? (
-            <div className="bg-green-50 rounded-lg p-3 flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 min-h-0">
+          {/* Adjust portions toggle */}
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (showIngredientEditor) {
+                  // Collapse and reset
+                  setShowIngredientEditor(false)
+                  setEditedIngredients(null)
+                } else {
+                  // Expand
+                  setShowIngredientEditor(true)
+                  // Initialize editable ingredients when meal data is available
+                  if (mealWithIngredients?.ingredients) {
+                    setEditedIngredients(ingredientsToEditable(mealWithIngredients.ingredients))
+                  }
+                }
+              }}
+              className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+            >
+              <svg
+                className={`w-4 h-4 transition-transform ${showIngredientEditor ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
                 />
               </svg>
-              <span className="text-sm text-green-700">Detecting fruits & veggies...</span>
-            </div>
-          ) : detectedProduce.length > 0 ? (
-            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🥬</span>
-                <span className="font-medium text-green-800 text-sm">Add to 800g Goal</span>
-                <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
-                  +{detectedProduce.filter((p) => p.isSelected).reduce((sum, p) => sum + p.adjustedGrams, 0)}g
-                </span>
+              {showIngredientEditor ? 'Hide ingredients' : 'Adjust portions'}
+            </button>
+
+            {/* Ingredient editor section */}
+            {showIngredientEditor && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                {ingredientsLoading ? (
+                  <div className="text-center py-4 text-gray-500">
+                    <svg className="animate-spin h-5 w-5 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Loading ingredients...
+                  </div>
+                ) : editedIngredients && editedIngredients.length > 0 ? (
+                  <MealIngredientEditor ingredients={editedIngredients} onChange={setEditedIngredients} />
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-2">
+                    No ingredients available for this meal.
+                  </p>
+                )}
               </div>
-              <div className="space-y-2">
-                {detectedProduce.map((item, index) => (
-                  <div
-                    key={`${item.name}-${index}`}
-                    className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-                      item.isSelected
-                        ? 'bg-white border border-green-200'
-                        : 'bg-green-50/50 opacity-60'
-                    }`}
-                  >
-                    {/* Checkbox */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDetectedProduce((prev) =>
-                          prev.map((p, i) => (i === index ? { ...p, isSelected: !p.isSelected } : p))
-                        )
-                      }}
-                      className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+            )}
+          </div>
+
+          {/* Inline Produce Tracking for 800g Goal */}
+          <div className="mb-4">
+            {isLoadingProduce ? (
+              <div className="bg-green-50 rounded-lg p-3 flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                <span className="text-sm text-green-700">Detecting fruits & veggies...</span>
+              </div>
+            ) : detectedProduce.length > 0 ? (
+              <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🥬</span>
+                  <span className="font-medium text-green-800 text-sm">Add to 800g Goal</span>
+                  <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                    +{detectedProduce.filter((p) => p.isSelected).reduce((sum, p) => sum + p.adjustedGrams, 0)}g
+                  </span>
+                </div>
+                {/* Scrollable produce list with max height */}
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {detectedProduce.map((item, index) => (
+                    <div
+                      key={`${item.name}-${index}`}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
                         item.isSelected
-                          ? 'bg-green-600 border-green-600 text-white'
-                          : 'border-gray-300 bg-white'
+                          ? 'bg-white border border-green-200'
+                          : 'bg-green-50/50 opacity-60'
                       }`}
                     >
-                      {item.isSelected && (
-                        <svg
-                          className="w-2.5 h-2.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Name */}
-                    <div className="flex-1 min-w-0 flex items-center gap-1">
-                      <span className="text-sm">{item.category === 'fruit' ? '🍎' : '🥬'}</span>
-                      <span
-                        className={`text-sm truncate ${item.isSelected ? 'text-gray-900' : 'text-gray-500'}`}
+                      {/* Checkbox */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDetectedProduce((prev) =>
+                            prev.map((p, i) => (i === index ? { ...p, isSelected: !p.isSelected } : p))
+                          )
+                        }}
+                        className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                          item.isSelected
+                            ? 'bg-green-600 border-green-600 text-white'
+                            : 'border-gray-300 bg-white'
+                        }`}
                       >
-                        {item.name}
-                      </span>
-                    </div>
+                        {item.isSelected && (
+                          <svg
+                            className="w-2.5 h-2.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        )}
+                      </button>
 
-                    {/* Gram adjuster */}
-                    {item.isSelected && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDetectedProduce((prev) =>
-                              prev.map((p, i) =>
-                                i === index
-                                  ? { ...p, adjustedGrams: Math.max(0, p.adjustedGrams - 25) }
-                                  : p
-                              )
-                            )
-                          }}
-                          className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
+                      {/* Name */}
+                      <div className="flex-1 min-w-0 flex items-center gap-1">
+                        <span className="text-sm">{item.category === 'fruit' ? '🍎' : '🥬'}</span>
+                        <span
+                          className={`text-sm truncate ${item.isSelected ? 'text-gray-900' : 'text-gray-500'}`}
                         >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          value={item.adjustedGrams}
-                          onChange={(e) => {
-                            const newGrams = parseInt(e.target.value) || 0
-                            setDetectedProduce((prev) =>
-                              prev.map((p, i) =>
-                                i === index ? { ...p, adjustedGrams: Math.max(0, newGrams) } : p
-                              )
-                            )
-                          }}
-                          className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-semibold"
-                        />
-                        <span className="text-xs text-gray-500">g</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDetectedProduce((prev) =>
-                              prev.map((p, i) =>
-                                i === index ? { ...p, adjustedGrams: p.adjustedGrams + 25 } : p
-                              )
-                            )
-                          }}
-                          className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
-                        >
-                          +
-                        </button>
+                          {item.name}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Gram adjuster */}
+                      {item.isSelected && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetectedProduce((prev) =>
+                                prev.map((p, i) =>
+                                  i === index
+                                    ? { ...p, adjustedGrams: Math.max(0, p.adjustedGrams - 25) }
+                                    : p
+                                )
+                              )
+                            }}
+                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            value={item.adjustedGrams}
+                            onChange={(e) => {
+                              const newGrams = parseInt(e.target.value) || 0
+                              setDetectedProduce((prev) =>
+                                prev.map((p, i) =>
+                                  i === index ? { ...p, adjustedGrams: Math.max(0, newGrams) } : p
+                                )
+                              )
+                            }}
+                            className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-semibold"
+                          />
+                          <span className="text-xs text-gray-500">g</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetectedProduce((prev) =>
+                                prev.map((p, i) =>
+                                  i === index ? { ...p, adjustedGrams: p.adjustedGrams + 25 } : p
+                                )
+                              )
+                            }}
+                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
+
+          {/* Meal type selection */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Log as:</label>
+            <MealTypeSelector
+              value={selectedMealType}
+              onChange={setSelectedMealType}
+              suggestedTypes={getTimeBasedMealTypes()}
+            />
+          </div>
         </div>
 
-        {/* Meal type selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Log as:</label>
-          <MealTypeSelector
-            value={selectedMealType}
-            onChange={setSelectedMealType}
-            suggestedTypes={getTimeBasedMealTypes()}
-          />
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleLog}
-            disabled={logMealMutation.isPending}
-            className="flex-1 px-4 py-2 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
-          >
-            {logMealMutation.isPending ? 'Logging...' : 'Log'}
-          </button>
+        {/* Fixed footer with action buttons */}
+        <div
+          className="flex-shrink-0 p-4 sm:p-6 pt-4 border-t border-gray-100 bg-white rounded-b-xl"
+          style={{ paddingBottom: isNative ? 'max(1rem, env(safe-area-inset-bottom))' : undefined }}
+        >
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleLog}
+              disabled={logMealMutation.isPending}
+              className="flex-1 px-4 py-3 text-white bg-primary-600 hover:bg-primary-700 rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              {logMealMutation.isPending ? 'Logging...' : 'Log'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

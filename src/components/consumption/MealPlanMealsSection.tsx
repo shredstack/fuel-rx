@@ -291,17 +291,17 @@ export default function MealPlanMealsSection({
 
                 {/* Dropdown Menu */}
                 {isPlanDropdownOpen && (
-                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg
-                                  max-h-64 overflow-y-auto">
+                  <div className="absolute z-20 mt-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg
+                                  max-h-64 overflow-y-auto overflow-x-hidden">
                     {/* All Plans option */}
                     <button
                       onClick={() => handlePlanSelect('all')}
-                      className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center justify-between
+                      className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
                         ${selectedPlanId === 'all' ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
                     >
-                      <span>All Plans</span>
+                      <span className="flex-1">All Plans</span>
                       {selectedPlanId === 'all' && (
-                        <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
@@ -315,11 +315,11 @@ export default function MealPlanMealsSection({
                       <button
                         key={plan.id}
                         onClick={() => handlePlanSelect(plan.id)}
-                        className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center justify-between
+                        className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-2
                           ${selectedPlanId === plan.id ? 'bg-primary-50 text-primary-700' : 'text-gray-700'}`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="truncate">
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="truncate flex-1 min-w-0">
                             {plan.title || formatWeekLabel(plan.week_start_date)}
                           </span>
                           {plan.is_latest && (
