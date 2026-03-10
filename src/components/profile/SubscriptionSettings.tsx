@@ -181,7 +181,7 @@ export default function SubscriptionSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm text-gray-600">Free meal plans remaining</span>
               <span className="font-medium text-gray-900">
-                {freePlansRemaining} of 2
+                {freePlansRemaining} of {status?.freePlanLimit ?? 1}
               </span>
             </div>
           )}

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const isOverride = subscription?.is_override ?? false;
   const hasMealPlanGeneration = subscription?.has_meal_plan_generation ?? false;
   const freePlansUsed = subscription?.free_plans_used ?? 0;
-  const freePlanLimit = subscription?.free_plan_limit ?? 3;
+  const freePlanLimit = subscription?.free_plan_limit ?? 1;
 
   // Determine user type and apply appropriate limit check
   const isProOrVip = isOverride || hasMealPlanGeneration;
