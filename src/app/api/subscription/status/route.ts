@@ -34,7 +34,7 @@ export async function GET() {
 
   // Calculate remaining free plans
   const freePlansUsed = subscription?.free_plans_used ?? 0;
-  const freePlanLimit = subscription?.free_plan_limit ?? 3;
+  const freePlanLimit = subscription?.free_plan_limit ?? 1;
   const freePlansRemaining = Math.max(0, freePlanLimit - freePlansUsed);
 
   const isSubscribed = subscription?.is_subscribed ?? false;

@@ -23,7 +23,7 @@ export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
   if (!isOpen) return null;
 
   const freePlansUsed = status?.freePlansUsed ?? 0;
-  const freePlanLimit = status?.freePlanLimit ?? 3;
+  const freePlanLimit = status?.freePlanLimit ?? 1;
 
   const handleUpgrade = async () => {
     setError(null);
