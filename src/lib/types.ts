@@ -227,6 +227,7 @@ export interface UserProfile {
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
+  healthkit_nutrition_sync_enabled?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1767,6 +1768,11 @@ export interface ConsumptionEntry {
   notes?: string;
   created_at: string;
   updated_at: string;
+
+  // Apple Health sync tracking
+  healthkit_synced?: boolean;
+  healthkit_sample_ids?: string[];
+  healthkit_synced_at?: string;
 }
 
 /**
@@ -2621,4 +2627,47 @@ export interface MealPlanCustomItem {
   name: string;
   is_checked: boolean;
   created_at: string;
+}
+
+// ─── Apple Health / HealthKit Types ──────────────────────────────────────────
+
+/** Apple Health nutrition sync record */
+export interface NutritionRecord {
+  mealName: string;
+  mealType: MealType;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  consumedAt: Date;
+  fuelrxEntryId: string;
+}
+
+/** Result of writing to Apple Health */
+export interface HealthKitWriteResult {
+  success: boolean;
+  healthKitSampleIds?: string[];
+  error?: string;
+}
+
+/** HealthKit permission status */
+export interface HealthKitPermissionResult {
+  granted: boolean;
+  permissions: {
+    calories: boolean;
+    protein: boolean;
+    carbs: boolean;
+    fat: boolean;
+    fiber: boolean;
+  };
+}
+
+/** Sync status for display in settings */
+export interface HealthKitSyncStatus {
+  enabled: boolean;
+  permissionsGranted: boolean;
+  totalSynced: number;
+  lastSyncedAt: string | null;
+  pendingCount: number;
 }

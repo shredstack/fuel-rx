@@ -71,4 +71,10 @@ export const queryKeys = {
     all: ['meals'] as const,
     detail: (mealId: string) => ['meals', mealId] as const,
   },
+
+  // Apple Health / HealthKit sync
+  healthkit: {
+    all: ['healthkit'] as const,
+    status: () => ['healthkit', 'status'] as const,
+  },
 } as const;

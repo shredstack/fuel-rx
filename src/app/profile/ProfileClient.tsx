@@ -10,6 +10,7 @@ import ProfileHeader from '@/components/profile/ProfileHeader'
 import NutritionGoalsCard from '@/components/profile/NutritionGoalsCard'
 import WinsCard from '@/components/profile/WinsCard'
 import SubscriptionSettings from '@/components/profile/SubscriptionSettings'
+import AppleHealthSettings from '@/components/settings/AppleHealthSettings'
 import type {
   UserProfile,
   IngredientPreferenceWithDetails,
@@ -334,6 +335,9 @@ export default function ProfileClient({
             </Link>
           </div>
         </div>
+
+        {/* Integrations (iOS only — component self-hides on other platforms) */}
+        <AppleHealthSettings profile={profile} />
 
         {/* Subscription */}
         <div>
