@@ -9,18 +9,20 @@ class FuelRxViewController: CAPBridgeViewController {
     private let maxAutoRetries = 3
     private let retryDelay: TimeInterval = 2.0
 
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(HealthKitNutritionPlugin())
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupRetryView()
     }
 
-    override func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        super.webView(webView, didFailProvisionalNavigation: navigation, withError: error)
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         handleLoadError(error)
     }
 
-    override func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        super.webView(webView, didFail: navigation, withError: error)
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         handleLoadError(error)
     }
 
@@ -148,12 +150,18 @@ class RetryView: UIView {
 
         // Retry Button
         retryButton.translatesAutoresizingMaskIntoConstraints = false
-        retryButton.setTitle("Try Again", for: .normal)
-        retryButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        retryButton.setTitleColor(.white, for: .normal)
-        retryButton.backgroundColor = UIColor(red: 0.235, green: 0.533, blue: 0.424, alpha: 1.0) // Primary green
-        retryButton.layer.cornerRadius = 12
-        retryButton.contentEdgeInsets = UIEdgeInsets(top: 14, left: 32, bottom: 14, right: 32)
+        var buttonConfig = UIButton.Configuration.filled()
+        buttonConfig.title = "Try Again"
+        buttonConfig.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32)
+        buttonConfig.baseBackgroundColor = UIColor(red: 0.235, green: 0.533, blue: 0.424, alpha: 1.0)
+        buttonConfig.baseForegroundColor = .white
+        buttonConfig.cornerStyle = .large
+        buttonConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+            return outgoing
+        }
+        retryButton.configuration = buttonConfig
         retryButton.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
         containerView.addSubview(retryButton)
 
