@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import {
+  isHealthKitAvailable,
+  writeNutritionRecord,
+  deleteNutritionRecord,
+} from '@/lib/healthkit';
+import { createClient } from '@/lib/supabase/client';
 import type {
   ConsumptionEntry,
   DailyConsumptionSummary,
@@ -9,6 +15,73 @@ import type {
   MealPlanMealToLog,
   WaterProgress,
 } from '@/lib/types';
+
+// ─── HealthKit Sync Helpers ─────────────────────────────────────────────────
+// Fire-and-forget: these never block the core meal logging UX.
+
+let _syncEnabledCache: { userId: string; enabled: boolean } | null = null;
+
+async function isHealthKitSyncEnabled(): Promise<boolean> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  if (_syncEnabledCache?.userId === user.id) return _syncEnabledCache.enabled;
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('healthkit_nutrition_sync_enabled')
+    .eq('id', user.id)
+    .single();
+  const enabled = data?.healthkit_nutrition_sync_enabled ?? false;
+  _syncEnabledCache = { userId: user.id, enabled };
+  return enabled;
+}
+
+/** Call when the user toggles sync on/off so the cache stays fresh. */
+export function resetHealthKitSyncCache() {
+  _syncEnabledCache = null;
+}
+
+async function syncEntryToHealthKit(entry: ConsumptionEntry) {
+  if (!isHealthKitAvailable()) return;
+  try {
+    const enabled = await isHealthKitSyncEnabled();
+    if (!enabled) return;
+
+    const result = await writeNutritionRecord({
+      mealName: entry.display_name,
+      mealType: entry.meal_type || 'snack',
+      calories: entry.calories,
+      protein: entry.protein,
+      carbs: entry.carbs,
+      fat: entry.fat,
+      consumedAt: new Date(entry.consumed_at),
+      fuelrxEntryId: entry.id,
+    });
+
+    if (result.success && result.healthKitSampleIds?.length) {
+      await fetch(`/api/consumption/${entry.id}/healthkit`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          healthkit_synced: true,
+          healthkit_sample_ids: result.healthKitSampleIds,
+          healthkit_synced_at: new Date().toISOString(),
+        }),
+      });
+    }
+  } catch (error) {
+    console.error('[HealthKit] Sync failed (non-blocking):', error);
+  }
+}
+
+async function deleteEntryFromHealthKit(sampleIds: string[]) {
+  if (!isHealthKitAvailable() || !sampleIds.length) return;
+  try {
+    await deleteNutritionRecord(sampleIds);
+  } catch (error) {
+    console.error('[HealthKit] Delete failed (non-blocking):', error);
+  }
+}
 
 interface LogMealParams {
   type: 'meal_plan' | 'custom_meal' | 'quick_cook';
@@ -61,10 +134,13 @@ export function useLogMeal() {
       return response.json();
     },
 
-    onSuccess: () => {
+    onSuccess: (entry) => {
       // Invalidate all consumption data to ensure cross-date consistency
       // This handles the case where logging a meal affects multiple views
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // Fire-and-forget: sync to Apple Health on iOS native
+      syncEntryToHealthKit(entry);
     },
 
     onError: (error) => {
@@ -80,17 +156,22 @@ export function useDeleteConsumptionEntry() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (entryId: string): Promise<void> => {
+    mutationFn: async (entryId: string): Promise<string[]> => {
       const response = await fetch(`/api/consumption/${entryId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
         throw new Error('Failed to delete entry');
       }
+      const { healthkit_sample_ids } = await response.json();
+      return healthkit_sample_ids ?? [];
     },
 
-    onSuccess: () => {
+    onSuccess: (healthkitSampleIds) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // Fire-and-forget: remove from Apple Health on iOS native
+      deleteEntryFromHealthKit(healthkitSampleIds);
     },
 
     onError: (error) => {
@@ -206,8 +287,13 @@ export function useRepeatMealType() {
       return response.json();
     },
 
-    onSuccess: () => {
+    onSuccess: ({ entries }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // Fire-and-forget: sync repeated meals to Apple Health
+      for (const entry of entries) {
+        syncEntryToHealthKit(entry);
+      }
     },
 
     onError: (error) => {

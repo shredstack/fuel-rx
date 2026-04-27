@@ -51,12 +51,13 @@ public class HealthKitNutritionPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        // Write permissions for all nutrition types
+        // Write permissions for individual nutrition quantity types.
+        // Note: Do NOT include correlationType — HealthKit derives correlation
+        // authorization from the individual sample types automatically.
         var writeTypes = Set<HKSampleType>()
         for type in nutritionTypes.values {
             writeTypes.insert(type)
         }
-        writeTypes.insert(correlationType)
 
         // Read permission for calories (duplicate detection)
         let readTypes: Set<HKObjectType> = [
@@ -102,7 +103,9 @@ public class HealthKitNutritionPlugin: CAPPlugin, CAPBridgedPlugin {
         let mealName = call.getString("mealName") ?? "Meal"
         let fuelrxEntryId = call.getString("fuelrxEntryId") ?? ""
 
-        guard let startDate = ISO8601DateFormatter().date(from: startDateStr) else {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let startDate = isoFormatter.date(from: startDateStr) else {
             call.reject("Invalid startDate format. Use ISO 8601.")
             return
         }

@@ -76,7 +76,7 @@ const TEST_CONFIGS: Record<TestMode, TestConfig> = {
   },
   'sonnet-minimal': {
     mode: 'sonnet-minimal',
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     maxTokensCore: 8000,
     maxTokensMeals: 12000,
     maxTokensGrocery: 6000,
@@ -86,7 +86,7 @@ const TEST_CONFIGS: Record<TestMode, TestConfig> = {
   },
   'production': {
     mode: 'production',
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     maxTokensCore: 16000,
     maxTokensMeals: 32000,
     maxTokensGrocery: 12000,

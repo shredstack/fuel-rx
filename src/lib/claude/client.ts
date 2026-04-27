@@ -112,7 +112,7 @@ export async function callLLMWithToolUse<T>(options: {
 
   // ===== TEST MODE INTEGRATION =====
   const testConfig = getTestConfig();
-  let model = requestedModel || 'claude-sonnet-4-5-20250929';
+  let model = requestedModel || 'claude-sonnet-4-6';
   let maxTokens = requestedMaxTokens || 16000;
 
   // Apply test mode configuration if enabled

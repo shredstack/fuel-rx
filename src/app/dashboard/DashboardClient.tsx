@@ -562,13 +562,19 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
                   })}
                 </p>
                 <p className="text-sm text-gray-500 mb-6">
-                  Created {new Date(recentPlan.created_at).toLocaleString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
+                  Created {(() => {
+                    const created = new Date(recentPlan.created_at);
+                    const datePart = created.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    });
+                    const timePart = created.toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    });
+                    return `${datePart}, ${timePart}`;
+                  })()}
                 </p>
                 <div className="flex flex-col gap-3">
                   <Link

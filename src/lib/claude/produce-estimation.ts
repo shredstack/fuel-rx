@@ -171,7 +171,7 @@ Use the estimate_produce_grams tool to provide your classification and gram esti
   const { result } = await callLLMWithToolUse<ProduceEstimationToolResult>({
     prompt: userPrompt,
     tool: produceEstimationTool,
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-4-6',
     maxTokens: 2000,
     userId,
     promptType: 'produce_estimation',

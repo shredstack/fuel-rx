@@ -247,7 +247,7 @@ export async function generateSingleMeal(
   const { result } = await callLLMWithToolUse<LLMMealResponse>({
     prompt,
     tool: singleMealTool,
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     maxTokens: 4000,
     userId: params.profile.id,
     promptType: 'quick_cook_single_meal',

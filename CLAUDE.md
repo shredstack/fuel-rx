@@ -236,9 +236,11 @@ Meal plan generation is an important part of the app. Due to the long-running ch
 
 The log-meal flow uses Claude (Anthropic) for two AI-powered features. All LLM calls are logged to the `llm_logs` table. The Anthropic client is configured in `src/lib/claude/client.ts`.
 
+**Model selection:** Always use the latest available Claude models. Check Anthropic's models overview before adding or upgrading any model reference: https://platform.claude.com/docs/en/about-claude/models/overview. When upgrading, search the codebase for all Claude model IDs (e.g., `grep -rn "claude-" --include="*.ts"`) and update them together — model IDs are duplicated across call sites and the test config in `src/lib/claude_test.ts`.
+
 #### 1. Meal Photo Analysis (Claude Vision)
 
-**Model:** `claude-sonnet-4-20250514`
+**Model:** `claude-sonnet-4-6`
 
 **What it does:** The "Snap a Meal" feature lets users photograph their meal. Claude Vision analyzes the photo to identify ingredients, estimate portion sizes, and calculate macros (calories, protein, carbs, fat) for each item. It also assigns confidence scores and classifies ingredients by category (protein, vegetable, fruit, grain, fat, dairy, other).
 
@@ -260,7 +262,7 @@ The log-meal flow uses Claude (Anthropic) for two AI-powered features. All LLM c
 
 #### 2. Produce Weight Estimation (Claude Text)
 
-**Model:** `claude-sonnet-4-5-20250929`
+**Model:** `claude-sonnet-4-6`
 
 **What it does:** For the 800g fruit/vegetable tracking challenge, this feature detects produce items in a logged meal and estimates their weight in grams. It uses a two-tier approach: deterministic lookup first (from the `produce_weights` table), then Claude for unmatched items.
 
