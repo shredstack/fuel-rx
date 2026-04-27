@@ -19,20 +19,20 @@ import type {
 // ─── HealthKit Sync Helpers ─────────────────────────────────────────────────
 // Fire-and-forget: these never block the core meal logging UX.
 
-let _syncEnabledCache: boolean | null = null;
+let _syncEnabledCache: { userId: string; enabled: boolean } | null = null;
 
 async function isHealthKitSyncEnabled(): Promise<boolean> {
-  if (_syncEnabledCache != null) return _syncEnabledCache;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
+  if (_syncEnabledCache?.userId === user.id) return _syncEnabledCache.enabled;
   const { data } = await supabase
     .from('user_profiles')
     .select('healthkit_nutrition_sync_enabled')
     .eq('id', user.id)
     .single();
   const enabled = data?.healthkit_nutrition_sync_enabled ?? false;
-  _syncEnabledCache = enabled;
+  _syncEnabledCache = { userId: user.id, enabled };
   return enabled;
 }
 

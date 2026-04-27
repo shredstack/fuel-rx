@@ -183,15 +183,37 @@ Choose one:
 
 ### Avoid False Alarms
 
-Before flagging an issue, verify it's a real problem:
+Before flagging an issue, verify it's a real problem. **The diff is not the whole codebase** — most "missing X" claims are wrong because the reviewer didn't look outside the diff. Always check the working tree before raising a blocker.
 
-1. **Check for existing fallback handling**: If code has a fallback path (e.g., try method A, then fall back to method B), don't flag method B as "fragile" if method A is the primary approach.
+#### Mandatory pre-flight checks before flagging anything as "missing"
 
-2. **On-demand initialization is often intentional**: For client-side SDKs (RevenueCat, analytics, etc.), lazy/on-demand initialization during user actions is a valid pattern - it doesn't need to be "explicit" at app startup if the code handles the uninitialized case gracefully.
+If you are about to claim a file, route, column, function, or migration is missing, you MUST first verify by inspecting the repo. Do not infer absence from the diff alone.
 
-3. **SDK error codes**: When code checks for specific error codes from third-party SDKs, this is usually based on SDK documentation. Flag only if there's no error handling at all, not just because error codes "might change."
+1. **"Missing API route"** — before flagging, list the directory. Routes referenced via `fetch('/api/foo/[id]/bar')` map to `src/app/api/foo/[id]/bar/route.ts`. Check that path exists in the working tree, not just in the diff.
 
-4. **String matching with documented identifiers**: If fallback code matches against well-known identifiers (like RevenueCat's `$rc_monthly`, `$rc_annual`), this is based on documented SDK conventions, not arbitrary strings.
+2. **"Missing database migration / column"** — before flagging, grep `supabase/migrations/` for the column name. Columns are often added in a prior PR. The diff only shows what's changing in *this* PR; pre-existing schema lives on disk.
+
+3. **"Missing function / import"** — before flagging, grep the codebase for the symbol. It may be exported from a file outside the diff.
+
+4. **"API response shape mismatch"** — before claiming the consumer expects the wrong shape, open the route handler and read its `NextResponse.json(...)` call. Don't guess the shape from the consumer side alone.
+
+#### Other common false-alarm patterns
+
+5. **Anthropic model IDs without date suffixes are valid.** `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-haiku-4-5` are documented model aliases per Anthropic's models overview. Do NOT flag these as "non-standard" or "typo." The CLAUDE.md instruction is explicitly to use the latest aliases.
+
+6. **Existing fallback handling**: If code has a fallback path (e.g., try method A, then fall back to method B), don't flag method B as "fragile" if method A is the primary approach.
+
+7. **On-demand initialization is often intentional**: For client-side SDKs (RevenueCat, analytics, etc.), lazy/on-demand initialization during user actions is a valid pattern — it doesn't need to be "explicit" at app startup if the code handles the uninitialized case gracefully.
+
+8. **SDK error codes**: When code checks for specific error codes from third-party SDKs, this is usually based on SDK documentation. Flag only if there's no error handling at all, not just because error codes "might change."
+
+9. **String matching with documented identifiers**: If fallback code matches against well-known identifiers (like RevenueCat's `$rc_monthly`, `$rc_annual`), this is based on documented SDK conventions, not arbitrary strings.
+
+10. **Fire-and-forget side channels**: Sync paths that are intentionally non-blocking (HealthKit sync, analytics, telemetry) catch errors by design. Don't flag a swallowed error in a fire-and-forget call as a bug — flag only if the swallow hides a *user-facing* failure.
+
+#### How to phrase uncertainty
+
+If after checking you still aren't sure something exists, phrase it as a **question** ("Does route X exist?") rather than a **blocker** ("🔴 Missing route X"). Reserve 🔴 / "Request Changes" for issues you have verified against the working tree.
 
 ### What to Actually Flag
 
