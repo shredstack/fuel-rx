@@ -4,10 +4,9 @@ import { useState } from 'react';
 import { usePlatform } from '@/hooks/usePlatform';
 import { useHealthKit } from '@/hooks/useHealthKit';
 import { useHealthKitSyncStatus } from '@/hooks/queries/useHealthKitSyncStatus';
-import { useSubscription } from '@/hooks/useSubscription';
-import { presentPaywall } from '@/lib/revenuecat';
 import { createClient } from '@/lib/supabase/client';
 import { isHealthKitAvailable } from '@/lib/healthkit';
+import { resetHealthKitSyncCache } from '@/hooks/queries/useConsumptionMutations';
 import type { UserProfile } from '@/lib/types';
 
 
@@ -17,7 +16,6 @@ interface AppleHealthSettingsProps {
 
 export default function AppleHealthSettings({ profile }: AppleHealthSettingsProps) {
   const { isIOS, isNative } = usePlatform();
-  const { isSubscribed } = useSubscription();
   const [syncEnabled, setSyncEnabled] = useState(
     profile.healthkit_nutrition_sync_enabled ?? false
   );
@@ -55,15 +53,6 @@ export default function AppleHealthSettings({ profile }: AppleHealthSettingsProp
 
     try {
       if (!syncEnabled) {
-        // Enabling sync — check subscription first
-        if (!isSubscribed) {
-          const result = await presentPaywall();
-          if (!result.purchased) {
-            setToggling(false);
-            return;
-          }
-        }
-
         // Request HealthKit permissions
         const permResult = await requestPermissions();
         if (!permResult.granted) {
@@ -75,11 +64,13 @@ export default function AppleHealthSettings({ profile }: AppleHealthSettingsProp
         }
 
         await updateProfileSyncPref(true);
+        resetHealthKitSyncCache();
         setSyncEnabled(true);
         setShowBackfill(true);
       } else {
         // Disabling sync
         await updateProfileSyncPref(false);
+        resetHealthKitSyncCache();
         setSyncEnabled(false);
       }
     } catch (err) {

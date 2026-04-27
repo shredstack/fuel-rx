@@ -194,7 +194,7 @@ export async function findBestUSDAMatch(options: MatchIngredientOptions): Promis
     const { result: toolResult } = await callLLMWithToolUse<USDAMatchToolResult>({
       prompt,
       tool: USDA_MATCH_TOOL,
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       maxTokens: 1024,
       userId,
       promptType: 'usda_ingredient_matching',

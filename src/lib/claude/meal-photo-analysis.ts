@@ -136,7 +136,7 @@ export async function analyzeMealPhoto(
   const startTime = Date.now();
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4000,
     system: MEAL_PHOTO_ANALYSIS_SYSTEM_PROMPT,
     tools: [mealPhotoAnalysisTool],
@@ -169,7 +169,7 @@ export async function analyzeMealPhoto(
     user_id: userId,
     prompt: '[Meal photo analysis - image content]',
     output: JSON.stringify(message.content),
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     prompt_type: 'meal_photo_analysis',
     tokens_used: message.usage?.output_tokens,
     duration_ms: duration,

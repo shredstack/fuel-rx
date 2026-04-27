@@ -121,7 +121,7 @@ jobs:
             -d "$(jq -n \
               --rawfile prompt review_prompt.txt \
               '{
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-sonnet-4-6",
                 "max_tokens": 4096,
                 "messages": [
                   {

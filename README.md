@@ -11,63 +11,48 @@ Then, if you want to track, we make it stupidly easy. No manual entry, no search
 # 📑 Table of Contents
 
 <!-- TOC_START -->
-- [FuelRx](#fuelrx)
-- [📑 Table of Contents](#-table-of-contents)
-- [Core Philosophy](#core-philosophy)
-- [The Core Loop](#the-core-loop)
-- [The Pitch](#the-pitch)
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-  - [Frontend](#frontend)
-  - [Backend](#backend)
-  - [AI/ML](#aiml)
-  - [Hosting \& Deployment](#hosting--deployment)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Environment Variables](#environment-variables)
-  - [Installation](#installation)
-  - [Database Setup](#database-setup)
-  - [Inngest Production Setup](#inngest-production-setup)
-  - [Ingest Developer Setup](#ingest-developer-setup)
-  - [Email Notification System](#email-notification-system)
-    - [Setup](#setup)
-    - [How It Works](#how-it-works)
-    - [Testing Locally](#testing-locally)
-- [Developer Tips](#developer-tips)
-- [Native App](#native-app)
-  - [Developer Notes](#developer-notes)
-  - [Android](#android)
-  - [Android App Icons](#android-app-icons)
-  - [App Icons](#app-icons)
-  - [App Store Preparation](#app-store-preparation)
-    - [Screenshot Tips](#screenshot-tips)
-  - [Legal Pages](#legal-pages)
-  - [Before App Store Submission](#before-app-store-submission)
-  - [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
-  - [Paywall - AI Feature Access Logic](#paywall---ai-feature-access-logic)
-  - [Steps to change subscription prices](#steps-to-change-subscription-prices)
-- [Project Structure](#project-structure)
-- [Deployment](#deployment)
-  - [Deploy to Vercel](#deploy-to-vercel)
-- [Features](#features-1)
-  - [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
-  - [Quick Meals](#quick-meals)
-  - [Logging](#logging)
-    - [Barcode Scanning](#barcode-scanning)
-    - [Snap a Picture](#snap-a-picture)
-- [Feature Roadmap](#feature-roadmap)
-  - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
-  - [⚡ Convenience Features](#-convenience-features)
-  - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
-  - [✅ Frictionless Tracking (Optional)](#-frictionless-tracking-optional)
-  - [👥 Community Features](#-community-features)
-  - [Priority Order (Suggested)](#priority-order-suggested)
-- [What We're NOT Building](#what-were-not-building)
-- [Success Metrics](#success-metrics)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+- [Frontend](#frontend)
+- [Backend](#backend)
+- [AI/ML](#aiml)
+- [Hosting & Deployment](#hosting-deployment)
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Installation](#installation)
+- [Database Setup](#database-setup)
+- [Inngest Production Setup](#inngest-production-setup)
+- [Ingest Developer Setup](#ingest-developer-setup)
+- [Email Notification System](#email-notification-system)
+  - [Setup](#setup)
+  - [How It Works](#how-it-works)
+  - [Testing Locally](#testing-locally)
+- [Developer Notes](#developer-notes)
+- [Android](#android)
+- [Android App Icons](#android-app-icons)
+- [App Icons](#app-icons)
+- [App Store Preparation](#app-store-preparation)
+  - [Screenshot Tips](#screenshot-tips)
+- [Legal Pages](#legal-pages)
+- [Before App Store Submission](#before-app-store-submission)
+- [Testing local code on a physical iPhone](#testing-local-code-on-a-physical-iphone)
+  - [One-time setup](#one-time-setup)
+  - [Running](#running)
+  - [Debugging with Safari Web Inspector](#debugging-with-safari-web-inspector)
+  - [Reverting to production](#reverting-to-production)
+- [Steps to redistribute to TestFlight after local code changes](#steps-to-redistribute-to-testflight-after-local-code-changes)
+- [Paywall - AI Feature Access Logic](#paywall-ai-feature-access-logic)
+- [Steps to change subscription prices](#steps-to-change-subscription-prices)
+- [Deploy to Vercel](#deploy-to-vercel)
+- [Weekly Meal Plan Generation](#weekly-meal-plan-generation)
+- [Quick Meals](#quick-meals)
+- [Logging](#logging)
+  - [Barcode Scanning](#barcode-scanning)
+  - [Snap a Picture](#snap-a-picture)
+- [🔧 Meal Plan Quality Improvements](#meal-plan-quality-improvements)
+- [⚡ Convenience Features](#convenience-features)
+- [📸 Photo Capture ("Snap a Meal")](#photo-capture-snap-a-meal)
+- [✅ Frictionless Tracking (Optional)](#frictionless-tracking-optional)
+- [👥 Community Features](#community-features)
+- [Priority Order (Suggested)](#priority-order-suggested)
 <!-- TOC_END -->
 
 ---
@@ -524,6 +509,67 @@ Support: /support
 5. **Beta test via TestFlight**
 6. **Submit for review** via App Store Connect
 
+## Testing local code on a physical iPhone
+
+When you need to test web changes against a real device (e.g., HealthKit, RevenueCat, camera), point the Capacitor WebView at your local dev server.
+
+### One-time setup
+
+1. Find your Mac's LAN IP:
+   ```bash
+   ipconfig getifaddr en0
+   ```
+   (e.g., `192.168.86.31` — replace with yours throughout)
+
+2. Make sure your iPhone is on the **same Wi-Fi network** as your Mac.
+
+3. Update `.env` so client-side URLs use your Mac's IP (not `127.0.0.1`/`localhost`, which on the phone refer to the phone itself):
+   ```
+   NEXT_PUBLIC_SUPABASE_URL="http://192.168.86.31:54331"
+   NEXT_PUBLIC_APP_URL=http://192.168.86.31:3000
+   ```
+   Server-only vars like `SUPABASE_PROJECT_URL` can stay on `127.0.0.1`.
+
+### Running
+
+In separate terminals:
+
+```bash
+# Terminal 1 — local Supabase (Postgres, auth, storage)
+supabase start
+
+# Terminal 2 — Next.js dev server
+npm run dev
+
+# Terminal 3 — Inngest dev server (for meal plan generation jobs)
+npx inngest-cli@latest dev
+
+# Terminal 4 — build & install the iOS app pointing at your dev server
+CAPACITOR_SERVER_URL=http://192.168.86.31:3000 npx cap run ios
+```
+
+After any `.env` change, restart the dev server so the new values are picked up.
+
+### Debugging with Safari Web Inspector
+
+The iOS app is a Capacitor WebView, so you can inspect it from Safari on your Mac like a regular web page.
+
+1. **On your iPhone:** Settings > Safari > Advanced > toggle on **Web Inspector**.
+2. **On your Mac:** Safari > Settings > Advanced > check **"Show features for web developers"**. The **Develop** menu now appears in the menu bar.
+3. Connect your iPhone via USB (first-time only — it can be wireless after).
+4. In Safari's **Develop** menu, find your iPhone, then click the FuelRx page entry.
+5. The Web Inspector opens. Use the **Console** tab to see `console.log` / `console.error` output from the app, the **Network** tab to inspect API calls, etc.
+
+### Reverting to production
+
+When you're done testing, rebuild against production so the app loads from `fuel-rx.shredstack.net`:
+
+```bash
+npx cap run ios
+```
+
+(no `CAPACITOR_SERVER_URL` env var). And revert the `.env` URLs back to `127.0.0.1` for normal local development in a browser.
+
 ## Steps to redistribute to TestFlight after local code changes
 
 1. Build for mobile
@@ -671,7 +717,7 @@ Users take a photo or select from their gallery. The image is compressed client-
 
 **AI Analysis**
 
-Photos are analyzed using Claude Sonnet 4 (`claude-sonnet-4-20250514`) with vision capabilities. The model identifies individual ingredients, estimates portion sizes based on visual cues (plate size, utensils), and calculates macros using USDA FoodData Central guidelines. Portion estimates are calibrated for CrossFit athletes (4-8oz protein servings, 1-2 cups vegetables). Each ingredient receives a confidence score (0-1) indicating how certain the model is about the identification.
+Photos are analyzed using Claude Sonnet 4.6 (`claude-sonnet-4-6`) with vision capabilities. The model identifies individual ingredients, estimates portion sizes based on visual cues (plate size, utensils), and calculates macros using USDA FoodData Central guidelines. Portion estimates are calibrated for CrossFit athletes (4-8oz protein servings, 1-2 cups vegetables). Each ingredient receives a confidence score (0-1) indicating how certain the model is about the identification.
 
 **Review and Save**
 

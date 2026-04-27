@@ -31,9 +31,9 @@ export async function DELETE(request: Request, { params }: Props) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await removeConsumptionEntry(id, user.id);
+    const result = await removeConsumptionEntry(id, user.id);
 
-    return new NextResponse(null, { status: 204 });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error removing consumption entry:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

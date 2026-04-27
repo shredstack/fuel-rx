@@ -328,8 +328,19 @@ export async function logProduceIngredients(
 /**
  * Remove a consumption log entry.
  */
-export async function removeConsumptionEntry(entryId: string, userId: string): Promise<void> {
+export async function removeConsumptionEntry(
+  entryId: string,
+  userId: string
+): Promise<{ healthkit_sample_ids: string[] }> {
   const supabase = await createClient();
+
+  // Fetch sample IDs before deletion so callers can clean up Apple Health
+  const { data: existing } = await supabase
+    .from('meal_consumption_log')
+    .select('healthkit_sample_ids')
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .single();
 
   const { error } = await supabase
     .from('meal_consumption_log')
@@ -338,6 +349,8 @@ export async function removeConsumptionEntry(entryId: string, userId: string): P
     .eq('user_id', userId);
 
   if (error) throw new Error(`Failed to remove entry: ${error.message}`);
+
+  return { healthkit_sample_ids: existing?.healthkit_sample_ids ?? [] };
 }
 
 /**
