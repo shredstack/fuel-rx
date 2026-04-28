@@ -946,6 +946,32 @@ export async function searchIngredients(userId: string, query: string): Promise<
       }
     }
 
+    // Look up live nutrition so admin macro edits override the cached snapshot
+    // stored in user_frequent_ingredients. We only override when the user's
+    // default_unit matches the ingredient's serving_unit, since this code does
+    // not perform unit conversion and a mismatch would produce wrong macros.
+    const { data: currentNutrition } = await supabase
+      .from('ingredient_nutrition_with_details')
+      .select('name_normalized, serving_size, serving_unit, calories, protein, carbs, fat')
+      .in('name_normalized', frequentNames);
+
+    const nutritionMap = new Map<
+      string,
+      { serving_size: number; serving_unit: string; calories: number; protein: number; carbs: number; fat: number }
+    >();
+    if (currentNutrition) {
+      for (const n of currentNutrition) {
+        nutritionMap.set(n.name_normalized, {
+          serving_size: n.serving_size,
+          serving_unit: n.serving_unit,
+          calories: n.calories,
+          protein: n.protein,
+          carbs: n.carbs,
+          fat: n.fat,
+        });
+      }
+    }
+
     results.push(
       ...frequent
         // Filter out frequent ingredients whose underlying ingredient has been deleted
@@ -957,14 +983,33 @@ export async function searchIngredients(userId: string, query: string): Promise<
           ? currentCategory
           : (f as { category?: string }).category;
 
+        // Override cached macros with live nutrition when units match.
+        // Frequent rows store macros per 1 default_unit; the view stores macros
+        // per serving_size of serving_unit, so we divide by serving_size to
+        // produce a comparable per-1-unit value.
+        const live = nutritionMap.get(f.ingredient_name_normalized);
+        const unitsMatch =
+          !!live &&
+          live.serving_unit?.toLowerCase().trim() === f.default_unit?.toLowerCase().trim();
+        const liveServing = live && live.serving_size > 0 ? live.serving_size : 1;
+
+        const calories_per_serving =
+          unitsMatch && live ? live.calories / liveServing : f.calories_per_serving;
+        const protein_per_serving =
+          unitsMatch && live ? live.protein / liveServing : f.protein_per_serving;
+        const carbs_per_serving =
+          unitsMatch && live ? live.carbs / liveServing : f.carbs_per_serving;
+        const fat_per_serving =
+          unitsMatch && live ? live.fat / liveServing : f.fat_per_serving;
+
         return {
           name: f.ingredient_name,
           default_amount: f.default_amount,
           default_unit: f.default_unit,
-          calories_per_serving: f.calories_per_serving,
-          protein_per_serving: f.protein_per_serving,
-          carbs_per_serving: f.carbs_per_serving,
-          fat_per_serving: f.fat_per_serving,
+          calories_per_serving,
+          protein_per_serving,
+          carbs_per_serving,
+          fat_per_serving,
           source: 'frequent' as const,
           is_user_added: true, // Frequent ingredients are always user-added
           is_validated: false, // User-added ingredients are not validated by default
