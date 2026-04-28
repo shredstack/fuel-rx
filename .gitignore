@@ -72,3 +72,8 @@ android/keystore.properties
 
 # Local supabase queries
 supabase/snippets/*
+
+# Snap-a-Meal eval fixtures (may contain user photos)
+scripts/snap-a-meal-eval/fixtures/photos/
+scripts/snap-a-meal-eval/fixtures/manifest.json
+scripts/snap-a-meal-eval/fixtures/usda-prototype-results.json
