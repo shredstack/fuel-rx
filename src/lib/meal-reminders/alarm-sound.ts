@@ -1,0 +1,90 @@
+/**
+ * In-app alarm sound + haptics for the foreground meal reminder modal.
+ *
+ * The OS notification handles sound while backgrounded; this drives the
+ * "cannot be ignored" foreground experience. Sound is synthesised with the Web
+ * Audio API so no audio asset is needed, and haptics use Capacitor on native
+ * (falling back to the Vibration API on web).
+ */
+
+import { Capacitor } from '@capacitor/core';
+
+const PULSE_INTERVAL_MS = 2000;
+
+export class AlarmSound {
+  private audioCtx: AudioContext | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private soundEnabled = false;
+  private hapticsEnabled = false;
+
+  /** Begin the pulsing alarm. Safe to call repeatedly. */
+  start(soundEnabled: boolean, hapticsEnabled: boolean): void {
+    this.soundEnabled = soundEnabled;
+    this.hapticsEnabled = hapticsEnabled;
+    if (this.intervalId) return; // already running
+    this.pulse(); // fire immediately, then on an interval
+    this.intervalId = setInterval(() => this.pulse(), PULSE_INTERVAL_MS);
+  }
+
+  /** Stop the alarm and release audio resources. */
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.audioCtx) {
+      this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+    }
+  }
+
+  private pulse(): void {
+    if (this.soundEnabled) this.beep();
+    if (this.hapticsEnabled) void this.haptic();
+  }
+
+  private beep(): void {
+    try {
+      if (typeof window === 'undefined') return;
+      if (!this.audioCtx) {
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (!Ctx) return;
+        this.audioCtx = new Ctx();
+      }
+      const ctx = this.audioCtx;
+      // Autoplay policy may suspend the context until a user gesture.
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.42);
+    } catch {
+      // Audio is best-effort — haptics and the visible modal still nag.
+    }
+  }
+
+  private async haptic(): Promise<void> {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
+        await Haptics.impact({ style: ImpactStyle.Heavy });
+      } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(200);
+      }
+    } catch {
+      // Haptics are best-effort.
+    }
+  }
+}

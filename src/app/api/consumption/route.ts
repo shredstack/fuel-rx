@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logMealConsumed, logIngredientConsumed } from '@/lib/consumption-service';
+import { upsertResolution, isReminderMealType } from '@/lib/meal-reminders/resolution-service';
 import type { LogMealRequest, LogIngredientRequest } from '@/lib/types';
 
 export async function POST(request: Request) {
@@ -50,6 +51,23 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Meal logging requires: source_id' }, { status: 400 });
       }
       entry = await logMealConsumed(user.id, mealRequest);
+    }
+
+    // Server-side hook: logging a meal of a reminder meal_type silences that
+    // meal's reminder for the day, regardless of which log path was used.
+    // Non-blocking — a failed resolution write must not fail the meal log.
+    if (entry && isReminderMealType(entry.meal_type) && entry.consumed_date) {
+      try {
+        await upsertResolution(supabase, {
+          userId: user.id,
+          reminderDate: entry.consumed_date,
+          mealType: entry.meal_type,
+          source: 'meal_logged',
+          consumptionLogId: entry.id,
+        });
+      } catch (hookError) {
+        console.error('[consumption] reminder resolution hook failed:', hookError);
+      }
     }
 
     return NextResponse.json(entry, { status: 201 });

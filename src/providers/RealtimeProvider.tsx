@@ -179,6 +179,41 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             });
           }
         )
+        // Meal reminder resolutions (so a log/snap on one device stops the
+        // alarm everywhere)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meal_reminder_resolutions',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.reminders.all,
+            });
+          }
+        )
+        // Food journal entries (so a snap on phone shows up on iPad instantly)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'food_journal_entries',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.foodJournal.all,
+            });
+            // A reminder_dismiss entry also resolves a reminder.
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.reminders.all,
+            });
+          }
+        )
         .subscribe();
 
       channelRef.current = channel;

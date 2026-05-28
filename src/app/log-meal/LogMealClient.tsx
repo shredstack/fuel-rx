@@ -53,6 +53,7 @@ const MealTypeBreakdownChart = dynamic(() => import('@/components/consumption/Me
 const SummaryView = dynamic(() => import('@/components/consumption/SummaryView'), { ssr: false });
 const AddIngredientModal = dynamic(() => import('@/components/consumption/AddIngredientModal'), { ssr: false });
 const MealPhotoModal = dynamic(() => import('@/components/consumption/MealPhotoModal'), { ssr: false });
+const FoodJournalPanel = dynamic(() => import('@/components/consumption/FoodJournalPanel'), { ssr: false });
 import { MEAL_TYPE_LABELS } from '@/lib/types';
 import Navbar from '@/components/Navbar';
 import MobileTabBar from '@/components/MobileTabBar';
@@ -1243,6 +1244,9 @@ export default function LogMealClient({
               </>
               )}
             </div>
+
+            {/* Food Journal - observational photo journal */}
+            <FoodJournalPanel selectedDate={selectedDate} />
 
             {/* My Meals - Custom meals and quick cook */}
             {myMeals.length > 0 && (
