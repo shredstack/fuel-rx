@@ -23,11 +23,16 @@ const config: Config = {
       },
       animation: {
         rainbow: 'rainbow 2s linear infinite',
+        'slide-down-fade': 'slide-down-fade 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
       },
       keyframes: {
         rainbow: {
           '0%': { backgroundPosition: '0% 50%' },
           '100%': { backgroundPosition: '200% 50%' },
+        },
+        'slide-down-fade': {
+          '0%': { transform: 'translateY(-12px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
         },
       },
       colors: {

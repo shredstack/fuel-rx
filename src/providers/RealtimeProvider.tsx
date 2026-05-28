@@ -22,6 +22,9 @@ import type { RealtimeChannel, User } from '@supabase/supabase-js';
  * - user_grocery_staples: Grocery staples
  * - user_subscriptions: Subscription status (updated via RevenueCat webhooks)
  * - ingredients: Admin ingredient updates
+ * - meal_reminder_resolutions: Cross-device reminder resolution
+ * - food_journal_entries: Cross-device food journal sync
+ * - meal_on_time_celebrations: Cross-device on-time celebration sync
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -176,6 +179,57 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           () => {
             queryClient.invalidateQueries({
               queryKey: queryKeys.ingredients.all,
+            });
+          }
+        )
+        // Meal reminder resolutions (so a log/snap on one device stops the
+        // alarm everywhere)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meal_reminder_resolutions',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.reminders.all,
+            });
+          }
+        )
+        // Food journal entries (so a snap on phone shows up on iPad instantly)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'food_journal_entries',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.foodJournal.all,
+            });
+            // A reminder_dismiss entry also resolves a reminder.
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.reminders.all,
+            });
+          }
+        )
+        // Meal on-time celebrations (so the 🎉 badge appears on every device
+        // once the server-side hook records a celebration)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meal_on_time_celebrations',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.celebrations.all,
             });
           }
         )

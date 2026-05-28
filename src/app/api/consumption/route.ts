@@ -7,7 +7,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logMealConsumed, logIngredientConsumed } from '@/lib/consumption-service';
+import { upsertResolution, isReminderMealType } from '@/lib/meal-reminders/resolution-service';
+import { celebrateIfOnTime } from '@/lib/celebrations/meal-on-time-service';
+import { checkReminderAccess } from '@/lib/subscription/check-reminder-access';
 import type { LogMealRequest, LogIngredientRequest } from '@/lib/types';
+import type { MealOnTimeCelebration } from '@/lib/meal-reminders/types';
 
 export async function POST(request: Request) {
   try {
@@ -52,7 +56,43 @@ export async function POST(request: Request) {
       entry = await logMealConsumed(user.id, mealRequest);
     }
 
-    return NextResponse.json(entry, { status: 201 });
+    // Server-side hooks: logging a meal of a reminder meal_type silences that
+    // meal's reminder for the day, and may also trigger an on-time celebration
+    // when the user's settings say so. Both are non-blocking — a failure must
+    // not fail the meal log.
+    let celebration: MealOnTimeCelebration | null = null;
+    if (entry && isReminderMealType(entry.meal_type) && entry.consumed_date) {
+      try {
+        await upsertResolution(supabase, {
+          userId: user.id,
+          reminderDate: entry.consumed_date,
+          mealType: entry.meal_type,
+          source: 'meal_logged',
+          consumptionLogId: entry.id,
+        });
+      } catch (hookError) {
+        console.error('[consumption] reminder resolution hook failed:', hookError);
+      }
+
+      try {
+        const access = await checkReminderAccess(user.id);
+        celebration = await celebrateIfOnTime(
+          supabase,
+          {
+            userId: user.id,
+            mealType: entry.meal_type,
+            consumedAt: entry.consumed_at,
+            consumedDate: entry.consumed_date,
+            consumptionLogId: entry.id,
+          },
+          access.allowed
+        );
+      } catch (hookError) {
+        console.error('[consumption] on-time celebration hook failed:', hookError);
+      }
+    }
+
+    return NextResponse.json({ ...entry, celebration }, { status: 201 });
   } catch (error) {
     console.error('Error logging consumption:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';

@@ -14,6 +14,8 @@ interface MealSectionProps {
   mealType: MealType;
   entries: ConsumptionEntry[];
   previousEntries: PreviousEntriesInfo | null;
+  /** Truthy when this meal was logged on time today — surfaces the 🎉 badge. */
+  celebrationMessage?: string | null;
   initialCollapsed?: boolean;
   forceExpand?: boolean;
   onForceExpandHandled?: () => void;
@@ -59,6 +61,7 @@ export default memo(function MealSection({
   mealType,
   entries,
   previousEntries,
+  celebrationMessage,
   initialCollapsed = false,
   forceExpand,
   onForceExpandHandled,
@@ -136,6 +139,15 @@ export default memo(function MealSection({
           <h4 className="font-medium text-gray-900">{label}</h4>
           {!isEmpty && (
             <span className="text-xs text-gray-400">({entries.length})</span>
+          )}
+          {celebrationMessage && (
+            <span
+              className="text-base"
+              title={celebrationMessage}
+              aria-label={`On-time celebration: ${celebrationMessage}`}
+            >
+              🎉
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3">

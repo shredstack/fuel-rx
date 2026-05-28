@@ -77,4 +77,24 @@ export const queryKeys = {
     all: ['healthkit'] as const,
     status: () => ['healthkit', 'status'] as const,
   },
+
+  // Meal reminders
+  reminders: {
+    all: ['reminders'] as const,
+    settings: () => ['reminders', 'settings'] as const,
+    status: (date: string) => ['reminders', 'status', date] as const,
+  },
+
+  // Food journal
+  foodJournal: {
+    all: ['food-journal'] as const,
+    range: (from: string, to: string) =>
+      ['food-journal', 'range', from, to] as const,
+  },
+
+  // On-time meal celebrations (companion to reminders)
+  celebrations: {
+    all: ['celebrations'] as const,
+    onDate: (date: string) => ['celebrations', 'date', date] as const,
+  },
 } as const;

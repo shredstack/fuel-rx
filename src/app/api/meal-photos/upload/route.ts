@@ -111,19 +111,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to generate image URL' }, { status: 500 });
     }
 
-    // Create database record (store storage_path, not the signed URL which expires)
-    const { data: photoRecord, error: dbError } = await supabase
+    // Create database record (store storage_path, not the signed URL which expires).
+    // The food validation result is persisted so downstream consumers (e.g. the
+    // food journal) can verify the photo passed without re-running the LLM.
+    const baseInsert = {
+      user_id: user.id,
+      storage_path: fileName,
+      image_url: signedUrlData.signedUrl,
+      analysis_status: 'pending',
+    };
+    const validationPayload = {
+      isSafe: validation.isSafe,
+      isFood: validation.isFood,
+      category: validation.category,
+      confidence: validation.confidence,
+      detectedContent: validation.detectedContent,
+    };
+
+    let { data: photoRecord, error: dbError } = await supabase
       .from('meal_photos')
-      .insert({
-        user_id: user.id,
-        storage_path: fileName,
-        image_url: signedUrlData.signedUrl,
-        analysis_status: 'pending',
-      })
+      .insert({ ...baseInsert, validation_result: validationPayload })
       .select('id, image_url, analysis_status')
       .single();
 
-    if (dbError) {
+    // Guard against the deploy race where code lands before the migration: if
+    // validation_result doesn't exist yet, retry without it so existing
+    // Snap-a-Meal uploads keep working. (Postgres undefined_column = 42703;
+    // PostgREST schema-cache miss = PGRST204.)
+    if (dbError && (dbError.code === '42703' || dbError.code === 'PGRST204')) {
+      console.warn(
+        '[meal-photos/upload] validation_result column not yet present, retrying without it'
+      );
+      const retry = await supabase
+        .from('meal_photos')
+        .insert(baseInsert)
+        .select('id, image_url, analysis_status')
+        .single();
+      photoRecord = retry.data;
+      dbError = retry.error;
+    }
+
+    if (dbError || !photoRecord) {
       console.error('Error creating meal_photos record:', dbError);
       // Try to clean up the uploaded file
       await supabase.storage.from(BUCKET_NAME).remove([fileName]);
