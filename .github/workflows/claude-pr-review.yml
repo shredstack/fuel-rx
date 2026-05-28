@@ -113,23 +113,27 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Call Claude API using --rawfile to avoid shell expansion issues
+          # Build the JSON request body to a file to avoid "Argument list too long"
+          # (passing a large -d payload via $() pushes the entire JSON onto curl's
+          # command line and exceeds the kernel ARG_MAX limit).
+          jq -n \
+            --rawfile prompt review_prompt.txt \
+            '{
+              "model": "claude-sonnet-4-6",
+              "max_tokens": 4096,
+              "messages": [
+                {
+                  "role": "user",
+                  "content": $prompt
+                }
+              ]
+            }' > request_body.json
+
           RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
             -H "Content-Type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d "$(jq -n \
-              --rawfile prompt review_prompt.txt \
-              '{
-                "model": "claude-sonnet-4-6",
-                "max_tokens": 4096,
-                "messages": [
-                  {
-                    "role": "user",
-                    "content": $prompt
-                  }
-                ]
-              }')")
+            --data-binary @request_body.json)
 
           # Extract the review text
           REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: Could not generate review"')
