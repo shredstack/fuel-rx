@@ -22,6 +22,9 @@ import type { RealtimeChannel, User } from '@supabase/supabase-js';
  * - user_grocery_staples: Grocery staples
  * - user_subscriptions: Subscription status (updated via RevenueCat webhooks)
  * - ingredients: Admin ingredient updates
+ * - meal_reminder_resolutions: Cross-device reminder resolution
+ * - food_journal_entries: Cross-device food journal sync
+ * - meal_on_time_celebrations: Cross-device on-time celebration sync
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -211,6 +214,22 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             // A reminder_dismiss entry also resolves a reminder.
             queryClient.invalidateQueries({
               queryKey: queryKeys.reminders.all,
+            });
+          }
+        )
+        // Meal on-time celebrations (so the 🎉 badge appears on every device
+        // once the server-side hook records a celebration)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'meal_on_time_celebrations',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.celebrations.all,
             });
           }
         )
