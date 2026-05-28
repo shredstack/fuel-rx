@@ -24,6 +24,7 @@ import {
   REMINDER_MEAL_TYPES,
   REMINDER_MEAL_EMOJI,
   REMINDER_MEAL_LABELS,
+  isCelebrationMealType,
   type MealReminderConfig,
   type MealReminderSettings,
   type ReminderMealType,
@@ -77,7 +78,8 @@ function ReminderMealCard({
   config: MealReminderConfig;
   onChange: (patch: Partial<MealReminderConfig>) => void;
 }) {
-  const { enabled } = config;
+  const { enabled, celebrate_on_time } = config;
+  const supportsCelebration = isCelebrationMealType(mealType);
 
   return (
     <div className="card">
@@ -144,6 +146,34 @@ function ReminderMealCard({
               checked={config.haptics_enabled}
               onChange={(v) => onChange({ haptics_enabled: v })}
               label={`${REMINDER_MEAL_LABELS[mealType]} haptics`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Celebrations are independent of the reminder toggle — a user can opt
+          into confetti without nagging notifications, or vice versa. */}
+      {supportsCelebration && (
+        <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+            <span aria-hidden="true">🎉</span> Celebrate me
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-sm text-gray-600">Confetti when I log by</label>
+            <input
+              type="time"
+              value={config.on_time_target ?? '09:00'}
+              onChange={(e) => onChange({ on_time_target: e.target.value })}
+              className="input-field w-auto"
+              disabled={!celebrate_on_time}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-sm text-gray-600">Celebrate on-time logs</label>
+            <Toggle
+              checked={!!celebrate_on_time}
+              onChange={(v) => onChange({ celebrate_on_time: v })}
+              label={`${REMINDER_MEAL_LABELS[mealType]} celebrations`}
             />
           </div>
         </div>

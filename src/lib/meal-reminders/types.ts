@@ -39,9 +39,52 @@ export interface MealReminderConfig {
   interval_minutes: number;
   sound_enabled: boolean;
   haptics_enabled: boolean;
+  /**
+   * On-time celebration target. "HH:MM" 24-hour, user's local time. Omitted on
+   * snack — celebrations are only for breakfast / lunch / dinner in v1.
+   */
+  on_time_target?: string;
+  /** Per-meal toggle for the on-time celebration. Independent of `enabled`. */
+  celebrate_on_time?: boolean;
 }
 
 export type MealReminderSettings = Record<ReminderMealType, MealReminderConfig>;
+
+/**
+ * Subset of reminder meal types that support on-time celebrations.
+ * Snack is excluded — no canonical on-time target in v1.
+ */
+export type CelebrationMealType = 'breakfast' | 'lunch' | 'dinner';
+
+export const CELEBRATION_MEAL_TYPES: CelebrationMealType[] = ['breakfast', 'lunch', 'dinner'];
+
+/** True if the meal_type supports on-time celebrations. */
+export function isCelebrationMealType(
+  value: string | null | undefined
+): value is CelebrationMealType {
+  return value === 'breakfast' || value === 'lunch' || value === 'dinner';
+}
+
+/**
+ * A single on-time celebration row. The server inserts at most one per
+ * (user, date, meal_type); editing consumed_at later does not retract or
+ * create another.
+ */
+export interface MealOnTimeCelebration {
+  id: string;
+  user_id: string;
+  /** User's local date when the qualifying log happened — "YYYY-MM-DD". */
+  celebration_date: string;
+  meal_type: CelebrationMealType;
+  /** consumed_at of the qualifying log. */
+  logged_at: string;
+  /** Snapshot of the on_time_target at fire time — "HH:MM:SS". */
+  target_time: string;
+  /** Pre-picked message — same string shown in-app and in the OS notification. */
+  message: string;
+  consumption_log_id: string | null;
+  created_at: string;
+}
 
 /** Per-meal status for a given date. */
 export type ReminderStatus = 'resolved' | 'pending' | 'disabled';

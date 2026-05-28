@@ -91,4 +91,10 @@ export const queryKeys = {
     range: (from: string, to: string) =>
       ['food-journal', 'range', from, to] as const,
   },
+
+  // On-time meal celebrations (companion to reminders)
+  celebrations: {
+    all: ['celebrations'] as const,
+    onDate: (date: string) => ['celebrations', 'date', date] as const,
+  },
 } as const;

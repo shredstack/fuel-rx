@@ -19,6 +19,7 @@ import type {
   SelectableMealType,
 } from '@/lib/types';
 import { useLogMealData, useWeeklyConsumption, useMonthlyConsumption, useConsumptionSummary, type PreviousEntriesByMealType } from '@/hooks/queries/useConsumption';
+import { useMealOnTimeCelebrations } from '@/hooks/queries/useMealOnTimeCelebrations';
 import {
   useLogMeal,
   useDeleteConsumptionEntry,
@@ -131,6 +132,18 @@ export default function LogMealClient({
   const repeatMealTypeMutation = useRepeatMealType();
   const repeatYesterdayMutation = useRepeatYesterday();
   const addWaterMutation = useAddWater();
+
+  // On-time celebrations for the selected date — drives the 🎉 badge on each
+  // meal section. Cheap to fetch (max 3 rows/day) and stays fresh via
+  // RealtimeProvider's invalidation hook.
+  const { data: celebrations } = useMealOnTimeCelebrations(selectedDate);
+  const celebrationByMealType = useMemo(() => {
+    const map: Partial<Record<MealType, string>> = {};
+    for (const c of celebrations ?? []) {
+      map[c.meal_type] = c.message;
+    }
+    return map;
+  }, [celebrations]);
 
   // Period view state
   const [selectedPeriod, setSelectedPeriod] = useState<ConsumptionPeriodType>('daily');
@@ -1157,6 +1170,7 @@ export default function LogMealClient({
                     mealType={mealType}
                     entries={entriesForType}
                     previousEntries={prevEntriesInfo}
+                    celebrationMessage={celebrationByMealType[mealType] ?? null}
                     initialCollapsed={entriesForType.length === 0}
                     forceExpand={recentlyLoggedToMealType === mealType}
                     onForceExpandHandled={() => setRecentlyLoggedToMealType(null)}

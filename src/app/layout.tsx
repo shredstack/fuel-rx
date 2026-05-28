@@ -5,6 +5,7 @@ import { QueryProvider } from '@/providers/QueryProvider'
 import { RealtimeProvider } from '@/providers/RealtimeProvider'
 import { SplashScreenProvider } from '@/providers/SplashScreenProvider'
 import { MealReminderProvider } from '@/providers/MealReminderProvider'
+import { CelebrationProvider } from '@/providers/CelebrationProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -34,13 +35,15 @@ export default function RootLayout({
       <body className={inter.className}>
         <QueryProvider>
           <RealtimeProvider>
-            <MealReminderProvider>
-              <SplashScreenProvider>
-                <main className="min-h-screen bg-gray-50">
-                  {children}
-                </main>
-              </SplashScreenProvider>
-            </MealReminderProvider>
+            <CelebrationProvider>
+              <MealReminderProvider>
+                <SplashScreenProvider>
+                  <main className="min-h-screen bg-gray-50">
+                    {children}
+                  </main>
+                </SplashScreenProvider>
+              </MealReminderProvider>
+            </CelebrationProvider>
           </RealtimeProvider>
         </QueryProvider>
       </body>

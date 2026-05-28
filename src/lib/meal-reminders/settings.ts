@@ -8,6 +8,7 @@
 
 import {
   REMINDER_MEAL_TYPES,
+  isCelebrationMealType,
   type MealReminderConfig,
   type MealReminderSettings,
   type ReminderMealType,
@@ -23,9 +24,9 @@ export const MAX_SLOTS_PER_MEAL = 16;
 
 /** Matches the column default in the migration. */
 export const DEFAULT_REMINDER_SETTINGS: MealReminderSettings = {
-  breakfast: { enabled: false, start_time: '08:00', stop_time: '10:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true },
-  lunch: { enabled: false, start_time: '12:00', stop_time: '14:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true },
-  dinner: { enabled: false, start_time: '18:00', stop_time: '20:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true },
+  breakfast: { enabled: false, start_time: '08:00', stop_time: '10:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true, on_time_target: '09:00', celebrate_on_time: false },
+  lunch: { enabled: false, start_time: '12:00', stop_time: '14:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true, on_time_target: '13:00', celebrate_on_time: false },
+  dinner: { enabled: false, start_time: '18:00', stop_time: '20:00', interval_minutes: 15, sound_enabled: true, haptics_enabled: true, on_time_target: '19:00', celebrate_on_time: false },
   snack: { enabled: false, start_time: '15:00', stop_time: '16:00', interval_minutes: 30, sound_enabled: true, haptics_enabled: true },
 };
 
@@ -55,7 +56,7 @@ export function mergeWithDefaults(raw: unknown): MealReminderSettings {
       ? source[mealType]
       : {}) as Record<string, unknown>;
 
-    result[mealType] = {
+    const merged: MealReminderConfig = {
       enabled: typeof partial.enabled === 'boolean' ? partial.enabled : fallback.enabled,
       start_time: isValidTime(partial.start_time) ? partial.start_time : fallback.start_time,
       stop_time: isValidTime(partial.stop_time) ? partial.stop_time : fallback.stop_time,
@@ -70,6 +71,20 @@ export function mergeWithDefaults(raw: unknown): MealReminderSettings {
           ? partial.haptics_enabled
           : fallback.haptics_enabled,
     };
+
+    // Celebration fields only apply to meals that support them. Snack omits
+    // both keys so the UI hides the controls.
+    if (isCelebrationMealType(mealType)) {
+      merged.on_time_target = isValidTime(partial.on_time_target)
+        ? partial.on_time_target
+        : fallback.on_time_target;
+      merged.celebrate_on_time =
+        typeof partial.celebrate_on_time === 'boolean'
+          ? partial.celebrate_on_time
+          : fallback.celebrate_on_time ?? false;
+    }
+
+    result[mealType] = merged;
   }
 
   return result;
@@ -85,30 +100,44 @@ export function countSlots(config: MealReminderConfig): number {
 
 /**
  * Validate a single meal config. Returns an error message, or null if valid.
- * Disabled meals are not validated (the form may hold partial values).
+ * Reminder fields are only checked when `enabled` is true (the form may hold
+ * partial values for a disabled meal). Celebration fields are checked
+ * independently when `celebrate_on_time` is true.
  */
 export function validateMealConfig(
   mealType: ReminderMealType,
   config: MealReminderConfig
 ): string | null {
-  if (!config.enabled) return null;
+  if (config.enabled) {
+    if (!isValidTime(config.start_time) || !isValidTime(config.stop_time)) {
+      return `${mealType}: start and stop times must be valid HH:MM values`;
+    }
+    if (
+      !Number.isInteger(config.interval_minutes) ||
+      config.interval_minutes < MIN_INTERVAL_MINUTES ||
+      config.interval_minutes > MAX_INTERVAL_MINUTES
+    ) {
+      return `${mealType}: interval must be between ${MIN_INTERVAL_MINUTES} and ${MAX_INTERVAL_MINUTES} minutes`;
+    }
+    if (timeToMinutes(config.stop_time) <= timeToMinutes(config.start_time)) {
+      return `${mealType}: stop time must be after start time`;
+    }
+    if (countSlots(config) > MAX_SLOTS_PER_MEAL) {
+      return `${mealType}: that schedule produces too many reminders — widen the interval or shorten the window (max ${MAX_SLOTS_PER_MEAL})`;
+    }
+  }
 
-  if (!isValidTime(config.start_time) || !isValidTime(config.stop_time)) {
-    return `${mealType}: start and stop times must be valid HH:MM values`;
+  // Celebration validity is independent of `enabled` — a user can opt into
+  // celebrations without reminders, or vice versa.
+  if (config.celebrate_on_time) {
+    if (!isCelebrationMealType(mealType)) {
+      return `${mealType}: celebrations are only available for breakfast, lunch, and dinner`;
+    }
+    if (!isValidTime(config.on_time_target)) {
+      return `${mealType}: celebration target must be a valid HH:MM value`;
+    }
   }
-  if (
-    !Number.isInteger(config.interval_minutes) ||
-    config.interval_minutes < MIN_INTERVAL_MINUTES ||
-    config.interval_minutes > MAX_INTERVAL_MINUTES
-  ) {
-    return `${mealType}: interval must be between ${MIN_INTERVAL_MINUTES} and ${MAX_INTERVAL_MINUTES} minutes`;
-  }
-  if (timeToMinutes(config.stop_time) <= timeToMinutes(config.start_time)) {
-    return `${mealType}: stop time must be after start time`;
-  }
-  if (countSlots(config) > MAX_SLOTS_PER_MEAL) {
-    return `${mealType}: that schedule produces too many reminders — widen the interval or shorten the window (max ${MAX_SLOTS_PER_MEAL})`;
-  }
+
   return null;
 }
 

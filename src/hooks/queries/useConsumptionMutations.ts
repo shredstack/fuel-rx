@@ -6,6 +6,8 @@ import {
   deleteNutritionRecord,
 } from '@/lib/healthkit';
 import { createClient } from '@/lib/supabase/client';
+import { useCelebration } from '@/providers/CelebrationProvider';
+import type { MealOnTimeCelebration } from '@/lib/meal-reminders/types';
 import type {
   ConsumptionEntry,
   DailyConsumptionSummary,
@@ -15,6 +17,14 @@ import type {
   MealPlanMealToLog,
   WaterProgress,
 } from '@/lib/types';
+
+/**
+ * The POST /api/consumption response is a ConsumptionEntry with an optional
+ * `celebration` row attached by the server-side on-time-celebration hook.
+ */
+type LogMealResponse = ConsumptionEntry & {
+  celebration?: MealOnTimeCelebration | null;
+};
 
 // ─── HealthKit Sync Helpers ─────────────────────────────────────────────────
 // Fire-and-forget: these never block the core meal logging UX.
@@ -119,9 +129,10 @@ interface OptimisticContext {
  */
 export function useLogMeal() {
   const queryClient = useQueryClient();
+  const { showCelebration } = useCelebration();
 
   return useMutation({
-    mutationFn: async (params: LogConsumptionParams): Promise<ConsumptionEntry> => {
+    mutationFn: async (params: LogConsumptionParams): Promise<LogMealResponse> => {
       const response = await fetch('/api/consumption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -131,13 +142,23 @@ export function useLogMeal() {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.message || 'Failed to log meal');
       }
-      return response.json();
+      return response.json() as Promise<LogMealResponse>;
     },
 
     onSuccess: (entry) => {
       // Invalidate all consumption data to ensure cross-date consistency
       // This handles the case where logging a meal affects multiple views
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // On-time celebration is decided server-side and attached to the
+      // response when this log qualifies. Fire it inline so confetti happens
+      // immediately, without waiting for the realtime echo.
+      if (entry.celebration) {
+        // Mutation onSuccess only runs when the app is foregrounded — the user
+        // just tapped "Log Meal." Background notifications are handled by the
+        // server-issued realtime event on other devices.
+        showCelebration(entry.celebration, 'foreground');
+      }
 
       // Fire-and-forget: sync to Apple Health on iOS native
       syncEntryToHealthKit(entry);
