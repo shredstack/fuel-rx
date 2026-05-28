@@ -36,6 +36,7 @@ export default function MealReminderAlarmModal({
   const [showOverflow, setShowOverflow] = useState(false);
   const [confirmingSkip, setConfirmingSkip] = useState(false);
   const alarmRef = useRef<AlarmSound | null>(null);
+  const overflowRef = useRef<HTMLDivElement | null>(null);
 
   // Start the alarm while the modal is mounted.
   useEffect(() => {
@@ -47,6 +48,17 @@ export default function MealReminderAlarmModal({
       alarmRef.current = null;
     };
   }, [soundEnabled, hapticsEnabled]);
+
+  useEffect(() => {
+    if (!showOverflow) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!overflowRef.current?.contains(e.target as Node)) {
+        setShowOverflow(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [showOverflow]);
 
   const label = REMINDER_MEAL_LABELS[mealType];
 
@@ -62,7 +74,7 @@ export default function MealReminderAlarmModal({
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Overflow menu trigger */}
-        <div className="absolute right-2 top-2">
+        <div ref={overflowRef} className="absolute right-2 top-2">
           <button
             onClick={() => setShowOverflow((v) => !v)}
             className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
