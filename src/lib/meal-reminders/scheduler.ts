@@ -15,6 +15,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { computeFireTimes, getLocalDateString } from './fire-times';
 import { MAX_SLOTS_PER_MEAL } from './settings';
 import { isReminderMealType } from './resolution-service';
@@ -39,22 +40,10 @@ const TEST_NOTIFICATION_ID = 99999;
 const SOUND_FILE = 'reminder.wav';
 const REMINDER_BODY = "Tap to log it or snap a pic — I won't stop until you do.";
 
-type LocalNotificationsPlugin = typeof import('@capacitor/local-notifications').LocalNotifications;
-
-let pluginPromise: Promise<LocalNotificationsPlugin | null> | null = null;
-
-/** Lazily load the plugin — only on a native platform. */
-async function getPlugin(): Promise<LocalNotificationsPlugin | null> {
+/** Plugin is only callable on a native platform. */
+function getPlugin(): typeof LocalNotifications | null {
   if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return null;
-  if (!pluginPromise) {
-    pluginPromise = import('@capacitor/local-notifications')
-      .then((m) => m.LocalNotifications)
-      .catch((err) => {
-        console.warn('[reminder-scheduler] local-notifications plugin unavailable:', err);
-        return null;
-      });
-  }
-  return pluginPromise;
+  return LocalNotifications;
 }
 
 function mapPermission(display: string): NotificationPermission {
