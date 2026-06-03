@@ -242,14 +242,14 @@ export default function MealRemindersClient({ hasAccess }: Props) {
   };
 
   const handleTest = async () => {
-    alert('[debug] handleTest fired');
     setTestStatus(null);
     let result: NotificationPermission;
     try {
       result = await fireTestReminder(true);
-      alert(`[debug] fireTestReminder returned: ${result}`);
     } catch (err) {
-      alert(`[debug] fireTestReminder threw: ${err instanceof Error ? err.message : String(err)}`);
+      setTestStatus(
+        `Couldn't fire test reminder: ${err instanceof Error ? err.message : String(err)}`
+      );
       return;
     }
     if (result === 'granted') {
