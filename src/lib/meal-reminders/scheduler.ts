@@ -30,6 +30,13 @@ import {
 
 export type NotificationPermission = 'granted' | 'denied' | 'prompt' | 'unsupported';
 
+export interface ReminderDiagnostics {
+  isNative: boolean;
+  pluginAvailable: boolean;
+  permission: NotificationPermission;
+  lastError: string | null;
+}
+
 const MEAL_ID_BASE: Record<ReminderMealType, number> = {
   breakfast: 10000,
   lunch: 20000,
@@ -40,9 +47,30 @@ const TEST_NOTIFICATION_ID = 99999;
 const SOUND_FILE = 'reminder.wav';
 const REMINDER_BODY = "Tap to log it or snap a pic — I won't stop until you do.";
 
-/** Plugin is only callable on a native platform. */
+// Last error from any plugin call — surfaced via getDiagnostics() so the
+// Meal Reminders page can show *why* notifications aren't working instead of a
+// generic "unsupported" state.
+let lastError: string | null = null;
+
+function recordError(where: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  lastError = `${where}: ${message}`;
+  console.error(`[reminder-scheduler] ${where} failed:`, err);
+}
+
+/**
+ * Plugin is only callable on a native platform AND when the native side
+ * actually registered the LocalNotifications class. The JS import always
+ * succeeds (it's a Capacitor proxy), so `isPluginAvailable` is the only
+ * reliable signal that the native binary has the plugin baked in.
+ */
 function getPlugin(): typeof LocalNotifications | null {
   if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return null;
+  if (!Capacitor.isPluginAvailable('LocalNotifications')) {
+    lastError =
+      'LocalNotifications plugin is not registered in this native build. The App Store binary needs `npx cap sync ios` + a rebuild.';
+    return null;
+  }
   return LocalNotifications;
 }
 
@@ -50,6 +78,17 @@ function mapPermission(display: string): NotificationPermission {
   if (display === 'granted') return 'granted';
   if (display === 'denied') return 'denied';
   return 'prompt';
+}
+
+/**
+ * Snapshot of the notification subsystem state for the UI. Safe to call on web
+ * or native — never throws.
+ */
+export async function getDiagnostics(): Promise<ReminderDiagnostics> {
+  const isNative = typeof window !== 'undefined' && Capacitor.isNativePlatform();
+  const pluginAvailable = isNative && Capacitor.isPluginAvailable('LocalNotifications');
+  const permission = await checkNotificationPermission();
+  return { isNative, pluginAvailable, permission, lastError };
 }
 
 /** Is this notification id one we manage? */
@@ -62,30 +101,32 @@ function isReminderId(id: number): boolean {
 }
 
 export async function checkNotificationPermission(): Promise<NotificationPermission> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return 'unsupported';
   try {
     const res = await plugin.checkPermissions();
     return mapPermission(res.display);
-  } catch {
+  } catch (err) {
+    recordError('checkPermissions', err);
     return 'unsupported';
   }
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return 'unsupported';
   try {
     const res = await plugin.requestPermissions();
     return mapPermission(res.display);
-  } catch {
+  } catch (err) {
+    recordError('requestPermissions', err);
     return 'unsupported';
   }
 }
 
 /** Cancel every reminder notification we may have scheduled. */
 export async function cancelAllReminders(): Promise<void> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return;
   try {
     const pending = await plugin.getPending();
@@ -94,13 +135,13 @@ export async function cancelAllReminders(): Promise<void> {
       await plugin.cancel({ notifications: ids });
     }
   } catch (err) {
-    console.warn('[reminder-scheduler] cancelAllReminders failed:', err);
+    recordError('cancelAllReminders', err);
   }
 }
 
 /** Cancel the full scheduled batch for a single meal type. */
 export async function cancelMealReminders(mealType: ReminderMealType): Promise<void> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return;
   const base = MEAL_ID_BASE[mealType];
   const ids = Array.from({ length: MAX_SLOTS_PER_MEAL }, (_, i) => ({ id: base + i }));
@@ -108,7 +149,7 @@ export async function cancelMealReminders(mealType: ReminderMealType): Promise<v
     // Cancelling ids that aren't actually scheduled is harmless.
     await plugin.cancel({ notifications: ids });
   } catch (err) {
-    console.warn(`[reminder-scheduler] cancelMealReminders(${mealType}) failed:`, err);
+    recordError(`cancelMealReminders(${mealType})`, err);
   }
 }
 
@@ -123,7 +164,7 @@ export async function syncSchedule(
   status: MealReminderStatusMap,
   dateStr: string = getLocalDateString()
 ): Promise<void> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return;
 
   const permission = await checkNotificationPermission();
@@ -168,7 +209,7 @@ export async function syncSchedule(
     try {
       await plugin.schedule({ notifications });
     } catch (err) {
-      console.warn('[reminder-scheduler] schedule failed:', err);
+      recordError('schedule', err);
     }
   }
 }
@@ -178,7 +219,7 @@ export async function syncSchedule(
  * permissions and sound are working. Returns the resulting permission state.
  */
 export async function fireTestReminder(soundEnabled = true): Promise<NotificationPermission> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return 'unsupported';
 
   let permission = await checkNotificationPermission();
@@ -201,7 +242,7 @@ export async function fireTestReminder(soundEnabled = true): Promise<Notificatio
       ],
     });
   } catch (err) {
-    console.warn('[reminder-scheduler] fireTestReminder failed:', err);
+    recordError('fireTestReminder.schedule', err);
   }
   return 'granted';
 }
@@ -214,7 +255,7 @@ export async function fireTestReminder(soundEnabled = true): Promise<Notificatio
 export async function addReminderTapListener(
   handler: (mealType: ReminderMealType, date: string) => void
 ): Promise<() => void> {
-  const plugin = await getPlugin();
+  const plugin = getPlugin();
   if (!plugin) return () => {};
 
   try {
@@ -235,7 +276,7 @@ export async function addReminderTapListener(
       }
     };
   } catch (err) {
-    console.warn('[reminder-scheduler] addReminderTapListener failed:', err);
+    recordError('addReminderTapListener', err);
     return () => {};
   }
 }

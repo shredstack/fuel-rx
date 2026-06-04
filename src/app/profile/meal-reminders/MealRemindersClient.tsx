@@ -18,7 +18,9 @@ import {
   fireTestReminder,
   requestNotificationPermission,
   checkNotificationPermission,
+  getDiagnostics,
   type NotificationPermission,
+  type ReminderDiagnostics,
 } from '@/lib/meal-reminders/scheduler';
 import {
   REMINDER_MEAL_TYPES,
@@ -190,8 +192,16 @@ export default function MealRemindersClient({ hasAccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ReminderDiagnostics | null>(null);
   const [testStatus, setTestStatus] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+
+  const refreshDiagnostics = () => {
+    void getDiagnostics().then((d) => {
+      setDiagnostics(d);
+      setPermission(d.permission);
+    });
+  };
 
   // Seed the editable draft once settings load.
   useEffect(() => {
@@ -201,6 +211,7 @@ export default function MealRemindersClient({ hasAccess }: Props) {
   // Surface current notification permission (no-op / 'unsupported' on web).
   useEffect(() => {
     void checkNotificationPermission().then(setPermission);
+    refreshDiagnostics();
   }, []);
 
   const updateMeal = (mealType: ReminderMealType, patch: Partial<MealReminderConfig>) => {
@@ -211,7 +222,10 @@ export default function MealRemindersClient({ hasAccess }: Props) {
     );
     // First time a user enables a reminder, ask for notification permission.
     if (patch.enabled === true) {
-      void requestNotificationPermission().then(setPermission);
+      void requestNotificationPermission().then((p) => {
+        setPermission(p);
+        refreshDiagnostics();
+      });
     }
   };
 
@@ -250,6 +264,7 @@ export default function MealRemindersClient({ hasAccess }: Props) {
       setTestStatus(
         `Couldn't fire test reminder: ${err instanceof Error ? err.message : String(err)}`
       );
+      refreshDiagnostics();
       return;
     }
     if (result === 'granted') {
@@ -259,6 +274,7 @@ export default function MealRemindersClient({ hasAccess }: Props) {
     } else {
       setTestStatus('Test reminders only work in the FuelRx mobile app.');
     }
+    refreshDiagnostics();
   };
 
   const showPermissionWarning =
@@ -321,6 +337,40 @@ export default function MealRemindersClient({ hasAccess }: Props) {
                     Reminders need notification permission. Open iOS Settings → FuelRx →
                     Notifications to turn them on.
                   </p>
+                </div>
+              )}
+
+              {diagnostics && diagnostics.isNative && !diagnostics.pluginAvailable && (
+                <div className="card mb-4 border-red-200 bg-red-50">
+                  <p className="text-sm font-medium text-red-900">
+                    Native notification plugin not registered
+                  </p>
+                  <p className="mt-1 text-xs text-red-700">
+                    This App Store build is missing the LocalNotifications plugin. A new
+                    iOS build is required (run <code>npx cap sync ios</code>, rebuild in
+                    Xcode, and resubmit).
+                  </p>
+                </div>
+              )}
+
+              {diagnostics && (
+                <div className="card mb-4 border-gray-200 bg-gray-50 text-xs text-gray-700">
+                  <p className="font-semibold uppercase tracking-wide text-gray-500">
+                    Notification diagnostics
+                  </p>
+                  <ul className="mt-2 space-y-1 font-mono">
+                    <li>isNative: {String(diagnostics.isNative)}</li>
+                    <li>pluginAvailable: {String(diagnostics.pluginAvailable)}</li>
+                    <li>permission: {diagnostics.permission}</li>
+                    <li>lastError: {diagnostics.lastError ?? 'none'}</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={refreshDiagnostics}
+                    className="mt-2 text-xs font-medium text-primary-600 underline"
+                  >
+                    Refresh
+                  </button>
                 </div>
               )}
 
