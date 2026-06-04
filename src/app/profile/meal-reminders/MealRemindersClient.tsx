@@ -17,7 +17,6 @@ import {
 import {
   fireTestReminder,
   requestNotificationPermission,
-  checkNotificationPermission,
   getDiagnostics,
   type NotificationPermission,
   type ReminderDiagnostics,
@@ -209,8 +208,9 @@ export default function MealRemindersClient({ hasAccess }: Props) {
   }, [loadedSettings, draft]);
 
   // Surface current notification permission (no-op / 'unsupported' on web).
+  // refreshDiagnostics already populates `permission` via setPermission(d.permission),
+  // so we don't need a separate checkNotificationPermission() call here.
   useEffect(() => {
-    void checkNotificationPermission().then(setPermission);
     refreshDiagnostics();
   }, []);
 
