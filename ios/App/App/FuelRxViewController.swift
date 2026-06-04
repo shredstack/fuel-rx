@@ -8,6 +8,13 @@ class FuelRxViewController: CAPBridgeViewController {
     private var retryCount = 0
     private let maxAutoRetries = 3
     private let retryDelay: TimeInterval = 2.0
+    private let loadTimeout: TimeInterval = 20.0
+    private let fallbackURL = URL(string: "https://fuel-rx.shredstack.net")!
+
+    private var progressObservation: NSKeyValueObservation?
+    private var loadTimeoutTimer: Timer?
+    private var watchdogStarted = false
+    private var hasEverLoaded = false
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(HealthKitNutritionPlugin())
@@ -16,15 +23,108 @@ class FuelRxViewController: CAPBridgeViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupRetryView()
+        observeWebViewLoad()
+        observeAppLifecycle()
     }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        handleLoadError(error)
+    deinit {
+        progressObservation?.invalidate()
+        loadTimeoutTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
     }
 
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        handleLoadError(error)
+    // MARK: - Load observation
+
+    // Capacitor owns the WKNavigationDelegate, so we can't hook didFail directly
+    // without risking breakage. Instead we watch estimatedProgress + a watchdog
+    // timer to detect stuck cold-start loads.
+    private func observeWebViewLoad() {
+        guard let webView = self.webView else { return }
+
+        progressObservation = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, change in
+            guard let self = self else { return }
+
+            if webView.isLoading && !self.watchdogStarted {
+                self.startLoadWatchdog()
+            }
+
+            if let progress = change.newValue, progress >= 1.0 {
+                self.handleLoadSuccess()
+            }
+        }
     }
+
+    private func startLoadWatchdog() {
+        watchdogStarted = true
+        loadTimeoutTimer?.invalidate()
+        loadTimeoutTimer = Timer.scheduledTimer(withTimeInterval: loadTimeout, repeats: false) { [weak self] _ in
+            guard let self = self, let webView = self.webView else { return }
+            if webView.isLoading && webView.estimatedProgress < 1.0 {
+                print("FuelRx: Load timeout (\(self.loadTimeout)s) exceeded")
+                self.handleLoadError(NSError(
+                    domain: NSURLErrorDomain,
+                    code: NSURLErrorTimedOut,
+                    userInfo: [NSLocalizedDescriptionKey: "Load watchdog timeout"]
+                ))
+            }
+        }
+    }
+
+    private func handleLoadSuccess() {
+        hasEverLoaded = true
+        retryCount = 0
+        watchdogStarted = false
+        loadTimeoutTimer?.invalidate()
+        loadTimeoutTimer = nil
+        hideRetryView()
+    }
+
+    private func handleLoadError(_ error: Error) {
+        print("FuelRx: WebView load error - \(error.localizedDescription)")
+        watchdogStarted = false
+        loadTimeoutTimer?.invalidate()
+        loadTimeoutTimer = nil
+
+        if retryCount < maxAutoRetries {
+            retryCount += 1
+            print("FuelRx: Auto-retrying (\(retryCount)/\(maxAutoRetries))...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
+                self?.retryLoading()
+            }
+        } else {
+            showRetryView()
+        }
+    }
+
+    // MARK: - App lifecycle
+
+    private func observeAppLifecycle() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+    }
+
+    // When the app returns from background, iOS may have evicted the WebView's
+    // content process — the WebView is then alive but blank. Probe with a tiny
+    // JS expression: if it can't execute, reload from the server.
+    @objc private func handleAppForeground() {
+        guard hasEverLoaded, let webView = self.webView else { return }
+
+        webView.evaluateJavaScript("document.readyState") { [weak self] result, error in
+            guard let self = self else { return }
+            let isAlive = error == nil && (result as? String) != nil
+            if !isAlive {
+                print("FuelRx: WebView blank on foreground, forcing reload")
+                self.retryCount = 0
+                self.retryLoading()
+            }
+        }
+    }
+
+    // MARK: - Retry UI
 
     private func setupRetryView() {
         let retry = RetryView(frame: view.bounds)
@@ -37,39 +137,11 @@ class FuelRxViewController: CAPBridgeViewController {
         retryView = retry
     }
 
-    private func handleLoadError(_ error: Error) {
-        print("FuelRx: WebView load error - \(error.localizedDescription)")
-
-        // Check if it's a network-related error
-        let nsError = error as NSError
-        let networkErrorCodes = [
-            NSURLErrorNotConnectedToInternet,
-            NSURLErrorNetworkConnectionLost,
-            NSURLErrorTimedOut,
-            NSURLErrorCannotFindHost,
-            NSURLErrorCannotConnectToHost,
-            NSURLErrorDNSLookupFailed
-        ]
-
-        if networkErrorCodes.contains(nsError.code) {
-            if retryCount < maxAutoRetries {
-                // Auto-retry with delay
-                retryCount += 1
-                print("FuelRx: Auto-retrying (\(retryCount)/\(maxAutoRetries))...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
-                    self?.retryLoading()
-                }
-            } else {
-                // Show manual retry UI
-                showRetryView()
-            }
-        }
-    }
-
     private func showRetryView() {
         DispatchQueue.main.async { [weak self] in
-            self?.retryView?.isHidden = false
-            self?.view.bringSubviewToFront(self?.retryView ?? UIView())
+            guard let self = self, let retry = self.retryView else { return }
+            retry.isHidden = false
+            self.view.bringSubviewToFront(retry)
         }
     }
 
@@ -81,17 +153,9 @@ class FuelRxViewController: CAPBridgeViewController {
 
     private func retryLoading() {
         hideRetryView()
-
-        // Reload the WebView
-        if let webView = self.webView {
-            if let url = webView.url {
-                let request = URLRequest(url: url)
-                webView.load(request)
-            } else if let serverUrl = URL(string: "https://fuel-rx.shredstack.net") {
-                let request = URLRequest(url: serverUrl)
-                webView.load(request)
-            }
-        }
+        guard let webView = self.webView else { return }
+        let urlToLoad = webView.url ?? fallbackURL
+        webView.load(URLRequest(url: urlToLoad))
     }
 }
 
