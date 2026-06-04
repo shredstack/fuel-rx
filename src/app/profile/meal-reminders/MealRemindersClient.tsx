@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import MobileTabBar from '@/components/MobileTabBar';
@@ -186,6 +187,9 @@ function ReminderMealCard({
 export default function MealRemindersClient({ hasAccess }: Props) {
   const { data: loadedSettings, isLoading } = useMealReminderSettings();
   const updateMutation = useUpdateMealReminderSettings();
+  // ?debug=1 shows the raw diagnostic panel. Hidden from normal users.
+  const searchParams = useSearchParams();
+  const showDebugPanel = searchParams?.get('debug') === '1';
 
   const [draft, setDraft] = useState<MealReminderSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -353,7 +357,7 @@ export default function MealRemindersClient({ hasAccess }: Props) {
                 </div>
               )}
 
-              {diagnostics && (
+              {showDebugPanel && diagnostics && (
                 <div className="card mb-4 border-gray-200 bg-gray-50 text-xs text-gray-700">
                   <p className="font-semibold uppercase tracking-wide text-gray-500">
                     Notification diagnostics
