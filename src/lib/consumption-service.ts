@@ -64,22 +64,28 @@ function getWeekStartFromDateStr(dateStr: string): string {
   return date.toISOString().split('T')[0];
 }
 
-// Helper to get week end (Sunday) from a week start date string (YYYY-MM-DD)
-function getWeekEndFromDateStr(weekStartStr: string): string {
-  const [year, month, day] = weekStartStr.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + 6, 12, 0, 0));
+// Subtract N days from a date string (YYYY-MM-DD), timezone-safe.
+// Uses noon UTC to avoid any DST issues.
+function subtractDaysFromDateStr(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day - days, 12, 0, 0));
   return date.toISOString().split('T')[0];
 }
 
-// Helper to get month bounds as date strings (avoids timezone issues)
-function getMonthBoundsAsStrings(year: number, month: number): { startStr: string; endStr: string; dayCount: number } {
-  // First day of month
-  const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
-  // Last day of month - create date at day 0 of next month
-  const lastDay = new Date(Date.UTC(year, month, 0, 12, 0, 0));
-  const endStr = lastDay.toISOString().split('T')[0];
-  const dayCount = lastDay.getUTCDate();
-  return { startStr, endStr, dayCount };
+// Cap a date string so it never exceeds today. Keeps rolling windows from
+// extending into future, un-logged days.
+function capAtToday(dateStr: string, todayStr?: string): string {
+  return todayStr && dateStr > todayStr ? todayStr : dateStr;
+}
+
+// Validate that a string is a real YYYY-MM-DD calendar date. A plain regex
+// accepts impossible dates (e.g. 2026-13-45, 2026-02-30), so we round-trip
+// through Date and confirm the parsed result matches the input.
+export function isValidDateStr(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const parsed = new Date(dateStr + 'T12:00:00Z');
+  if (isNaN(parsed.getTime())) return false;
+  return parsed.toISOString().slice(0, 10) === dateStr;
 }
 
 // Helper to get day of week name from a date string (YYYY-MM-DD)
@@ -2049,8 +2055,8 @@ export async function getWeeklyConsumption(
 }
 
 /**
- * Get weekly consumption summary with daily breakdown.
- * Uses date string to avoid timezone issues.
+ * Get the rolling 7-day consumption summary (ending at dateStr) with a daily
+ * breakdown. Uses date strings to avoid timezone issues.
  */
 export async function getWeeklyConsumptionByDateStr(
   userId: string,
@@ -2068,9 +2074,10 @@ export async function getWeeklyConsumptionByDateStr(
 
   if (profileError || !profile) throw new Error('Profile not found');
 
-  // Use timezone-safe helpers
-  const weekStartStr = getWeekStartFromDateStr(dateStr);
-  const weekEndStr = getWeekEndFromDateStr(weekStartStr);
+  // Rolling 7-day window ending at the anchor date (capped so it never
+  // includes future, un-logged days).
+  const weekEndStr = capAtToday(dateStr, todayStr);
+  const weekStartStr = subtractDaysFromDateStr(weekEndStr, 6);
 
   const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRangeByDateStr(
     userId,
@@ -2147,13 +2154,12 @@ export async function getWeeklyConsumptionByDateStr(
 }
 
 /**
- * Get monthly consumption summary with daily breakdown.
- * Uses timezone-safe date string helpers.
+ * Get the rolling 31-day consumption summary (ending at dateStr) with a daily
+ * breakdown. Uses timezone-safe date string helpers.
  */
 export async function getMonthlyConsumption(
   userId: string,
-  year: number,
-  month: number,
+  dateStr: string,
   todayStr?: string
 ): Promise<import('@/lib/types').PeriodConsumptionSummary> {
   const supabase = await createClient();
@@ -2167,8 +2173,11 @@ export async function getMonthlyConsumption(
 
   if (profileError || !profile) throw new Error('Profile not found');
 
-  // Use timezone-safe helper to get month bounds as strings
-  const { startStr, endStr, dayCount } = getMonthBoundsAsStrings(year, month);
+  // Rolling 31-day window ending at the anchor date (capped so it never
+  // includes future, un-logged days).
+  const endStr = capAtToday(dateStr, todayStr);
+  const startStr = subtractDaysFromDateStr(endStr, 30);
+  const dayCount = 31;
 
   const { dailyData, totals, entryCount, daysWithData, byMealType } = await getConsumptionRangeByDateStr(
     userId,

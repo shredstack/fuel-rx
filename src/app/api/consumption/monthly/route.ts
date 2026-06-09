@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getMonthlyConsumption } from '@/lib/consumption-service';
+import { getMonthlyConsumption, isValidDateStr } from '@/lib/consumption-service';
 
 /**
- * GET /api/consumption/monthly?year=2026&month=1
+ * GET /api/consumption/monthly?date=YYYY-MM-DD
  *
- * Get monthly consumption summary for the specified month.
+ * Get the rolling 31-day consumption summary ending at the given date.
  */
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -19,24 +19,21 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const yearStr = searchParams.get('year');
-  const monthStr = searchParams.get('month');
+  const dateStr = searchParams.get('date');
 
-  if (!yearStr || !monthStr) {
-    return NextResponse.json({ error: 'Year and month are required' }, { status: 400 });
+  if (!dateStr) {
+    return NextResponse.json({ error: 'Date is required' }, { status: 400 });
   }
 
-  const year = parseInt(yearStr);
-  const month = parseInt(monthStr);
-
-  if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-    return NextResponse.json({ error: 'Invalid year or month' }, { status: 400 });
+  // Validate date format and that it's a real calendar date (YYYY-MM-DD)
+  if (!isValidDateStr(dateStr)) {
+    return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 });
   }
 
   const todayStr = searchParams.get('today') || undefined;
 
   try {
-    const summary = await getMonthlyConsumption(user.id, year, month, todayStr);
+    const summary = await getMonthlyConsumption(user.id, dateStr, todayStr);
     return NextResponse.json(summary);
   } catch (error) {
     console.error('Error fetching monthly consumption:', error);

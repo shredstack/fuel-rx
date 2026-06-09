@@ -16,8 +16,8 @@ export const queryKeys = {
       ['consumption', 'previous', date] as const,
     weekly: (startDate: string) =>
       ['consumption', 'weekly', startDate] as const,
-    monthly: (year: number, month: number) =>
-      ['consumption', 'monthly', year, month] as const,
+    monthly: (date: string) =>
+      ['consumption', 'monthly', date] as const,
     water: (date: string) => ['consumption', 'water', date] as const,
     summary: () => ['consumption', 'summary'] as const,
   },

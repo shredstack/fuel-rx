@@ -73,8 +73,8 @@ export function usePreviousEntries(date: string) {
 }
 
 /**
- * Fetch weekly consumption summary
- * @param date - Any date within the target week (YYYY-MM-DD format)
+ * Fetch the rolling 7-day consumption summary ending at the given date.
+ * @param date - Anchor date the window ends on (YYYY-MM-DD format)
  * @param enabled - Whether to enable the query
  */
 export function useWeeklyConsumption(date: string, enabled = true) {
@@ -92,17 +92,16 @@ export function useWeeklyConsumption(date: string, enabled = true) {
 }
 
 /**
- * Fetch monthly consumption summary
- * @param year - Year number
- * @param month - Month number (1-12)
+ * Fetch the rolling 31-day consumption summary ending at the given date.
+ * @param date - Anchor date the window ends on (YYYY-MM-DD format)
  * @param enabled - Whether to enable the query
  */
-export function useMonthlyConsumption(year: number, month: number, enabled = true) {
+export function useMonthlyConsumption(date: string, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.consumption.monthly(year, month),
+    queryKey: queryKeys.consumption.monthly(date),
     queryFn: async (): Promise<PeriodConsumptionSummary> => {
       const today = getLocalTodayStr();
-      const response = await fetch(`/api/consumption/monthly?year=${year}&month=${month}&today=${today}`);
+      const response = await fetch(`/api/consumption/monthly?date=${date}&today=${today}`);
       if (!response.ok) throw new Error('Failed to fetch monthly consumption');
       return response.json();
     },
