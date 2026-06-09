@@ -78,6 +78,16 @@ function capAtToday(dateStr: string, todayStr?: string): string {
   return todayStr && dateStr > todayStr ? todayStr : dateStr;
 }
 
+// Validate that a string is a real YYYY-MM-DD calendar date. A plain regex
+// accepts impossible dates (e.g. 2026-13-45, 2026-02-30), so we round-trip
+// through Date and confirm the parsed result matches the input.
+export function isValidDateStr(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const parsed = new Date(dateStr + 'T12:00:00Z');
+  if (isNaN(parsed.getTime())) return false;
+  return parsed.toISOString().slice(0, 10) === dateStr;
+}
+
 // Helper to get day of week name from a date string (YYYY-MM-DD)
 function getDayOfWeekFromDateStr(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);

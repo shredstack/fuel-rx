@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getMonthlyConsumption } from '@/lib/consumption-service';
+import { getMonthlyConsumption, isValidDateStr } from '@/lib/consumption-service';
 
 /**
  * GET /api/consumption/monthly?date=YYYY-MM-DD
@@ -25,8 +25,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Date is required' }, { status: 400 });
   }
 
-  // Validate date format (YYYY-MM-DD)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+  // Validate date format and that it's a real calendar date (YYYY-MM-DD)
+  if (!isValidDateStr(dateStr)) {
     return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, { status: 400 });
   }
 
