@@ -10,26 +10,18 @@ interface PeriodProgressCardProps {
 }
 
 // Month names for hydration-safe date formatting
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
 const MONTH_NAMES_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-function formatDateRange(startDate: string, endDate: string, periodType: 'weekly' | 'monthly'): string {
-  // Parse date components directly to avoid timezone issues
-  // dateStr is in YYYY-MM-DD format
-  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+function formatDateRange(startDate: string, endDate: string): string {
+  // Parse date components directly to avoid timezone issues.
+  // Both weekly (7-day) and monthly (31-day) views are rolling windows, so
+  // show the actual span, e.g. "Jan 20 - Jan 26" or "May 10 - Jun 9".
+  const [, startMonth, startDay] = startDate.split('-').map(Number);
   const [, endMonth, endDay] = endDate.split('-').map(Number);
 
-  if (periodType === 'monthly') {
-    return `${MONTH_NAMES[startMonth - 1]} ${startYear}`;
-  }
-
-  // Weekly format: "Jan 20 - Jan 26"
   const startStr = `${MONTH_NAMES_SHORT[startMonth - 1]} ${startDay}`;
   const endStr = `${MONTH_NAMES_SHORT[endMonth - 1]} ${endDay}`;
   return `${startStr} - ${endStr}`;
@@ -54,7 +46,7 @@ function ProgressBar({ value, max, color }: { value: number; max: number; color:
 
 export default function PeriodProgressCard({ summary, onPrevious, onNext, isNextDisabled }: PeriodProgressCardProps) {
   const remaining = summary.targets.calories - summary.consumed.calories;
-  const dateRange = formatDateRange(summary.startDate, summary.endDate, summary.periodType);
+  const dateRange = formatDateRange(summary.startDate, summary.endDate);
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
