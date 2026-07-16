@@ -2510,6 +2510,13 @@ export interface SubscriptionStatusResponse {
   // Computed permission
   canGeneratePlan: boolean;
   canUseAiFeatures: boolean;
+  // 7-day post-signup free trial of AI features (free tier only).
+  // Subscribers and override users are never "in trial" — they already have access.
+  isInTrial: boolean;
+  /** Full days left in the trial, counting today (UTC day boundary). 0 when not in trial. */
+  trialDaysRemaining: number;
+  /** End of the trial window (exclusive), ISO string. Null if not applicable. */
+  trialEndsAt: string | null;
   // Override status
   isOverride: boolean;
   // Rate limit status (only present for Pro/VIP users)

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { checkMealPlanLimit } from '@/lib/subscription/check-meal-plan-limit';
+import { computeTrialState, EXPIRED_TRIAL } from '@/lib/subscription/trial';
 import type { SubscriptionStatusResponse, SubscriptionTier, SubscriptionStore, MealPlanRateLimitStatus } from '@/lib/types';
 
 export async function GET() {
@@ -52,11 +53,20 @@ export async function GET() {
   // 3. Is free user with remaining free plans
   const canGeneratePlan = isOverride || hasMealPlanGeneration || freePlansRemaining > 0;
 
+  // 7-day trial state for free users. Uses the auth user's created_at (the true
+  // signup date) — NOT user_subscriptions.created_at, which was backfilled in
+  // Jan 2026. Must mirror checkAiAccess()/trial.ts or the UI and the server
+  // will disagree about who has access.
+  const trial =
+    isOverride || hasAiFeatures
+      ? EXPIRED_TRIAL // Already have permanent access; "trial" is not meaningful.
+      : computeTrialState(user.created_at ? new Date(user.created_at) : null);
+
   // Can use AI features if:
   // 1. Has override
   // 2. Has any active subscription (basic or pro)
-  // 3. Is free user with remaining free plans
-  const canUseAiFeatures = isOverride || hasAiFeatures || freePlansRemaining > 0;
+  // 3. Is within the 7-day post-signup trial
+  const canUseAiFeatures = isOverride || hasAiFeatures || trial.isInTrial;
 
   // For Pro/VIP users, include rate limit status
   let rateLimitStatus: MealPlanRateLimitStatus | null = null;
@@ -83,6 +93,9 @@ export async function GET() {
     freePlansRemaining,
     canGeneratePlan,
     canUseAiFeatures,
+    isInTrial: trial.isInTrial,
+    trialDaysRemaining: trial.trialDaysRemaining,
+    trialEndsAt: trial.trialEndsAt,
     isOverride,
     rateLimitStatus,
   };
