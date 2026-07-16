@@ -2,17 +2,23 @@
  * In-app alarm sound + haptics for the foreground meal reminder modal.
  *
  * The OS notification handles sound while backgrounded; this drives the
- * "cannot be ignored" foreground experience. Sound is synthesised with the Web
- * Audio API so no audio asset is needed, and haptics use Capacitor on native
- * (falling back to the Vibration API on web).
+ * "cannot be ignored" foreground experience. Sound plays the bundled
+ * /reminder.wav via an HTMLAudioElement — the Capacitor WebView allows media
+ * playback without a user gesture, whereas the Web Audio API's AudioContext
+ * stays suspended until one (which made the alarm silent on iOS when the
+ * modal auto-opened). A synthesised Web Audio beep remains as fallback for
+ * browsers that reject autoplay. Haptics use Capacitor on native, falling
+ * back to the Vibration API on web.
  */
 
 import { Capacitor } from '@capacitor/core';
 
 const PULSE_INTERVAL_MS = 2000;
+const ALARM_SOUND_URL = '/reminder.wav';
 
 export class AlarmSound {
   private audioCtx: AudioContext | null = null;
+  private audioEl: HTMLAudioElement | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private soundEnabled = false;
   private hapticsEnabled = false;
@@ -32,6 +38,10 @@ export class AlarmSound {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    if (this.audioEl) {
+      this.audioEl.pause();
+      this.audioEl = null;
+    }
     if (this.audioCtx) {
       this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
@@ -39,8 +49,26 @@ export class AlarmSound {
   }
 
   private pulse(): void {
-    if (this.soundEnabled) this.beep();
+    if (this.soundEnabled) this.playSound();
     if (this.hapticsEnabled) void this.haptic();
+  }
+
+  private playSound(): void {
+    try {
+      if (typeof window === 'undefined' || typeof Audio === 'undefined') {
+        this.beep();
+        return;
+      }
+      if (!this.audioEl) {
+        this.audioEl = new Audio(ALARM_SOUND_URL);
+        this.audioEl.preload = 'auto';
+      }
+      this.audioEl.currentTime = 0;
+      const playback = this.audioEl.play();
+      if (playback) playback.catch(() => this.beep());
+    } catch {
+      this.beep();
+    }
   }
 
   private beep(): void {

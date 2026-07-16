@@ -1728,7 +1728,7 @@ export const COOKING_STATUS_LABELS: Record<CookingStatus, { label: string; short
 // Meal Consumption Tracking Types
 // ============================================
 
-export type ConsumptionEntryType = 'meal_plan' | 'custom_meal' | 'quick_cook' | 'ingredient';
+export type ConsumptionEntryType = 'meal_plan' | 'custom_meal' | 'quick_cook' | 'ingredient' | 'photo_meal';
 
 /**
  * A logged consumption entry - represents something the user ate

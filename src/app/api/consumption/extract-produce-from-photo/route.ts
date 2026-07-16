@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { estimateProduceGrams, type ProduceItem } from '@/lib/claude/produce-estimation';
 import { lookupProduceWeights, type ProduceItemInput } from '@/lib/produce-extraction-service';
+import { checkAiAccess } from '@/lib/subscription/check-ai-access';
 
 interface PhotoIngredient {
   name: string;
@@ -68,16 +69,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Send only unmatched items to Claude for gram estimation
+    // 3. Send only unmatched items to Claude for gram estimation.
+    // The Claude fallback is gated behind the subscription check — users
+    // without AI access get unmatched items at 0 grams for manual entry.
+    let aiAllowed = false;
     let aiResults: Awaited<ReturnType<typeof estimateProduceGrams>> = [];
     if (unmatchedItems.length > 0) {
-      const itemsForAI: ProduceItem[] = unmatchedItems.map(({ item }) => ({
-        name: item.name,
-        amount: item.estimated_amount,
-        unit: item.estimated_unit,
-      }));
+      const aiAccess = await checkAiAccess(user.id);
+      aiAllowed = aiAccess.allowed;
 
-      aiResults = await estimateProduceGrams(itemsForAI, user.id);
+      if (aiAllowed) {
+        const itemsForAI: ProduceItem[] = unmatchedItems.map(({ item }) => ({
+          name: item.name,
+          amount: item.estimated_amount,
+          unit: item.estimated_unit,
+        }));
+
+        aiResults = await estimateProduceGrams(itemsForAI, user.id);
+      }
     }
 
     // 4. Merge deterministic + AI results
@@ -105,7 +114,9 @@ export async function POST(request: Request) {
         amount: ing.estimated_amount,
         unit: ing.estimated_unit,
         category: ing.category as 'fruit' | 'vegetable',
-        estimatedGrams: estimated?.estimatedGrams || 100, // Default to 100g if estimation fails
+        // AI users: default to 100g if estimation fails.
+        // Non-AI users: 0g so they enter the weight manually.
+        estimatedGrams: estimated?.estimatedGrams || (aiAllowed ? 100 : 0),
       };
     });
 

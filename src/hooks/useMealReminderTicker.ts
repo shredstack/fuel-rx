@@ -40,12 +40,24 @@ export function useMealReminderTicker({
   paused = false,
 }: TickerOptions): void {
   const lastTickRef = useRef<Date>(new Date());
+  const wasPausedRef = useRef(false);
   // Keep the latest onFire without re-arming the interval each render.
   const onFireRef = useRef(onFire);
   onFireRef.current = onFire;
 
   useEffect(() => {
-    if (!settings || !status || paused) return;
+    if (paused) {
+      wasPausedRef.current = true;
+      return;
+    }
+    // Fire times crossed while paused were already covered by the open modal —
+    // consume them, so closing it (e.g. tapping "Log meal") doesn't instantly
+    // re-open the alarm. The nag resumes at the next scheduled fire time.
+    if (wasPausedRef.current) {
+      wasPausedRef.current = false;
+      lastTickRef.current = new Date();
+    }
+    if (!settings || !status) return;
 
     const check = () => {
       const now = new Date();

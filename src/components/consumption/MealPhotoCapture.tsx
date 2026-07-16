@@ -46,8 +46,10 @@ export default function MealPhotoCapture({ onPhotoUploaded, onError, isUploading
     try {
       // Compress the image
       const compressedBlob = await compressImage(file, {
-        maxWidth: 1200, // Slightly larger for meal detail
-        maxHeight: 1200,
+        // 1568px is the sweet spot for Claude vision - smaller loses detail
+        // on garnishes/sauces in complex meals, larger costs more image tokens
+        maxWidth: 1568,
+        maxHeight: 1568,
         quality: 0.8, // Slightly higher quality for food photos
       });
 

@@ -1,7 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
+import type { MessageParam, Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic, logLLMCall } from './client';
 import type { MealPhotoAnalysisResult } from '../types';
+
+const MEAL_PHOTO_MODEL = 'claude-sonnet-5';
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
 
 // ============================================
 // Meal Photo Analysis Tool Definition
@@ -9,7 +19,7 @@ import type { MealPhotoAnalysisResult } from '../types';
 
 const mealPhotoAnalysisTool: Tool = {
   name: 'analyze_meal_photo',
-  description: 'Analyze a meal photo to identify ingredients and estimate nutrition',
+  description: 'Record the final structured meal analysis after you have described the photo in detail',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -70,21 +80,24 @@ const mealPhotoAnalysisTool: Tool = {
 // System Prompt for Meal Photo Analysis
 // ============================================
 
-const MEAL_PHOTO_ANALYSIS_SYSTEM_PROMPT = `You are a nutrition analyst for FuelRx, an app for CrossFit athletes. Analyze this meal photo to identify all visible foods and estimate their nutritional content.
+const MEAL_PHOTO_ANALYSIS_SYSTEM_PROMPT = `You are a nutrition analyst for FuelRx, an app for CrossFit athletes. Analyze meal photos to identify all foods present and estimate their nutritional content.
 
-## Your Task
-1. Identify each distinct food item visible in the image
-2. Estimate portion sizes based on visual cues (plate size, utensils, common references)
-3. Calculate macros for each ingredient based on the estimated portion
-4. Provide a descriptive, appetizing meal name
-5. Assess your confidence in the analysis
+## How to Work
+Work in two phases:
+
+**Phase 1 — Observe (plain text).** Before calling any tool, describe the meal out loud:
+1. What dish or cuisine is this? If you recognize a specific dish (e.g., "chicken burrito bowl", "Caesar salad"), name it and list the ingredients that dish typically contains, including ones partially hidden under other food.
+2. Walk the plate systematically (e.g., top-left to bottom-right) and name every distinct visible item, including garnishes, sauces, dressings, and cooking fats you can infer from sheen or browning.
+3. Estimate portion sizes using visual references (plate diameter, utensils, hand-sized comparisons).
+
+**Phase 2 — Structure.** Call the analyze_meal_photo tool with the complete ingredient list from your observation. Every item you identified in Phase 1 must appear in the tool call.
 
 ## Guidelines for Identification
 - Be specific with proteins (e.g., "grilled chicken breast" not just "chicken")
 - List each vegetable type separately
-- For mixed dishes, break down into component ingredients when possible
-- Account for cooking oils, sauces, and dressings even if not fully visible
-- If you can identify a specific dish type (e.g., "Caesar salad"), use that knowledge to inform hidden ingredients
+- For mixed dishes, break down into component ingredients
+- Account for cooking oils, sauces, and dressings even if not fully visible — a sauteed or grilled item implies cooking fat
+- If the user provided a description of the meal, treat it as ground truth for what the meal is, and use the photo to estimate portions
 
 ## Portion Estimation for CrossFit Athletes
 CrossFit athletes typically eat larger portions than average:
@@ -103,7 +116,7 @@ CrossFit athletes typically eat larger portions than average:
 
 ## Nutrition Estimation
 - Use USDA FoodData Central guidelines as your reference
-- Be conservative with calories - better to slightly underestimate
+- Estimate realistically — do not systematically over- or under-estimate
 - Account for cooking methods (grilled vs fried affects fat content)
 - Remember that sauces and oils add significant calories
 
@@ -116,69 +129,111 @@ CrossFit athletes typically eat larger portions than average:
 ## Important Notes
 - If the image doesn't show food or is too unclear, set overall_confidence below 0.3 and explain in notes
 - If you see packaged/branded food, note it in analysis_notes
-- Round calories to nearest 5, macros to 0.5g
-
-Use the analyze_meal_photo tool to provide your analysis.`;
+- Round calories to nearest 5, macros to 0.5g`;
 
 // ============================================
 // Main Analysis Function
 // ============================================
 
 /**
- * Analyze a meal photo using Claude Vision API.
- * Returns structured ingredient breakdown and macro estimates.
+ * Analyze a meal photo using Claude Vision.
+ *
+ * Runs a two-phase analysis in one request: the model first describes the meal
+ * in free text (which substantially improves ingredient recall on complex
+ * plates), then records the structured result via tool call. If the model
+ * stops without calling the tool, a follow-up request forces it.
+ *
+ * @param userContext Optional user-provided description of the meal
+ *   (e.g., "beef barbacoa bowl with cauliflower rice") to ground the analysis.
  */
 export async function analyzeMealPhoto(
   imageBase64: string,
   imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp',
-  userId: string
+  userId: string,
+  userContext?: string
 ): Promise<MealPhotoAnalysisResult> {
   const startTime = Date.now();
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4000,
+  const contextText = userContext?.trim()
+    ? `\n\nThe user described this meal as: "${userContext.trim()}"`
+    : '';
+
+  const messages: MessageParam[] = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: imageMediaType,
+            data: imageBase64,
+          },
+        },
+        {
+          type: 'text',
+          text: `Analyze this meal photo. First describe everything you can see (Phase 1), then call the analyze_meal_photo tool with the complete structured analysis (Phase 2).${contextText}`,
+        },
+      ],
+    },
+  ];
+
+  const requestParams = {
+    model: MEAL_PHOTO_MODEL,
+    max_tokens: 16000,
     system: MEAL_PHOTO_ANALYSIS_SYSTEM_PROMPT,
     tools: [mealPhotoAnalysisTool],
-    tool_choice: { type: 'tool', name: mealPhotoAnalysisTool.name },
-    messages: [
+  };
+
+  let message = await anthropic.messages.create({
+    ...requestParams,
+    messages,
+  });
+
+  let totalOutputTokens = message.usage?.output_tokens ?? 0;
+
+  let toolUseBlock = message.content.find(
+    (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === mealPhotoAnalysisTool.name
+  );
+
+  // Fallback: if the model described the meal but never called the tool,
+  // continue the conversation and force the structured output.
+  if (!toolUseBlock) {
+    messages.push(
+      { role: 'assistant', content: message.content },
       {
         role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: imageMediaType,
-              data: imageBase64,
-            },
-          },
-          {
-            type: 'text',
-            text: 'Analyze this meal photo and identify all ingredients with their estimated portions and nutritional content.',
-          },
-        ],
-      },
-    ],
-  });
+        content: 'Now call the analyze_meal_photo tool with the complete structured analysis of everything you identified.',
+      }
+    );
+
+    message = await anthropic.messages.create({
+      ...requestParams,
+      tool_choice: { type: 'tool', name: mealPhotoAnalysisTool.name },
+      messages,
+    });
+
+    totalOutputTokens += message.usage?.output_tokens ?? 0;
+
+    toolUseBlock = message.content.find(
+      (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === mealPhotoAnalysisTool.name
+    );
+  }
 
   const duration = Date.now() - startTime;
 
   // Log the LLM call
   await logLLMCall({
     user_id: userId,
-    prompt: '[Meal photo analysis - image content]',
+    prompt: userContext?.trim()
+      ? `[Meal photo analysis - image content] User context: ${userContext.trim()}`
+      : '[Meal photo analysis - image content]',
     output: JSON.stringify(message.content),
-    model: 'claude-sonnet-4-6',
+    model: MEAL_PHOTO_MODEL,
     prompt_type: 'meal_photo_analysis',
-    tokens_used: message.usage?.output_tokens,
+    tokens_used: totalOutputTokens,
     duration_ms: duration,
   });
-
-  // Extract tool use result
-  const toolUseBlock = message.content.find(
-    (block): block is ToolUseBlock => block.type === 'tool_use' && block.name === mealPhotoAnalysisTool.name
-  );
 
   if (!toolUseBlock) {
     throw new Error('No tool use block found in response');
@@ -190,6 +245,12 @@ export async function analyzeMealPhoto(
   if (!result.meal_name || !result.ingredients || !result.total_macros) {
     throw new Error('Invalid response structure from Claude Vision');
   }
+
+  // The model occasionally HTML-escapes text in tool output (e.g. "&amp;")
+  result.meal_name = decodeHtmlEntities(result.meal_name);
+  result.ingredients.forEach(ing => {
+    ing.name = decodeHtmlEntities(ing.name);
+  });
 
   // Round values for cleaner display
   result.total_macros.calories = Math.round(result.total_macros.calories / 5) * 5;

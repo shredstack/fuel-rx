@@ -29,6 +29,19 @@ export async function POST(request: Request, { params }: RouteParams) {
     return createAiAccessDeniedResponse();
   }
 
+  // Optional body: { context?: string, force?: boolean }
+  let userContext: string | undefined;
+  let forceReanalysis = false;
+  try {
+    const body = await request.json();
+    if (typeof body?.context === 'string' && body.context.trim()) {
+      userContext = body.context.trim().slice(0, 500);
+    }
+    forceReanalysis = body?.force === true;
+  } catch {
+    // No body sent - analyze without user context
+  }
+
   try {
     // Get photo record and verify ownership
     const { data: photo, error: photoError } = await supabase
@@ -43,7 +56,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // If already analyzed, return existing results
-    if (photo.analysis_status === 'completed' && photo.raw_analysis) {
+    if (!forceReanalysis && photo.analysis_status === 'completed' && photo.raw_analysis) {
       // Fetch ingredients
       const { data: ingredients } = await supabase
         .from('meal_photo_ingredients')
@@ -102,7 +115,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     // Run Claude Vision analysis
     let analysisResult;
     try {
-      analysisResult = await analyzeMealPhoto(base64, mediaType, user.id);
+      analysisResult = await analyzeMealPhoto(base64, mediaType, user.id, userContext);
     } catch (analysisError) {
       const errorMessage = analysisError instanceof Error ? analysisError.message : 'Analysis failed';
       await supabase
@@ -131,6 +144,11 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     if (updateError) {
       console.error('Error updating meal_photos:', updateError);
+    }
+
+    // Clear previous ingredients when re-analyzing so they don't accumulate
+    if (forceReanalysis) {
+      await supabase.from('meal_photo_ingredients').delete().eq('meal_photo_id', photoId);
     }
 
     // Save ingredients

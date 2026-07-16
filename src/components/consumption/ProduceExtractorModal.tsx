@@ -46,6 +46,7 @@ export default function ProduceExtractorModal({
   const [produceItems, setProduceItems] = useState<DetectedProduce[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [aiEstimated, setAiEstimated] = useState(true);
 
   // Fetch produce data when modal opens
   useEffect(() => {
@@ -72,6 +73,9 @@ export default function ProduceExtractorModal({
 
       const data = await response.json();
       const items = data.produceIngredients || [];
+      // aiEstimated is false when the user's plan doesn't include AI weight
+      // estimation — unmatched items come back at 0g for manual entry.
+      setAiEstimated(data.aiEstimated !== false);
 
       if (items.length === 0) {
         // No produce found - close modal
@@ -245,6 +249,14 @@ export default function ProduceExtractorModal({
               <p className="text-sm text-gray-600 mb-4">
                 We found these fruits and vegetables. Adjust the weights and select which ones to count:
               </p>
+
+              {produceItems.some((item) => item.estimatedGrams === 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
+                  {aiEstimated
+                    ? 'Some weights could not be estimated — enter the grams manually.'
+                    : 'Enter the grams manually for items showing 0g. Upgrade to Pro for automatic AI weight estimates.'}
+                </div>
+              )}
 
               {/* Produce Items */}
               <div className="space-y-3 max-h-64 overflow-y-auto mb-4">

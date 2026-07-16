@@ -3,6 +3,9 @@
     "src/app/api/generate-meal-plan-stream/route.ts": {
       "maxDuration": 800
     },
+    "src/app/api/meal-photos/[photoId]/analyze/route.ts": {
+      "maxDuration": 300
+    },
     "src/app/api/inngest/route.ts": {
       "maxDuration": 800
     }

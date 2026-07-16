@@ -7,6 +7,8 @@ import {
 } from '@/lib/healthkit';
 import { createClient } from '@/lib/supabase/client';
 import { useCelebration } from '@/providers/CelebrationProvider';
+import { cancelMealReminders } from '@/lib/meal-reminders/scheduler';
+import { isReminderMealType } from '@/lib/meal-reminders/resolution-service';
 import type { MealOnTimeCelebration } from '@/lib/meal-reminders/types';
 import type {
   ConsumptionEntry,
@@ -93,6 +95,21 @@ async function deleteEntryFromHealthKit(sampleIds: string[]) {
   }
 }
 
+/**
+ * Logging a meal resolves that meal's reminder server-side. Don't wait for the
+ * realtime echo (the socket may be down after backgrounding): refresh reminder
+ * state and cancel the meal's pending OS notification batch right away.
+ */
+function silenceReminderForMeal(
+  queryClient: ReturnType<typeof useQueryClient>,
+  mealType: string | null | undefined
+) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.reminders.all });
+  if (isReminderMealType(mealType)) {
+    void cancelMealReminders(mealType);
+  }
+}
+
 interface LogMealParams {
   type: 'meal_plan' | 'custom_meal' | 'quick_cook';
   source_id: string;
@@ -149,6 +166,8 @@ export function useLogMeal() {
       // Invalidate all consumption data to ensure cross-date consistency
       // This handles the case where logging a meal affects multiple views
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      silenceReminderForMeal(queryClient, entry.meal_type);
 
       // On-time celebration is decided server-side and attached to the
       // response when this log qualifies. Fire it inline so confetti happens
@@ -226,8 +245,12 @@ export function useUpdateEntryMealType() {
       return response.json();
     },
 
-    onSuccess: () => {
+    onSuccess: (entry) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // Re-typing an entry (e.g. snack -> lunch) can resolve the new meal's
+      // reminder via the status API's logged-meal fallback.
+      silenceReminderForMeal(queryClient, entry.meal_type);
     },
 
     onError: (error) => {
@@ -308,8 +331,10 @@ export function useRepeatMealType() {
       return response.json();
     },
 
-    onSuccess: ({ entries }) => {
+    onSuccess: ({ entries }, { mealType }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      silenceReminderForMeal(queryClient, mealType);
 
       // Fire-and-forget: sync repeated meals to Apple Health
       for (const entry of entries) {
@@ -349,6 +374,10 @@ export function useRepeatYesterday() {
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
+
+      // May log several meal types at once; the status refetch drives a full
+      // cancel-and-replace of the scheduled notification batch.
+      queryClient.invalidateQueries({ queryKey: queryKeys.reminders.all });
     },
 
     onError: (error) => {

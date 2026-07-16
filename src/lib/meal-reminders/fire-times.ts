@@ -48,6 +48,18 @@ export function getLocalDateString(date: Date = new Date()): string {
 }
 
 /**
+ * When an open alarm should give up for the day: one interval past the meal's
+ * final fire time. Without a cutoff, an unattended modal (e.g. a forgotten
+ * browser tab) would keep pulsing sound all night.
+ */
+export function getAlarmExpiry(config: MealReminderConfig, dateStr: string): Date | null {
+  const times = computeFireTimes(config, dateStr);
+  if (times.length === 0) return null;
+  const last = times[times.length - 1];
+  return new Date(last.getTime() + config.interval_minutes * 60_000);
+}
+
+/**
  * True if a meal is inside its active reminder window right now — i.e. at least
  * one fire time has passed and we haven't gone past the final fire time. Used to
  * reconcile on app launch/resume (e.g. the app was killed while a reminder was

@@ -58,7 +58,7 @@ Use the extract_spices tool to provide the list of spices found.`;
     const { result: parsed } = await callLLMWithToolUse<{ spices: ExtractedSpice[] }>({
       prompt,
       tool: spiceExtractionSchema,
-      model: 'claude-3-5-haiku-20241022', // Fast and cheap for simple extraction
+      model: 'claude-haiku-4-5-20251001', // Fast and cheap for simple extraction
       maxTokens: 2000,
       userId,
       promptType: 'spice_extraction',
