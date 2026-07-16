@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PaywallModal from '@/components/PaywallModal';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 // ============================================
@@ -53,6 +54,8 @@ export default function PhotoProduceExtractorModal({
   const [produceItems, setProduceItems] = useState<DetectedProduce[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [aiEstimated, setAiEstimated] = useState(true);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Fetch produce data when modal opens
   useEffect(() => {
@@ -79,6 +82,10 @@ export default function PhotoProduceExtractorModal({
 
       const data = await response.json();
       const items = data.produceIngredients || [];
+
+      // aiEstimated is false when the user's plan doesn't include AI weight
+      // estimation — unmatched items come back at 0g for manual entry.
+      setAiEstimated(data.aiEstimated !== false);
 
       if (items.length === 0) {
         // No produce found - close modal
@@ -178,6 +185,7 @@ export default function PhotoProduceExtractorModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden">
         {/* Header */}
@@ -253,6 +261,25 @@ export default function PhotoProduceExtractorModal({
                 We detected these fruits and vegetables. Adjust the weights and select which ones to count:
               </p>
 
+              {produceItems.some((item) => item.estimatedGrams === 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
+                  {aiEstimated ? (
+                    'Some weights could not be estimated — enter the grams manually.'
+                  ) : (
+                    <>
+                      Enter the grams manually for items showing 0g. Your 7-day free trial
+                      of AI weight estimates has ended.{' '}
+                      <button
+                        onClick={() => setShowPaywall(true)}
+                        className="font-semibold underline text-amber-900 hover:text-amber-950"
+                      >
+                        Upgrade for automatic estimates
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Produce Items */}
               <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
                 {produceItems.map((item, index) => (
@@ -295,6 +322,10 @@ export default function PhotoProduceExtractorModal({
         </div>
       </div>
     </div>
+
+    {/* Rendered after the modal so it stacks above it (both are z-50) */}
+    <PaywallModal isOpen={showPaywall} onClose={() => setShowPaywall(false)} />
+    </>
   );
 }
 

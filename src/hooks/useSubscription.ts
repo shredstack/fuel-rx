@@ -24,6 +24,9 @@ interface UseSubscriptionReturn {
   hasMealPlanGeneration: boolean;
   freePlansRemaining: number;
   isOverride: boolean;
+  // 7-day post-signup AI trial (free tier only)
+  isInTrial: boolean;
+  trialDaysRemaining: number;
   // Rate limit status for Pro/VIP users (null for free/basic)
   rateLimitStatus: MealPlanRateLimitStatus | null;
 
@@ -151,6 +154,8 @@ export function useSubscription(): UseSubscriptionReturn {
   const hasMealPlanGeneration = status?.hasMealPlanGeneration ?? false;
   const freePlansRemaining = status?.freePlansRemaining ?? 3;
   const isOverride = status?.isOverride ?? false;
+  const isInTrial = status?.isInTrial ?? false;
+  const trialDaysRemaining = status?.trialDaysRemaining ?? 0;
   const rateLimitStatus = status?.rateLimitStatus ?? null;
   const canPurchase = isRevenueCatAvailable();
 
@@ -164,6 +169,8 @@ export function useSubscription(): UseSubscriptionReturn {
     hasMealPlanGeneration,
     freePlansRemaining,
     isOverride,
+    isInTrial,
+    trialDaysRemaining,
     rateLimitStatus,
     refresh: fetchStatus,
     showPaywall,

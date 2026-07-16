@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
-  const { status, restore, canPurchase, refresh } = useSubscription();
+  const { status, restore, canPurchase, refresh, isInTrial, trialDaysRemaining } = useSubscription();
   const [restoring, setRestoring] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +24,19 @@ export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
 
   const freePlansUsed = status?.freePlansUsed ?? 0;
   const freePlanLimit = status?.freePlanLimit ?? 1;
+  const freePlansRemaining = Math.max(0, freePlanLimit - freePlansUsed);
+
+  // Free-tier framing: a 7-day trial of Pro features, plus the lifetime free
+  // meal plan (which stays redeemable after the trial ends). Only shown to free
+  // users — a Basic subscriber upgrading to Pro still has AI features and must
+  // not be told their trial ended.
+  const isFreeTier = !status?.isSubscribed && !status?.isOverride;
+  const trialDaysLabel = `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'}`;
+  const freeTierNote = isInTrial
+    ? `You're in your free trial — all Pro features for 7 days, plus ${freePlansRemaining > 0 ? '1 free meal plan' : 'your free meal plan'}.`
+    : `Your 7-day free trial has ended. Free accounts keep manual logging${
+        freePlansRemaining > 0 ? ' and your 1 free meal plan' : ''
+      }.`;
 
   const handleUpgrade = async () => {
     setError(null);
@@ -94,9 +107,17 @@ export default function PaywallModal({ isOpen, onClose, upgradeTo }: Props) {
             {isUpgrade ? 'Switch to Yearly' : 'Upgrade to Pro'}
           </h2>
 
-          <p className="text-sm text-gray-500 text-center mb-4">
-            {isUpgrade ? 'Save 17% with an annual subscription' : 'Unlock weekly meal plans & unlimited AI'}
+          <p className={`text-sm text-gray-500 text-center ${isUpgrade || !isFreeTier ? 'mb-4' : 'mb-1'}`}>
+            {isUpgrade
+              ? 'Save 17% with an annual subscription'
+              : isInTrial
+                ? `${trialDaysLabel} left in your free trial — keep your AI features`
+                : 'Unlock weekly meal plans & unlimited AI'}
           </p>
+
+          {!isUpgrade && isFreeTier && (
+            <p className="text-xs text-gray-400 text-center mb-4">{freeTierNote}</p>
+          )}
 
           {/* Plan selection - horizontal on larger screens */}
           {canPurchase && !isUpgrade && (

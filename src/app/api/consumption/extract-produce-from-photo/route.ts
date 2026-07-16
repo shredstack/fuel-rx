@@ -120,7 +120,11 @@ export async function POST(request: Request) {
       };
     });
 
-    return NextResponse.json({ produceIngredients: result }, { status: 200 });
+    // `aiEstimated: false` tells the client the user's plan didn't include AI
+    // weight estimation, so it can explain the 0g rows and offer an upgrade.
+    // Only meaningful when there were unmatched items — if the deterministic
+    // lookup covered everything, nothing is 0g and the client ignores the flag.
+    return NextResponse.json({ produceIngredients: result, aiEstimated: aiAllowed }, { status: 200 });
   } catch (error) {
     console.error('Error extracting produce from photo:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';

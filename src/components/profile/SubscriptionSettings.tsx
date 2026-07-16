@@ -32,6 +32,8 @@ export default function SubscriptionSettings() {
     canPurchase,
     freePlansRemaining,
     isOverride,
+    isInTrial,
+    trialDaysRemaining,
     rateLimitStatus,
     restore,
     sync,
@@ -160,7 +162,11 @@ export default function SubscriptionSettings() {
             <div>
               <h3 className="font-semibold text-gray-900">Subscription</h3>
               <p className="text-sm text-gray-500 mt-0.5">
-                {isSubscribed || isOverride ? getPlanName() : 'Free Plan'}
+                {isSubscribed || isOverride
+                  ? getPlanName()
+                  : isInTrial
+                    ? 'Free Plan — trial active'
+                    : 'Free Plan'}
               </p>
             </div>
 
@@ -168,9 +174,11 @@ export default function SubscriptionSettings() {
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
               isSubscribed || isOverride
                 ? 'bg-green-100 text-green-700'
-                : 'bg-gray-100 text-gray-600'
+                : isInTrial
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'bg-gray-100 text-gray-600'
             }`}>
-              {isSubscribed || isOverride ? 'Active' : 'Free'}
+              {isSubscribed || isOverride ? 'Active' : isInTrial ? 'Trial' : 'Free'}
             </span>
           </div>
         </div>
@@ -178,12 +186,29 @@ export default function SubscriptionSettings() {
         <div className="p-4 space-y-4">
           {/* Free tier info */}
           {!isSubscribed && !isOverride && (
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-gray-600">Free meal plans remaining</span>
-              <span className="font-medium text-gray-900">
-                {freePlansRemaining} of {status?.freePlanLimit ?? 1}
-              </span>
-            </div>
+            <>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm text-gray-600">AI features</span>
+                <span className={`font-medium ${isInTrial ? 'text-gray-900' : 'text-gray-500'}`}>
+                  {isInTrial
+                    ? `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left in trial`
+                    : 'Trial ended'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm text-gray-600">Free meal plans remaining</span>
+                <span className="font-medium text-gray-900">
+                  {freePlansRemaining} of {status?.freePlanLimit ?? 1}
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                {isInTrial
+                  ? 'Your free account includes all Pro features for 7 days, plus 1 free meal plan. Upgrade to keep AI features after your trial.'
+                  : 'Your 7-day free trial of Pro features has ended. Free accounts keep manual logging, the community, and any unused free meal plan.'}
+              </p>
+            </>
           )}
 
           {/* Subscription details for paid users */}

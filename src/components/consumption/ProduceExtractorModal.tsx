@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PaywallModal from '@/components/PaywallModal';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 // ============================================
@@ -47,6 +48,7 @@ export default function ProduceExtractorModal({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiEstimated, setAiEstimated] = useState(true);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Fetch produce data when modal opens
   useEffect(() => {
@@ -175,6 +177,7 @@ export default function ProduceExtractorModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden">
         {/* Header */}
@@ -252,9 +255,20 @@ export default function ProduceExtractorModal({
 
               {produceItems.some((item) => item.estimatedGrams === 0) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 text-xs text-amber-800">
-                  {aiEstimated
-                    ? 'Some weights could not be estimated — enter the grams manually.'
-                    : 'Enter the grams manually for items showing 0g. Upgrade to Pro for automatic AI weight estimates.'}
+                  {aiEstimated ? (
+                    'Some weights could not be estimated — enter the grams manually.'
+                  ) : (
+                    <>
+                      Enter the grams manually for items showing 0g. Your 7-day free trial
+                      of AI weight estimates has ended.{' '}
+                      <button
+                        onClick={() => setShowPaywall(true)}
+                        className="font-semibold underline text-amber-900 hover:text-amber-950"
+                      >
+                        Upgrade for automatic estimates
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -300,6 +314,10 @@ export default function ProduceExtractorModal({
         </div>
       </div>
     </div>
+
+    {/* Rendered after the modal so it stacks above it (both are z-50) */}
+    <PaywallModal isOpen={showPaywall} onClose={() => setShowPaywall(false)} />
+    </>
   );
 }
 

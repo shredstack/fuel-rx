@@ -7,16 +7,29 @@
  * Access is granted if:
  * 1. User has override (friends/testers) - unlimited access
  * 2. User has subscription with AI features (Basic or Pro) - unlimited access
- * 3. User is on free tier with remaining free plans - limited access
+ * 3. User is within the 7-day post-signup trial - full access, then locked
+ *
+ * Note this is decoupled from the free meal plan allowance: a free user keeps
+ * their 1 lifetime free plan (enforced in /api/generate-meal-plan) after the
+ * trial expires, they just lose the AI logging features.
+ *
+ * Food photo validation and ingredient category detection are intentionally NOT
+ * gated by this check — they keep the ingredient database clean and are cheap
+ * Haiku calls (~$0.001).
  */
 
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { getTrialState } from './trial-server';
+import { TRIAL_DURATION_DAYS } from './trial';
 
 export interface AiAccessResult {
   allowed: boolean;
   reason?: 'AI_FEATURES_LOCKED';
   isOverride?: boolean;
-  isFreeTier?: boolean;
+  /** True when access is granted by the 7-day trial rather than a subscription. */
+  isTrial?: boolean;
+  /** Full days left in the trial, counting today. Only set when isTrial. */
+  trialDaysRemaining?: number;
 }
 
 /**
@@ -30,7 +43,7 @@ export async function checkAiAccess(userId: string): Promise<AiAccessResult> {
 
   const { data: subscription } = await supabase
     .from('user_subscriptions')
-    .select('is_override, has_ai_features, free_plans_used, free_plan_limit')
+    .select('is_override, has_ai_features')
     .eq('user_id', userId)
     .single();
 
@@ -44,13 +57,14 @@ export async function checkAiAccess(userId: string): Promise<AiAccessResult> {
     return { allowed: true };
   }
 
-  // Free tier users can access AI features while they have free plans remaining
-  const freePlansUsed = subscription?.free_plans_used ?? 0;
-  const freePlanLimit = subscription?.free_plan_limit ?? 1;
-  const hasFreePlansRemaining = freePlansUsed < freePlanLimit;
-
-  if (hasFreePlansRemaining) {
-    return { allowed: true, isFreeTier: true };
+  // Free tier: full AI access for the first 7 days after signup, then locked.
+  const trial = await getTrialState(userId);
+  if (trial.isInTrial) {
+    return {
+      allowed: true,
+      isTrial: true,
+      trialDaysRemaining: trial.trialDaysRemaining,
+    };
   }
 
   return {
@@ -66,7 +80,7 @@ export function createAiAccessDeniedResponse() {
   return Response.json(
     {
       error: 'AI_FEATURES_LOCKED',
-      message: 'Subscribe to Basic or Pro to unlock AI features',
+      message: `Your ${TRIAL_DURATION_DAYS}-day free trial has ended. Subscribe to Basic or Pro to unlock AI features.`,
     },
     { status: 402 }
   );
