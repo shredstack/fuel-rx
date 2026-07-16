@@ -152,7 +152,7 @@ export function useSubscription(): UseSubscriptionReturn {
   const canGeneratePlan = status?.canGeneratePlan ?? true;
   const canUseAiFeatures = status?.canUseAiFeatures ?? false;
   const hasMealPlanGeneration = status?.hasMealPlanGeneration ?? false;
-  const freePlansRemaining = status?.freePlansRemaining ?? 3;
+  const freePlansRemaining = status?.freePlansRemaining ?? 0;
   const isOverride = status?.isOverride ?? false;
   const isInTrial = status?.isInTrial ?? false;
   const trialDaysRemaining = status?.trialDaysRemaining ?? 0;
