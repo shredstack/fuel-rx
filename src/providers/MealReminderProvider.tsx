@@ -35,7 +35,11 @@ import {
   useResolveMealReminder,
 } from '@/hooks/queries/useMealReminders';
 import { useMealReminderTicker } from '@/hooks/useMealReminderTicker';
-import { getLocalDateString, isMealCurrentlyDue } from '@/lib/meal-reminders/fire-times';
+import {
+  getAlarmExpiry,
+  getLocalDateString,
+  isMealCurrentlyDue,
+} from '@/lib/meal-reminders/fire-times';
 import {
   syncSchedule,
   cancelMealReminders,
@@ -51,6 +55,10 @@ const JournalPhotoModal = dynamic(() => import('@/components/reminders/JournalPh
   ssr: false,
 });
 
+// While an alarm is open, poll status so the modal self-dismisses after the
+// meal is logged on another device (realtime alone drops out in idle tabs).
+const ALARM_STATUS_POLL_MS = 20_000;
+
 function MealReminderController() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -61,7 +69,9 @@ function MealReminderController() {
   const [snapForMeal, setSnapForMeal] = useState<ReminderMealType | null>(null);
 
   const { data: settings } = useMealReminderSettings();
-  const { data: status } = useMealReminderStatus(today);
+  const { data: status } = useMealReminderStatus(today, true, {
+    refetchIntervalMs: activeAlarm ? ALARM_STATUS_POLL_MS : undefined,
+  });
 
   // Reconcile (launch-time modal reopen) runs once per local date.
   const reconciledForDateRef = useRef<string | null>(null);
@@ -121,7 +131,12 @@ function MealReminderController() {
   // --- Open the modal when the user taps an OS notification. ---
   useEffect(() => {
     let cleanup = () => {};
-    void addReminderTapListener((mealType) => openAlarm(mealType, false)).then((fn) => {
+    void addReminderTapListener((mealType, date) => {
+      // Ignore stale notifications (e.g. yesterday's tapped from Notification
+      // Center this morning) — they'd open an alarm for the wrong day.
+      if (date !== getLocalDateString()) return;
+      openAlarm(mealType, false);
+    }).then((fn) => {
       cleanup = fn;
     });
     return () => cleanup();
@@ -196,6 +211,17 @@ function MealReminderController() {
     }
   }, [activeAlarm, today, resolveReminder]);
 
+  // The alarm gave up for the day (past the meal's final fire time). Close it
+  // without resolving — the meal stays pending, but the nagging stops.
+  const handleAlarmExpired = useCallback(() => {
+    setActiveAlarm((current) => {
+      if (current) {
+        trackEvent('meal_reminder_expired', { meal_type: current });
+      }
+      return null;
+    });
+  }, []);
+
   const handleJournaled = useCallback(() => {
     setSnapForMeal(null);
     setActiveAlarm(null);
@@ -209,9 +235,11 @@ function MealReminderController() {
           mealType={activeAlarm}
           soundEnabled={settings[activeAlarm].sound_enabled}
           hapticsEnabled={settings[activeAlarm].haptics_enabled}
+          expiresAt={getAlarmExpiry(settings[activeAlarm], today)}
           onLogMeal={handleLogMeal}
           onSnapPhoto={handleSnapPhoto}
           onSkipToday={handleSkipToday}
+          onExpire={handleAlarmExpired}
         />
       )}
       {snapForMeal && (

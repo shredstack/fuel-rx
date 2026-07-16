@@ -192,8 +192,10 @@ export async function lookupProduceWeights(
  */
 export async function extractProduceFromMeal(
   mealId: string,
-  userId: string
+  userId: string,
+  options: { allowAi?: boolean } = {}
 ): Promise<ExtractedProduce[]> {
+  const allowAi = options.allowAi ?? true;
   const supabase = await createClient();
 
   // 1. Fetch meal and get ingredients
@@ -275,9 +277,14 @@ export async function extractProduceFromMeal(
     }
   }
 
-  // 6. Send only unmatched items to Claude for classification and gram estimation
+  // 6. Send only unmatched items to Claude for classification and gram estimation.
+  // Users without AI access (checkAiAccess) skip the Claude fallback: unmatched
+  // items that are clearly produce are returned with estimatedGrams: 0 so the
+  // user can enter the weight manually.
   let aiResults: Awaited<ReturnType<typeof estimateProduceGrams>> = [];
-  if (unmatchedItems.length > 0) {
+  if (unmatchedItems.length > 0 && !allowAi) {
+    console.log('[Produce Extraction] AI access locked, returning unmatched produce with 0g for manual entry');
+  } else if (unmatchedItems.length > 0) {
     const itemsForAI: ProduceItem[] = unmatchedItems.map(({ item }) => ({
       name: item.name,
       amount: item.amount,
@@ -318,6 +325,31 @@ export async function extractProduceFromMeal(
     // Find the AI result index — unmatchedItems preserves order sent to AI
     const unmatchedIdx = unmatchedItems.findIndex(u => u.index === i);
     if (unmatchedIdx === -1) continue;
+
+    // Without AI access, include items we can still confidently call produce
+    // (via the ingredients table or the ingredient's own category) at 0 grams
+    // so the user can enter the weight manually. Ambiguous items are skipped.
+    if (!allowAi) {
+      const ingCategory = originalItem.category?.toLowerCase() || '';
+      const manualCategory =
+        knownCategoryMap.get(originalNameLower) ||
+        (['fruit', 'fruits'].includes(ingCategory)
+          ? 'fruit'
+          : ['vegetable', 'vegetables', 'produce'].includes(ingCategory)
+            ? 'vegetable'
+            : null);
+
+      if (manualCategory === 'fruit' || manualCategory === 'vegetable') {
+        results.push({
+          name: originalItem.name,
+          amount: originalItem.amount,
+          unit: originalItem.unit,
+          category: manualCategory,
+          estimatedGrams: 0,
+        });
+      }
+      continue;
+    }
 
     // Try to find matching AI result with increasingly fuzzy matching
     let aiResult = aiResults.find(

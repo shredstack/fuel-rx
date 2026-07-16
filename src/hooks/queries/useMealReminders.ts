@@ -55,7 +55,19 @@ export function useUpdateMealReminderSettings() {
   });
 }
 
-export function useMealReminderStatus(date: string, enabled = true) {
+export function useMealReminderStatus(
+  date: string,
+  enabled = true,
+  options?: {
+    /**
+     * Poll the server at this interval, even in a backgrounded tab. Used while
+     * the alarm modal is open so it self-dismisses after the meal is logged on
+     * another device — realtime alone isn't reliable there (idle tabs and
+     * backgrounded WebViews drop the socket).
+     */
+    refetchIntervalMs?: number;
+  }
+) {
   return useQuery({
     queryKey: queryKeys.reminders.status(date),
     queryFn: async (): Promise<MealReminderStatusMap> => {
@@ -66,6 +78,8 @@ export function useMealReminderStatus(date: string, enabled = true) {
     },
     enabled,
     staleTime: 30 * 1000,
+    refetchInterval: options?.refetchIntervalMs ?? false,
+    refetchIntervalInBackground: true,
   });
 }
 

@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 
     // Call Claude API with Haiku for speed and cost efficiency
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
       system: systemPrompt,
       messages,

@@ -20,18 +20,24 @@ interface Props {
   mealType: ReminderMealType;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
+  /** When to give up for the day. Null disables the auto-expiry. */
+  expiresAt: Date | null;
   onLogMeal: () => void;
   onSnapPhoto: () => void;
   onSkipToday: () => void;
+  /** Called when expiresAt passes while the modal is still open. */
+  onExpire: () => void;
 }
 
 export default function MealReminderAlarmModal({
   mealType,
   soundEnabled,
   hapticsEnabled,
+  expiresAt,
   onLogMeal,
   onSnapPhoto,
   onSkipToday,
+  onExpire,
 }: Props) {
   const [showOverflow, setShowOverflow] = useState(false);
   const [confirmingSkip, setConfirmingSkip] = useState(false);
@@ -48,6 +54,19 @@ export default function MealReminderAlarmModal({
       alarmRef.current = null;
     };
   }, [soundEnabled, hapticsEnabled]);
+
+  // Give up when the reminder window has passed — an unattended modal must not
+  // keep pulsing sound all night.
+  useEffect(() => {
+    if (!expiresAt) return;
+    const remainingMs = expiresAt.getTime() - Date.now();
+    if (remainingMs <= 0) {
+      onExpire();
+      return;
+    }
+    const timeoutId = setTimeout(onExpire, remainingMs);
+    return () => clearTimeout(timeoutId);
+  }, [expiresAt, onExpire]);
 
   useEffect(() => {
     if (!showOverflow) return;

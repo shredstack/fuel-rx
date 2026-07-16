@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { extractProduceFromMeal, mealHasProduce } from '@/lib/produce-extraction-service';
+import { checkAiAccess } from '@/lib/subscription/check-ai-access';
 
 export async function POST(request: Request) {
   try {
@@ -29,10 +30,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required field: meal_id' }, { status: 400 });
     }
 
-    // Extract and classify produce from the meal
-    const produceIngredients = await extractProduceFromMeal(body.meal_id, user.id);
+    // Gate the Claude fallback behind the subscription check. The deterministic
+    // produce_weights lookup stays free — users without AI access get unmatched
+    // items back at 0 grams and enter the weight manually.
+    const aiAccess = await checkAiAccess(user.id);
 
-    return NextResponse.json({ produceIngredients }, { status: 200 });
+    // Extract and classify produce from the meal
+    const produceIngredients = await extractProduceFromMeal(body.meal_id, user.id, {
+      allowAi: aiAccess.allowed,
+    });
+
+    return NextResponse.json({ produceIngredients, aiEstimated: aiAccess.allowed }, { status: 200 });
   } catch (error) {
     console.error('Error extracting produce:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';

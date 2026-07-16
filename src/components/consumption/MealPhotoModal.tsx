@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import MealPhotoCapture from './MealPhotoCapture';
 import MealAnalysisReview from './MealAnalysisReview';
 import PhotoProduceExtractorModal from './PhotoProduceExtractorModal';
+import { useKeyboard } from '@/hooks/useKeyboard';
+import { usePlatform } from '@/hooks/usePlatform';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 interface MealPhotoModalProps {
@@ -52,10 +54,13 @@ interface SaveMealData {
 export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLogged }: MealPhotoModalProps) {
   const [step, setStep] = useState<ModalStep>('capture');
   const [photoData, setPhotoData] = useState<PhotoData | null>(null);
+  const [mealContext, setMealContext] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedMealName, setSavedMealName] = useState<string>('');
   const [produceModalData, setProduceModalData] = useState<ProduceModalData | null>(null);
+  const { keyboardHeight, isKeyboardVisible } = useKeyboard();
+  const { isNative } = usePlatform();
 
   const handlePhotoUploaded = useCallback((photoId: string, imageUrl: string) => {
     setPhotoData({ photoId, imageUrl });
@@ -102,7 +107,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
           const entry: ConsumptionEntry = {
             id: result.consumptionEntryId,
             user_id: '', // Will be filled by the actual data
-            entry_type: 'photo_meal' as 'meal_plan', // Type coercion for compatibility
+            entry_type: 'photo_meal',
             consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
             consumed_date: selectedDate,
             display_name: data.mealName,
@@ -158,6 +163,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
   const handleClose = useCallback(() => {
     setStep('capture');
     setPhotoData(null);
+    setMealContext('');
     setError(null);
     setSavedMealName('');
     setProduceModalData(null);
@@ -192,9 +198,19 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
     );
   }
 
+  // When the native keyboard is open, shrink the available area so the modal
+  // (and its focused input) stays above the keyboard instead of being covered.
+  const keyboardPadding = isNative && isKeyboardVisible ? keyboardHeight : 0;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      style={keyboardPadding ? { paddingBottom: keyboardPadding } : undefined}
+    >
+      <div
+        className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col"
+        style={{ maxHeight: keyboardPadding ? `calc(100vh - ${keyboardPadding + 32}px)` : '90vh' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -228,6 +244,26 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
               <p className="text-sm text-gray-600 mb-4">
                 Take a photo of your meal and our AI will identify ingredients and estimate nutrition.
               </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  What are you eating? <span className="font-normal text-gray-400">(optional, improves accuracy)</span>
+                </label>
+                <textarea
+                  value={mealContext}
+                  onChange={(e) => setMealContext(e.target.value)}
+                  onFocus={(e) => {
+                    const target = e.currentTarget;
+                    setTimeout(() => {
+                      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                  }}
+                  className="input-field text-sm overflow-y-auto"
+                  style={{ maxHeight: '96px' }}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="e.g., beef barbacoa bowl with cauliflower rice and guacamole"
+                />
+              </div>
               <MealPhotoCapture onPhotoUploaded={handlePhotoUploaded} onError={handlePhotoError} />
             </div>
           )}
@@ -237,6 +273,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
             <MealAnalysisReview
               photoId={photoData.photoId}
               imageUrl={photoData.imageUrl}
+              initialContext={mealContext}
               onSave={handleSave}
               onRetry={handleRetry}
               onCancel={handleClose}

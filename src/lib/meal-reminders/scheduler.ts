@@ -153,16 +153,31 @@ export async function cancelMealReminders(mealType: ReminderMealType): Promise<v
   }
 }
 
+// syncSchedule is a read-modify-write (getPending -> cancel -> schedule); two
+// overlapping invalidations could interleave those steps. Serialize runs.
+let syncChain: Promise<void> = Promise.resolve();
+
 /**
  * Cancel-and-replace the entire scheduled batch for today.
  *
  * Top-level entry point: schedules notifications for every enabled, unresolved
  * meal between now and its stop_time. A no-op without notification permission.
+ * Concurrent calls are queued so batches never interleave.
  */
-export async function syncSchedule(
+export function syncSchedule(
   settings: MealReminderSettings,
   status: MealReminderStatusMap,
   dateStr: string = getLocalDateString()
+): Promise<void> {
+  const run = () => doSyncSchedule(settings, status, dateStr);
+  syncChain = syncChain.then(run, run);
+  return syncChain;
+}
+
+async function doSyncSchedule(
+  settings: MealReminderSettings,
+  status: MealReminderStatusMap,
+  dateStr: string
 ): Promise<void> {
   const plugin = getPlugin();
   if (!plugin) return;

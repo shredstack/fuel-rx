@@ -74,7 +74,7 @@ export default function Navbar() {
           ))}
           {isAdmin && (
             <Link
-              href="/admin/ingredients"
+              href="/admin"
               className={`text-purple-600 hover:text-purple-800 ${
                 pathname.startsWith('/admin') ? 'font-medium' : ''
               }`}
@@ -128,7 +128,7 @@ export default function Navbar() {
             ))}
             {isAdmin && (
               <Link
-                href="/admin/ingredients"
+                href="/admin"
                 className={`block px-3 py-2 rounded-md text-base ${
                   pathname.startsWith('/admin')
                     ? 'bg-purple-50 text-purple-700 font-medium'

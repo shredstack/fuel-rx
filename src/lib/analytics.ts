@@ -13,6 +13,7 @@ export type AnalyticsEvent =
   | 'meal_reminder_fired'
   | 'meal_reminder_resolved'
   | 'meal_reminder_skipped_today'
+  | 'meal_reminder_expired'
   | 'meal_reminder_test_fired'
   | 'food_journal_entry_created'
   | 'food_journal_entry_promoted';

@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import type { MealType, MealPhotoAnalysisResult } from '@/lib/types';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import type { MealType, MealPhotoAnalysisResult, IngredientToLog } from '@/lib/types';
 import { MacroInput } from '@/components/ui';
 import PaywallModal from '@/components/PaywallModal';
+import AddIngredientModal from './AddIngredientModal';
 import { useSubscription } from '@/hooks/useSubscription';
 
 interface MealAnalysisReviewProps {
   photoId: string;
   imageUrl: string;
+  initialContext?: string;
   onSave: (data: SaveMealData) => void;
   onRetry: () => void;
   onCancel: () => void;
@@ -28,6 +30,8 @@ interface SaveMealData {
   notes: string;
 }
 
+type IngredientCategory = 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
+
 interface EditableIngredient {
   name: string;
   estimated_amount: string;
@@ -37,7 +41,7 @@ interface EditableIngredient {
   carbs: number;
   fat: number;
   confidence: number;
-  category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
+  category?: IngredientCategory;
 }
 
 interface AnalysisResponse {
@@ -63,11 +67,25 @@ interface AnalysisResponse {
     carbs: number;
     fat: number;
     confidence_score: number;
-    category?: 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'other';
+    category?: IngredientCategory;
   }>;
 }
 
-export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry, onCancel }: MealAnalysisReviewProps) {
+const EDITABLE_CATEGORIES: readonly string[] = ['protein', 'vegetable', 'fruit', 'grain', 'fat', 'dairy', 'other'];
+
+function toEditableCategory(category?: string): IngredientCategory | undefined {
+  if (!category) return undefined;
+  return EDITABLE_CATEGORIES.includes(category) ? (category as IngredientCategory) : 'other';
+}
+
+export default function MealAnalysisReview({
+  photoId,
+  imageUrl,
+  initialContext,
+  onSave,
+  onRetry,
+  onCancel,
+}: MealAnalysisReviewProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
@@ -80,7 +98,11 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showAddIngredient, setShowAddIngredient] = useState(false);
+  const [reanalyzeContext, setReanalyzeContext] = useState(initialContext || '');
   const { refresh: refreshSubscription } = useSubscription();
+
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Calculate totals from ingredients
   const totalMacros = useMemo(() => {
@@ -97,16 +119,48 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
 
   // Run analysis on mount
   useEffect(() => {
-    analyzePhoto();
+    analyzePhoto(initialContext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoId]);
 
-  const analyzePhoto = async () => {
+  // Web fallback: when the visual viewport shrinks (keyboard opens), keep the
+  // focused input visible. Native keyboard handling lives in MealPhotoModal.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && rootRef.current?.contains(active)) {
+        setTimeout(() => {
+          active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    return () => viewport.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleInputFocus = (e: React.FocusEvent<HTMLElement>) => {
+    const target = e.currentTarget;
+    setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  };
+
+  const analyzePhoto = async (context?: string, force = false) => {
     setIsAnalyzing(true);
     setError(null);
 
     try {
       const response = await fetch(`/api/meal-photos/${photoId}/analyze`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: context?.trim() || undefined,
+          force,
+        }),
       });
 
       if (response.status === 402) {
@@ -145,6 +199,10 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
     }
   };
 
+  const handleReanalyze = () => {
+    analyzePhoto(reanalyzeContext, true);
+  };
+
   const handleIngredientChange = (index: number, field: keyof EditableIngredient, value: string | number) => {
     const updated = [...ingredients];
     updated[index] = { ...updated[index], [field]: value };
@@ -155,20 +213,22 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
     setIngredients(ingredients.filter((_, i) => i !== index));
   };
 
-  const handleAddIngredient = () => {
-    setIngredients([
-      ...ingredients,
+  const handleSelectIngredient = (ingredient: IngredientToLog) => {
+    setIngredients((prev) => [
+      ...prev,
       {
-        name: '',
-        estimated_amount: '1',
-        estimated_unit: 'serving',
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
+        name: ingredient.name,
+        estimated_amount: String(ingredient.default_amount),
+        estimated_unit: ingredient.default_unit,
+        calories: ingredient.calories_per_serving,
+        protein: ingredient.protein_per_serving,
+        carbs: ingredient.carbs_per_serving,
+        fat: ingredient.fat_per_serving,
         confidence: 1,
+        category: toEditableCategory(ingredient.category),
       },
     ]);
+    setShowAddIngredient(false);
   };
 
   const handleSave = async () => {
@@ -211,7 +271,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
         </div>
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">Analyzing your meal...</h3>
-        <p className="text-sm text-gray-600">This usually takes 10-15 seconds</p>
+        <p className="text-sm text-gray-600">This can take up to a minute for complex meals</p>
       </div>
     );
   }
@@ -246,34 +306,36 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
 
   // Review state
   return (
-    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-      {/* Header with image and meal name */}
-      <div className="flex gap-4 items-start">
+    <div ref={rootRef} className="space-y-4">
+      {/* Photo and confidence */}
+      <div className="flex gap-4 items-center">
         <img src={imageUrl} alt="Meal" className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <input
-            type="text"
-            value={mealName}
-            onChange={(e) => setMealName(e.target.value)}
-            className="input-field text-lg font-medium"
-            placeholder="Meal name"
-          />
-          {analysisData?.confidenceScore !== undefined && (
-            <div className="mt-1 flex items-center gap-2">
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full ${
-                  analysisData.confidenceScore >= 0.8
-                    ? 'bg-green-100 text-green-700'
-                    : analysisData.confidenceScore >= 0.6
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-red-100 text-red-700'
-                }`}
-              >
-                {Math.round(analysisData.confidenceScore * 100)}% confidence
-              </span>
-            </div>
-          )}
-        </div>
+        {analysisData?.confidenceScore !== undefined && (
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full ${
+              analysisData.confidenceScore >= 0.8
+                ? 'bg-green-100 text-green-700'
+                : analysisData.confidenceScore >= 0.6
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-red-100 text-red-700'
+            }`}
+          >
+            {Math.round(analysisData.confidenceScore * 100)}% confidence
+          </span>
+        )}
+      </div>
+
+      {/* Meal name - full-width row so it's easy to see and edit on mobile */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Meal Name</label>
+        <input
+          type="text"
+          value={mealName}
+          onChange={(e) => setMealName(e.target.value)}
+          onFocus={handleInputFocus}
+          className="input-field w-full text-base font-medium py-3"
+          placeholder="Meal name"
+        />
       </div>
 
       {/* Meal type selector */}
@@ -312,12 +374,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
 
       {/* Ingredients */}
       <div>
-        <div className="flex justify-between items-center mb-2">
-          <h4 className="text-sm font-medium text-gray-700">Ingredients</h4>
-          <button onClick={handleAddIngredient} className="text-primary-600 hover:text-primary-800 text-sm font-medium">
-            + Add
-          </button>
-        </div>
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Ingredients</h4>
         <div className="space-y-2">
           {ingredients.map((ing, index) => (
             <div key={index} className="p-3 bg-gray-50 rounded-lg">
@@ -326,6 +383,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
                   type="text"
                   value={ing.name}
                   onChange={(e) => handleIngredientChange(index, 'name', e.target.value)}
+                  onFocus={handleInputFocus}
                   className="flex-1 input-field text-sm py-1"
                   placeholder="Ingredient"
                 />
@@ -333,6 +391,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
                   type="text"
                   value={ing.estimated_amount}
                   onChange={(e) => handleIngredientChange(index, 'estimated_amount', e.target.value)}
+                  onFocus={handleInputFocus}
                   className="w-16 input-field text-sm py-1 text-center"
                   placeholder="Amt"
                 />
@@ -340,6 +399,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
                   type="text"
                   value={ing.estimated_unit}
                   onChange={(e) => handleIngredientChange(index, 'estimated_unit', e.target.value)}
+                  onFocus={handleInputFocus}
                   className="w-16 input-field text-sm py-1"
                   placeholder="Unit"
                 />
@@ -380,6 +440,39 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
             </div>
           ))}
         </div>
+
+        {/* Add ingredient from the FuelRx database */}
+        <button
+          onClick={() => setShowAddIngredient(true)}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-primary-300 text-primary-600 hover:bg-primary-50 rounded-lg text-sm font-medium transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Ingredient
+        </button>
+      </div>
+
+      {/* Re-analyze with a description */}
+      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+        <p className="text-sm font-medium text-gray-700 mb-2">AI missed something?</p>
+        <textarea
+          value={reanalyzeContext}
+          onChange={(e) => setReanalyzeContext(e.target.value)}
+          onFocus={handleInputFocus}
+          className="input-field text-sm overflow-y-auto"
+          style={{ maxHeight: '96px' }}
+          rows={2}
+          maxLength={500}
+          placeholder="Describe the meal (e.g., beef barbacoa bowl with cauliflower rice)..."
+        />
+        <button
+          onClick={handleReanalyze}
+          disabled={!reanalyzeContext.trim()}
+          className="mt-2 text-sm font-medium text-primary-600 hover:text-primary-800 disabled:opacity-50"
+        >
+          Re-analyze photo
+        </button>
       </div>
 
       {/* Notes */}
@@ -388,6 +481,7 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          onFocus={handleInputFocus}
           className="input-field text-sm"
           rows={2}
           placeholder="Any notes about this meal..."
@@ -456,6 +550,13 @@ export default function MealAnalysisReview({ photoId, imageUrl, onSave, onRetry,
           {isSaving ? 'Saving...' : saveTo === 'both' ? 'Log & Save' : saveTo === 'consumption' ? 'Log Meal' : 'Save Meal'}
         </button>
       </div>
+
+      {/* Add ingredient modal (searches the FuelRx ingredient database) */}
+      <AddIngredientModal
+        isOpen={showAddIngredient}
+        onClose={() => setShowAddIngredient(false)}
+        onSelectIngredient={handleSelectIngredient}
+      />
 
       {/* Paywall Modal */}
       <PaywallModal

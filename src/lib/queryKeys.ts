@@ -97,4 +97,10 @@ export const queryKeys = {
     all: ['celebrations'] as const,
     onDate: (date: string) => ['celebrations', 'date', date] as const,
   },
+
+  // Admin dashboards
+  admin: {
+    all: ['admin'] as const,
+    costs: (days: number) => ['admin', 'costs', days] as const,
+  },
 } as const;
