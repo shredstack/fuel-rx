@@ -436,8 +436,10 @@ export default function DashboardClient({ profile: initialProfile, recentPlan, h
               </div>
             )}
 
-            {/* Free plans remaining indicator */}
-            {subscriptionStatus && !isSubscribed && !generating && !rateLimitError && (
+            {/* Free plans remaining indicator. VIPs (is_override) can have
+                is_subscribed = false, so exclude them explicitly or they see a
+                free-plan count next to their VIP Access badge. */}
+            {subscriptionStatus && !isSubscribed && !isOverride && !generating && !rateLimitError && (
               <div className="mt-3 text-center">
                 {freePlansRemaining > 0 ? (
                   <p className="text-sm text-gray-500">
