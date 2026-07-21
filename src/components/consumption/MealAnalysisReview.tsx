@@ -265,7 +265,7 @@ export default function MealAnalysisReview({
   // Analyzing state
   if (isAnalyzing) {
     return (
-      <div className="p-6 text-center">
+      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
         <div className="mb-4">
           <img src={imageUrl} alt="Meal" className="w-32 h-32 object-cover rounded-lg mx-auto opacity-75" />
         </div>
@@ -279,7 +279,7 @@ export default function MealAnalysisReview({
   // Error state
   if (error) {
     return (
-      <div className="p-6 text-center">
+      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
         <div className="text-red-600 mb-4">
           <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -306,7 +306,8 @@ export default function MealAnalysisReview({
 
   // Review state
   return (
-    <div ref={rootRef} className="space-y-4">
+    <div ref={rootRef} className="flex flex-col h-full min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
       {/* Photo and confidence */}
       <div className="flex gap-4 items-center">
         <img src={imageUrl} alt="Meal" className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
@@ -378,38 +379,41 @@ export default function MealAnalysisReview({
         <div className="space-y-2">
           {ingredients.map((ing, index) => (
             <div key={index} className="p-3 bg-gray-50 rounded-lg">
-              <div className="flex gap-2 mb-2">
+              {/* Ingredient name gets its own full-width row so the full text is visible */}
+              <div className="flex gap-2 mb-2 items-start">
                 <input
                   type="text"
                   value={ing.name}
                   onChange={(e) => handleIngredientChange(index, 'name', e.target.value)}
                   onFocus={handleInputFocus}
-                  className="flex-1 input-field text-sm py-1"
+                  className="flex-1 input-field text-sm py-2"
                   placeholder="Ingredient"
                 />
+                <button
+                  onClick={() => handleRemoveIngredient(index)}
+                  className="text-red-500 hover:text-red-700 px-2 py-2 shrink-0"
+                  aria-label="Remove ingredient"
+                >
+                  &times;
+                </button>
+              </div>
+              <div className="flex gap-2 mb-2">
                 <input
                   type="text"
                   value={ing.estimated_amount}
                   onChange={(e) => handleIngredientChange(index, 'estimated_amount', e.target.value)}
                   onFocus={handleInputFocus}
-                  className="w-16 input-field text-sm py-1 text-center"
-                  placeholder="Amt"
+                  className="flex-1 input-field text-sm py-1 text-center"
+                  placeholder="Amount"
                 />
                 <input
                   type="text"
                   value={ing.estimated_unit}
                   onChange={(e) => handleIngredientChange(index, 'estimated_unit', e.target.value)}
                   onFocus={handleInputFocus}
-                  className="w-16 input-field text-sm py-1"
+                  className="flex-1 input-field text-sm py-1"
                   placeholder="Unit"
                 />
-                <button
-                  onClick={() => handleRemoveIngredient(index)}
-                  className="text-red-500 hover:text-red-700 px-2"
-                  aria-label="Remove ingredient"
-                >
-                  &times;
-                </button>
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <MacroInput
@@ -537,8 +541,13 @@ export default function MealAnalysisReview({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex gap-3 sticky bottom-0 bg-white pt-2 border-t">
+      </div>
+
+      {/* Action buttons - pinned footer that stays visible above the keyboard and home indicator */}
+      <div
+        className="shrink-0 flex gap-3 bg-white px-4 py-3 border-t"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
         <button onClick={onCancel} className="btn-secondary flex-1" disabled={isSaving}>
           Cancel
         </button>
