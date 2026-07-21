@@ -204,15 +204,20 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      style={keyboardPadding ? { paddingBottom: keyboardPadding } : undefined}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      style={{
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingBottom: keyboardPadding ? `${keyboardPadding}px` : 'max(1rem, env(safe-area-inset-bottom))',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+      }}
     >
       <div
-        className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col"
-        style={{ maxHeight: keyboardPadding ? `calc(100vh - ${keyboardPadding + 32}px)` : '90vh' }}
+        className="relative bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col"
+        style={{ maxHeight: '100%' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">
             {step === 'capture' && 'Snap a Meal'}
             {step === 'review' && 'Review Analysis'}
@@ -229,18 +234,21 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* Error display */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+        {/* Error display */}
+        {error && (
+          <div className="px-4 pt-3 shrink-0">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">{error}</p>
             </div>
-          )}
+          </div>
+        )}
 
+        {/* Body: the review step manages its own scroll + pinned footer, so it
+            fills this bounded flex container. Other steps scroll here. */}
+        <div className="flex-1 min-h-0 flex flex-col">
           {/* Capture step */}
           {step === 'capture' && (
-            <div>
+            <div className="overflow-y-auto p-4">
               <p className="text-sm text-gray-600 mb-4">
                 Take a photo of your meal and our AI will identify ingredients and estimate nutrition.
               </p>
@@ -282,7 +290,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
 
           {/* Success step */}
           {step === 'success' && (
-            <div className="text-center py-8">
+            <div className="overflow-y-auto p-4 text-center py-8">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -292,17 +300,17 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
               <p className="text-sm text-gray-600">{savedMealName}</p>
             </div>
           )}
-
-          {/* Saving overlay */}
-          {isSaving && (
-            <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Saving...</p>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Saving overlay */}
+        {isSaving && (
+          <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">Saving...</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
