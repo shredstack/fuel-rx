@@ -385,6 +385,8 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
           })
 
       const isEditing = !!editingMealId
+      // Preserve the original source_type when editing (e.g. photo_analyzed from Snap a Meal)
+      const editedMeal = isEditing ? meals.find((m) => m.id === editingMealId) : undefined
       const response = await fetch('/api/custom-meals', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -413,7 +415,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       const newSavedMeal: SavedUserMeal = {
         id: savedMeal.id,
         name: savedMeal.meal_name,
-        source_type: 'user_created',
+        source_type: editedMeal?.source_type === 'photo_analyzed' ? 'photo_analyzed' : 'user_created',
         source_user_id: savedMeal.user_id,
         is_public: savedMeal.share_with_community,
         image_url: savedMeal.image_url,
@@ -494,6 +496,8 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       }
 
       const isEditing = !!editingMealId
+      // Preserve the original source_type when editing (e.g. photo_analyzed from Snap a Meal)
+      const editedMeal = isEditing ? meals.find((m) => m.id === editingMealId) : undefined
       const response = await fetch('/api/custom-meals', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -521,7 +525,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       const newSavedMeal: SavedUserMeal = {
         id: savedMeal.id,
         name: savedMeal.meal_name,
-        source_type: 'user_created',
+        source_type: editedMeal?.source_type === 'photo_analyzed' ? 'photo_analyzed' : 'user_created',
         source_user_id: savedMeal.user_id,
         is_public: savedMeal.share_with_community,
         image_url: savedMeal.image_url,

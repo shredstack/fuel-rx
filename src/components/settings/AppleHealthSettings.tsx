@@ -6,7 +6,10 @@ import { useHealthKit } from '@/hooks/useHealthKit';
 import { useHealthKitSyncStatus } from '@/hooks/queries/useHealthKitSyncStatus';
 import { createClient } from '@/lib/supabase/client';
 import { isHealthKitAvailable } from '@/lib/healthkit';
-import { resetHealthKitSyncCache } from '@/hooks/queries/useConsumptionMutations';
+import {
+  resetHealthKitSyncCache,
+  syncPendingEntries,
+} from '@/lib/healthkit/sync-service';
 import type { UserProfile } from '@/lib/types';
 
 
@@ -86,63 +89,11 @@ export default function AppleHealthSettings({ profile }: AppleHealthSettingsProp
     setShowBackfill(false);
 
     try {
-      // Fetch recent entries for backfill
-      const today = new Date().toISOString().split('T')[0];
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
-      const supabase = createClient();
-      const { data: entries } = await supabase
-        .from('meal_consumption_log')
-        .select('id, display_name, meal_type, calories, protein, carbs, fat, consumed_at')
-        .eq('user_id', profile.id)
-        .eq('healthkit_synced', false)
-        .gte('consumed_date', sevenDaysAgo)
-        .lte('consumed_date', today)
-        .order('consumed_at', { ascending: true });
-
-      if (!entries?.length) {
-        setBackfilling(false);
-        return;
-      }
-
-      setBackfillProgress({ current: 0, total: entries.length });
-
-      const { writeNutritionRecord } = await import('@/lib/healthkit');
-
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        const result = await writeNutritionRecord({
-          mealName: entry.display_name,
-          mealType: entry.meal_type || 'snack',
-          calories: entry.calories,
-          protein: entry.protein,
-          carbs: entry.carbs,
-          fat: entry.fat,
-          consumedAt: new Date(entry.consumed_at),
-          fuelrxEntryId: entry.id,
-        });
-
-        if (result.success && result.healthKitSampleIds?.length) {
-          await fetch(`/api/consumption/${entry.id}/healthkit`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              healthkit_synced: true,
-              healthkit_sample_ids: result.healthKitSampleIds,
-              healthkit_synced_at: new Date().toISOString(),
-            }),
-          });
-        }
-
-        setBackfillProgress({ current: i + 1, total: entries.length });
-
-        // Small delay between writes
-        if (i < entries.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
+      await syncPendingEntries({
+        days: 7,
+        force: true,
+        onProgress: (current, total) => setBackfillProgress({ current, total }),
+      });
     } catch (err) {
       console.error('[AppleHealth] Backfill error:', err);
     } finally {

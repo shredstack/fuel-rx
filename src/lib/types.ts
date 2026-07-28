@@ -388,7 +388,7 @@ export interface ValidatedMeal {
 // Saved Meal Types (for My Meals page)
 // ============================================
 
-export type SavedMealSourceType = 'user_created' | 'quick_cook' | 'party_meal';
+export type SavedMealSourceType = 'user_created' | 'photo_analyzed' | 'quick_cook' | 'party_meal';
 
 /**
  * Base interface for all saved meals
@@ -407,10 +407,10 @@ export interface SavedMealBase {
 }
 
 /**
- * User-created meal (manual entry)
+ * User-created meal (manual entry or saved from AI photo analysis)
  */
 export interface SavedUserMeal extends SavedMealBase {
-  source_type: 'user_created';
+  source_type: 'user_created' | 'photo_analyzed';
   meal_type: MealType | null;
   calories: number;
   protein: number;
@@ -460,7 +460,7 @@ export type SavedMeal = SavedUserMeal | SavedQuickCookMeal | SavedPartyMeal;
  * Type guard to check if a saved meal is a user-created meal
  */
 export function isSavedUserMeal(meal: SavedMeal): meal is SavedUserMeal {
-  return meal.source_type === 'user_created';
+  return meal.source_type === 'user_created' || meal.source_type === 'photo_analyzed';
 }
 
 /**
@@ -1955,6 +1955,8 @@ export interface LogMealRequest {
   meal_id?: string; // Fallback meal ID for when meal_plan_meals record is deleted
   meal_type?: MealType; // Override the meal's default type
   consumed_at?: string;
+  /** Local calendar day the user logged against ("YYYY-MM-DD"). Falls back to consumed_at's UTC date. */
+  consumed_date?: string;
   notes?: string;
   // Custom macros when user has modified ingredient portions
   custom_macros?: {
@@ -2000,6 +2002,8 @@ export interface LogIngredientRequest {
   carbs: number;
   fat: number;
   consumed_at?: string;
+  /** Local calendar day the user logged against ("YYYY-MM-DD"). Falls back to consumed_at's UTC date. */
+  consumed_date?: string;
   notes?: string;
   // 800g Challenge tracking
   grams?: number;
@@ -2266,6 +2270,8 @@ export interface SaveMealPhotoOptions {
   }>;
   notes?: string;
   consumedAt?: string;
+  /** Local calendar day the user logged against ("YYYY-MM-DD"). Falls back to consumedAt's UTC date. */
+  consumedDate?: string;
 }
 
 // ============================================

@@ -14,6 +14,7 @@ import {
 } from '@/hooks/queries/useFoodJournal';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
+import { getLocalDateString } from '@/lib/date-utils';
 import {
   REMINDER_MEAL_TYPES,
   REMINDER_MEAL_EMOJI,
@@ -108,6 +109,7 @@ export default function FoodJournalEntryDetail({ entry, onClose }: Props) {
         id: entry.id,
         mealType: mealType ?? undefined,
         consumedAt: entry.journaled_at,
+        consumedDate: getLocalDateString(new Date(entry.journaled_at)),
       });
       onClose();
     } catch (err) {

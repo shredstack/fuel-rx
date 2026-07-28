@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   try {
     const body: SaveMealPhotoOptions = await request.json();
-    const { saveTo, mealType, editedName, editedIngredients, notes, consumedAt } = body;
+    const { saveTo, mealType, editedName, editedIngredients, notes, consumedAt, consumedDate } = body;
 
     // Get photo record and verify ownership
     const { data: photo, error: photoError } = await supabase
@@ -63,9 +63,11 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     // Save to consumption log
     if (saveTo === 'consumption' || saveTo === 'both') {
-      // Use provided consumedAt or fall back to current time
+      // Use provided consumedAt or fall back to current time. Prefer the
+      // client's explicit local calendar day — deriving it from the UTC
+      // instant shifts evening logs to the next day for US timezones.
       const consumedAtValue = consumedAt || new Date().toISOString();
-      const consumedDate = consumedAtValue.split('T')[0];
+      const consumedDateValue = consumedDate || consumedAtValue.split('T')[0];
 
       const { data: consumptionEntry, error: consumptionError } = await supabase
         .from('meal_consumption_log')
@@ -73,7 +75,7 @@ export async function POST(request: Request, { params }: RouteParams) {
           user_id: user.id,
           entry_type: 'photo_meal',
           consumed_at: consumedAtValue,
-          consumed_date: consumedDate,
+          consumed_date: consumedDateValue,
           display_name: mealName,
           meal_type: mealType || null,
           calories: Math.round(totalCalories),
@@ -98,11 +100,11 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (saveTo === 'library' || saveTo === 'both') {
       // Build ingredients array for meals table
       const ingredientsForMeal = editedIngredients || photo.raw_analysis?.ingredients || [];
-      const formattedIngredients = ingredientsForMeal.map((ing: { name: string; estimated_amount: string; estimated_unit: string; calories: number; protein: number; carbs: number; fat: number }) => ({
+      const formattedIngredients = ingredientsForMeal.map((ing: { name: string; estimated_amount: string; estimated_unit: string; calories: number; protein: number; carbs: number; fat: number; category?: string }) => ({
         name: ing.name,
         amount: ing.estimated_amount,
         unit: ing.estimated_unit,
-        category: 'other' as const,
+        category: ing.category || 'other',
         calories: ing.calories,
         protein: ing.protein,
         carbs: ing.carbs,
@@ -128,7 +130,9 @@ export async function POST(request: Request, { params }: RouteParams) {
           source_user_id: user.id,
           source_photo_id: photoId,
           is_public: false,
-          image_url: photo.image_url,
+          // Store the durable storage path, not the short-lived signed URL —
+          // read paths re-sign storage paths on demand (see custom-meals/page.tsx)
+          image_url: photo.storage_path || photo.image_url,
         })
         .select('id')
         .single();

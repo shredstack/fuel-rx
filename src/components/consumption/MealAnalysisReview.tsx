@@ -103,6 +103,15 @@ export default function MealAnalysisReview({
   const { refresh: refreshSubscription } = useSubscription();
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const mealNameRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the meal name textarea so the full title is always visible
+  useEffect(() => {
+    const el = mealNameRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [mealName, isAnalyzing]);
 
   // Calculate totals from ingredients
   const totalMacros = useMemo(() => {
@@ -265,7 +274,7 @@ export default function MealAnalysisReview({
   // Analyzing state
   if (isAnalyzing) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
         <div className="mb-4">
           <img src={imageUrl} alt="Meal" className="w-32 h-32 object-cover rounded-lg mx-auto opacity-75" />
         </div>
@@ -279,7 +288,7 @@ export default function MealAnalysisReview({
   // Error state
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
         <div className="text-red-600 mb-4">
           <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -305,8 +314,12 @@ export default function MealAnalysisReview({
   }
 
   // Review state
+  // NOTE: flex-1 (not h-full) — the parent modal is auto-height capped by
+  // max-height, so percentage heights resolve to auto and the content
+  // overflows the modal's overflow-hidden boundary, hiding the footer
+  // buttons on mobile. Flexing sizes this against real available space.
   return (
-    <div ref={rootRef} className="flex flex-col h-full min-h-0">
+    <div ref={rootRef} className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
       {/* Photo and confidence */}
       <div className="flex gap-4 items-center">
@@ -326,15 +339,24 @@ export default function MealAnalysisReview({
         )}
       </div>
 
-      {/* Meal name - full-width row so it's easy to see and edit on mobile */}
+      {/* Meal name - auto-growing textarea so long titles wrap and stay fully visible */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Meal Name</label>
-        <input
-          type="text"
+        <textarea
+          ref={mealNameRef}
           value={mealName}
-          onChange={(e) => setMealName(e.target.value)}
+          onChange={(e) => setMealName(e.target.value.replace(/\n/g, ' '))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
           onFocus={handleInputFocus}
-          className="input-field w-full text-base font-medium py-3"
+          rows={1}
+          enterKeyHint="done"
+          className="input-field w-full text-base font-medium py-3 resize-none overflow-y-auto"
+          style={{ maxHeight: '120px' }}
           placeholder="Meal name"
         />
       </div>

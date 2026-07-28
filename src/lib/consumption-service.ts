@@ -191,7 +191,9 @@ export async function logMealConsumed(
   }
 
   const consumedAt = request.consumed_at || new Date().toISOString();
-  const consumedDate = consumedAt.split('T')[0];
+  // Prefer the client's explicit local calendar day — deriving it from the
+  // UTC instant shifts evening logs to the next day for US timezones.
+  const consumedDate = request.consumed_date || consumedAt.split('T')[0];
 
   // Use custom macros if provided (user modified portions), otherwise use source meal's macros
   const macros = request.custom_macros || {
@@ -239,7 +241,8 @@ export async function logIngredientConsumed(
   const supabase = await createClient();
 
   const consumedAt = request.consumed_at || new Date().toISOString();
-  const consumedDate = consumedAt.split('T')[0];
+  // Prefer the client's explicit local calendar day (see logMealConsumed)
+  const consumedDate = request.consumed_date || consumedAt.split('T')[0];
 
   // Create consumption entry
   const { data: entry, error: insertError } = await supabase
@@ -292,14 +295,16 @@ export async function logProduceIngredients(
     grams: number;
   }>,
   mealType: MealType,
-  consumedAt: string
+  consumedAt: string,
+  consumedDateOverride?: string
 ): Promise<ConsumptionEntry[]> {
   if (ingredients.length === 0) {
     return [];
   }
 
   const supabase = await createClient();
-  const consumedDate = consumedAt.split('T')[0];
+  // Prefer the client's explicit local calendar day (see logMealConsumed)
+  const consumedDate = consumedDateOverride || consumedAt.split('T')[0];
 
   // Build array of entries to insert
   const entries = ingredients.map((ing) => ({

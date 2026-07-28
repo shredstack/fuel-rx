@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { MealSlot, MealType } from '@/lib/types';
 import { useLogMeal } from '@/hooks/queries/useConsumptionMutations';
+import { getLocalDateString, consumedAtInstantForDate } from '@/lib/date-utils';
 import LogMealConfirmationModal, {
   type DetectedProduceItem,
   type LogMealConfirmData,
@@ -27,13 +28,7 @@ function getTimeBasedMealTypes(): MealType[] {
 }
 
 // Helper to get today's date in user's local timezone as YYYY-MM-DD
-function getLocalTodayString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+const getLocalTodayString = () => getLocalDateString();
 
 export function LogMealModal({
   isOpen,
@@ -114,13 +109,15 @@ export function LogMealModal({
         meal_id: string;
         meal_type: MealType;
         consumed_at: string;
+        consumed_date?: string;
         custom_macros?: { calories: number; protein: number; carbs: number; fat: number };
       } = {
         type: 'meal_plan',
         source_id: mealPlanMealId,
         meal_id: meal.id,
         meal_type: data.mealType,
-        consumed_at: `${today}T${new Date().toTimeString().slice(0, 8)}`,
+        consumed_at: consumedAtInstantForDate(today),
+        consumed_date: today,
       };
 
       // Include custom macros if user modified portions
@@ -139,7 +136,8 @@ export function LogMealModal({
             body: JSON.stringify({
               ingredients: data.selectedProduce,
               meal_type: data.mealType,
-              consumed_at: `${today}T${new Date().toTimeString().slice(0, 8)}`,
+              consumed_at: consumedAtInstantForDate(today),
+              consumed_date: today,
             }),
           });
         } catch (e) {

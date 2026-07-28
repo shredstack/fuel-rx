@@ -44,6 +44,21 @@ function minutesToPrepTime(minutes: number): CustomMealPrepTime {
   return 'more_than_30';
 }
 
+const MEAL_PHOTOS_SIGNED_URL_MARKER = '/storage/v1/object/sign/meal-photos/';
+
+/**
+ * The client sends back the image it's displaying, which for photo-analyzed
+ * meals is a temporary signed URL. Convert it back to the durable storage
+ * path so the stored value never expires; read paths re-sign on demand.
+ */
+function normalizeImageUrlForStorage(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null;
+  const markerIndex = imageUrl.indexOf(MEAL_PHOTOS_SIGNED_URL_MARKER);
+  if (markerIndex === -1) return imageUrl;
+  const path = imageUrl.slice(markerIndex + MEAL_PHOTOS_SIGNED_URL_MARKER.length).split('?')[0];
+  return decodeURIComponent(path);
+}
+
 interface CreateCustomMealRequest {
   meal_name: string;
   meal_type?: MealType;
@@ -345,7 +360,7 @@ export async function PUT(request: Request) {
         prep_time_minutes: prepTimeToMinutes(body.prep_time),
         prep_instructions: body.meal_prep_instructions || null,
         is_public: shouldShare,
-        image_url: body.image_url || null,
+        image_url: normalizeImageUrlForStorage(body.image_url),
         is_nutrition_edited_by_user: true,
       })
       .eq('id', body.id)
@@ -363,6 +378,15 @@ export async function PUT(request: Request) {
         }, { status: 409 });
       }
       return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 });
+    }
+
+    // Re-sign stored storage paths for display (photo-analyzed meals store a durable path)
+    let displayImageUrl: string | null = updatedMeal.image_url;
+    if (displayImageUrl && !displayImageUrl.startsWith('http')) {
+      const { data: signedUrlData } = await supabase.storage
+        .from('meal-photos')
+        .createSignedUrl(displayImageUrl, 60 * 60 * 24 * 7);
+      displayImageUrl = signedUrlData?.signedUrl || null;
     }
 
     // Handle social feed post based on sharing setting
@@ -385,7 +409,7 @@ export async function PUT(request: Request) {
         protein: Math.round(updatedMeal.protein),
         carbs: Math.round(updatedMeal.carbs),
         fat: Math.round(updatedMeal.fat),
-        image_url: updatedMeal.image_url,
+        image_url: displayImageUrl,
         prep_time: minutesToPrepTime(updatedMeal.prep_time_minutes),
         ingredients: updatedMeal.ingredients,
         meal_prep_instructions: updatedMeal.prep_instructions,
@@ -410,7 +434,7 @@ export async function PUT(request: Request) {
       fat: updatedMeal.fat,
       ingredients: updatedMeal.ingredients,
       is_user_created: updatedMeal.is_user_created,
-      image_url: updatedMeal.image_url,
+      image_url: displayImageUrl,
       share_with_community: updatedMeal.is_public,
       prep_time: updatedMeal.prep_time_minutes,
       meal_prep_instructions: updatedMeal.prep_instructions,

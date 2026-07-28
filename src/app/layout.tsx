@@ -6,6 +6,7 @@ import { RealtimeProvider } from '@/providers/RealtimeProvider'
 import { SplashScreenProvider } from '@/providers/SplashScreenProvider'
 import { MealReminderProvider } from '@/providers/MealReminderProvider'
 import { CelebrationProvider } from '@/providers/CelebrationProvider'
+import { HealthKitSyncProvider } from '@/providers/HealthKitSyncProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -37,11 +38,13 @@ export default function RootLayout({
           <RealtimeProvider>
             <CelebrationProvider>
               <MealReminderProvider>
-                <SplashScreenProvider>
-                  <main className="min-h-screen bg-gray-50">
-                    {children}
-                  </main>
-                </SplashScreenProvider>
+                <HealthKitSyncProvider>
+                  <SplashScreenProvider>
+                    <main className="min-h-screen bg-gray-50">
+                      {children}
+                    </main>
+                  </SplashScreenProvider>
+                </HealthKitSyncProvider>
               </MealReminderProvider>
             </CelebrationProvider>
           </RealtimeProvider>

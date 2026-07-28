@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import PaywallModal from '@/components/PaywallModal';
+import { consumedAtInstantForDate } from '@/lib/date-utils';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 // ============================================
@@ -152,7 +153,8 @@ export default function PhotoProduceExtractorModal({
             grams: item.adjustedGrams,
           })),
           meal_type: mealType,
-          consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+          consumed_at: consumedAtInstantForDate(selectedDate),
+          consumed_date: selectedDate,
         }),
       });
 
