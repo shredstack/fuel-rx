@@ -74,11 +74,20 @@ export function resolveHealthKitStartDate(
     }
   }
 
-  // HealthKit rejects future-dated samples. Only clamp same-day overshoots so
-  // a genuinely future-dated entry fails loudly instead of moving days.
+  // HealthKit rejects future-dated samples. Only clamp same-day overshoots —
+  // moving a genuinely future-dated entry would silently file it under the
+  // wrong day, so we leave it alone and log instead (HealthKit rejects it
+  // quietly, so this warning is the only diagnosable signal).
   const now = new Date();
-  if (start.getTime() > now.getTime() && getLocalDateString(start) === getLocalDateString(now)) {
-    start = now;
+  if (start.getTime() > now.getTime()) {
+    if (getLocalDateString(start) === getLocalDateString(now)) {
+      start = now;
+    } else {
+      console.warn(
+        `[HealthKit] Entry is dated ${getLocalDateString(start)}, a future day (today is ${getLocalDateString(now)}). ` +
+        'HealthKit will reject this sample; leaving the date unchanged rather than moving it.'
+      );
+    }
   }
 
   return start;

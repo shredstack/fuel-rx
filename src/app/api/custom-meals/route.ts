@@ -56,7 +56,13 @@ function normalizeImageUrlForStorage(imageUrl: string | null | undefined): strin
   const markerIndex = imageUrl.indexOf(MEAL_PHOTOS_SIGNED_URL_MARKER);
   if (markerIndex === -1) return imageUrl;
   const path = imageUrl.slice(markerIndex + MEAL_PHOTOS_SIGNED_URL_MARKER.length).split('?')[0];
-  return decodeURIComponent(path);
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    // Malformed percent-encoding (e.g. a literal '%' in the filename) — the
+    // raw path is closer to correct than throwing away the whole update.
+    return path;
+  }
 }
 
 interface CreateCustomMealRequest {

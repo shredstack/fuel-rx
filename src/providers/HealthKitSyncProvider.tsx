@@ -25,6 +25,9 @@ export function HealthKitSyncProvider({ children }: { children: React.ReactNode 
       void syncPendingEntries();
     }, 5000);
 
+    // `cancelled` guards the window between unmount and the dynamic import
+    // resolving — without it a listener registered after unmount would leak.
+    let cancelled = false;
     let removeListener: (() => void) | null = null;
     import('@capacitor/app')
       .then(({ App }) => {
@@ -36,12 +39,14 @@ export function HealthKitSyncProvider({ children }: { children: React.ReactNode 
         removeListener = () => {
           listener.then((l) => l.remove()).catch(() => {});
         };
+        if (cancelled) removeListener();
       })
       .catch(() => {
         // Plugin unavailable (old native build) — sweep still runs on launch
       });
 
     return () => {
+      cancelled = true;
       clearTimeout(initialTimer);
       removeListener?.();
     };
