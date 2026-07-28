@@ -8,6 +8,7 @@ import {
   writeNutritionRecord,
   deleteNutritionRecord,
 } from '@/lib/healthkit';
+import { resolveHealthKitStartDate } from '@/lib/healthkit/sync-service';
 import type {
   ConsumptionEntry,
   NutritionRecord,
@@ -74,7 +75,7 @@ export function useHealthKit({ syncEnabled }: UseHealthKitOptions): UseHealthKit
         protein: entry.protein,
         carbs: entry.carbs,
         fat: entry.fat,
-        consumedAt: new Date(entry.consumed_at),
+        consumedAt: resolveHealthKitStartDate(entry.consumed_at, entry.consumed_date),
         fuelrxEntryId: entry.id,
       };
 

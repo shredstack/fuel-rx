@@ -33,6 +33,8 @@ import {
   updateMealLoggedStatusInCache,
 } from '@/hooks/queries/useConsumptionMutations';
 import { queryKeys } from '@/lib/queryKeys';
+import { consumedAtInstantForDate } from '@/lib/date-utils';
+import { syncEntryToHealthKit } from '@/lib/healthkit/sync-service';
 import DailyProgressCard from '@/components/consumption/DailyProgressCard';
 import MealSourceSection from '@/components/consumption/MealSourceSection';
 import MealSection from '@/components/consumption/MealSection';
@@ -399,12 +401,14 @@ export default function LogMealClient({
       meal_id?: string;
       meal_type: MealType;
       consumed_at: string;
+      consumed_date?: string;
       custom_macros?: { calories: number; protein: number; carbs: number; fat: number };
     } = {
       type: meal.source,
       source_id: meal.source_id,
       meal_type: mealType,
-      consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+      consumed_at: consumedAtInstantForDate(selectedDate),
+      consumed_date: selectedDate,
     };
     // For meal plan meals, include meal_id as fallback in case meal_plan_meals record is deleted
     if (meal.source === 'meal_plan' && 'meal_id' in meal) {
@@ -427,7 +431,8 @@ export default function LogMealClient({
             body: JSON.stringify({
               ingredients: data.selectedProduce,
               meal_type: mealType,
-              consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+              consumed_at: consumedAtInstantForDate(selectedDate),
+              consumed_date: selectedDate,
             }),
           });
 
@@ -597,7 +602,8 @@ export default function LogMealClient({
         grams,
         category,
         ...totalMacros,
-        consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+        consumed_at: consumedAtInstantForDate(selectedDate),
+        consumed_date: selectedDate,
       });
       // Mutation hook handles cache invalidation to refresh frequent ingredients
     } catch (error) {
@@ -1357,6 +1363,9 @@ export default function LogMealClient({
           onMealLogged={(entry) => {
             // Optimistically add the new entry to cache
             optimisticallyAddEntry(queryClient, selectedDate, entry);
+            // Fire-and-forget: photo meals bypass useLogMeal, so sync to
+            // Apple Health here
+            syncEntryToHealthKit(entry);
             // Auto-expand the meal section that was just logged to
             if (entry.meal_type) {
               setRecentlyLoggedToMealType(entry.meal_type);

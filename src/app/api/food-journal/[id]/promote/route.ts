@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     return createAiAccessDeniedResponse();
   }
 
-  let body: { meal_type?: string; consumed_at?: string } = {};
+  let body: { meal_type?: string; consumed_at?: string; consumed_date?: string } = {};
   try {
     body = await request.json();
   } catch {
@@ -90,7 +90,9 @@ export async function POST(request: Request, { params }: RouteParams) {
     const analysis = await analyzeMealPhoto(base64, mediaType, user.id);
 
     const consumedAt = body.consumed_at || new Date().toISOString();
-    const consumedDate = consumedAt.split('T')[0];
+    // Prefer the client's explicit local calendar day — deriving it from the
+    // UTC instant shifts evening logs to the next day for US timezones.
+    const consumedDate = body.consumed_date || consumedAt.split('T')[0];
     const mealType: ReminderMealType | null = isReminderMealType(body.meal_type)
       ? body.meal_type
       : isReminderMealType(entry.meal_type)

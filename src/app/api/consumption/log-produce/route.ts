@@ -20,6 +20,7 @@ interface LogProduceRequest {
   }>;
   meal_type: MealType;
   consumed_at: string;
+  consumed_date?: string;
 }
 
 export async function POST(request: Request) {
@@ -70,7 +71,8 @@ export async function POST(request: Request) {
       user.id,
       body.ingredients,
       body.meal_type,
-      body.consumed_at
+      body.consumed_at,
+      body.consumed_date
     );
 
     return NextResponse.json({ entries }, { status: 201 });

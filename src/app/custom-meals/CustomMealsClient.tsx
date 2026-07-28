@@ -101,6 +101,13 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
   const [showImageValidationModal, setShowImageValidationModal] = useState(false)
   const [imageValidationMessage, setImageValidationMessage] = useState<string | null>(null)
 
+  // Saving an edited meal must not downgrade its origin — a Snap a Meal entry
+  // stays `photo_analyzed` so its stored image keeps resolving as a storage path.
+  const resolveSourceTypeForSave = (): 'photo_analyzed' | 'user_created' => {
+    const editedMeal = editingMealId ? meals.find((m) => m.id === editingMealId) : undefined
+    return editedMeal?.source_type === 'photo_analyzed' ? 'photo_analyzed' : 'user_created'
+  }
+
   // Filter meals by type based on active tab
   const userMeals = meals.filter(isSavedUserMeal)
   const quickCookMeals = meals.filter(isSavedQuickCookMeal)
@@ -385,6 +392,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
           })
 
       const isEditing = !!editingMealId
+      const sourceType = resolveSourceTypeForSave()
       const response = await fetch('/api/custom-meals', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -413,7 +421,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       const newSavedMeal: SavedUserMeal = {
         id: savedMeal.id,
         name: savedMeal.meal_name,
-        source_type: 'user_created',
+        source_type: sourceType,
         source_user_id: savedMeal.user_id,
         is_public: savedMeal.share_with_community,
         image_url: savedMeal.image_url,
@@ -494,6 +502,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       }
 
       const isEditing = !!editingMealId
+      const sourceType = resolveSourceTypeForSave()
       const response = await fetch('/api/custom-meals', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -521,7 +530,7 @@ export default function CustomMealsClient({ initialMeals, socialFeedEnabled }: P
       const newSavedMeal: SavedUserMeal = {
         id: savedMeal.id,
         name: savedMeal.meal_name,
-        source_type: 'user_created',
+        source_type: sourceType,
         source_user_id: savedMeal.user_id,
         is_public: savedMeal.share_with_community,
         image_url: savedMeal.image_url,

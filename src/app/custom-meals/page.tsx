@@ -25,12 +25,12 @@ export default async function CustomMealsPage() {
   const socialFeedEnabled = profile?.social_feed_enabled || false
 
   // Fetch user's custom meals from meals table
-  // Include user_created, quick_cook, and party_meal source types
+  // Include user_created, photo_analyzed (Snap a Meal), quick_cook, and party_meal source types
   const { data: mealsData } = await supabase
     .from('meals')
     .select('*')
     .eq('source_user_id', user.id)
-    .in('source_type', ['user_created', 'quick_cook', 'party_meal'])
+    .in('source_type', ['user_created', 'photo_analyzed', 'quick_cook', 'party_meal'])
     .order('created_at', { ascending: false })
 
   // Transform to the format expected by CustomMealsClient based on source_type
@@ -86,10 +86,10 @@ export default async function CustomMealsPage() {
         } as SavedPartyMeal
       }
 
-      // Default: user_created
+      // Default: user_created or photo_analyzed (both render as user meals)
       return {
         ...base,
-        source_type: 'user_created',
+        source_type: meal.source_type === 'photo_analyzed' ? 'photo_analyzed' : 'user_created',
         meal_type: meal.meal_type,
         calories: meal.calories,
         protein: meal.protein,

@@ -133,6 +133,8 @@ export function usePromoteFoodJournalEntry() {
       id: string;
       mealType?: ReminderMealType;
       consumedAt?: string;
+      /** Local calendar day of consumedAt ("YYYY-MM-DD") */
+      consumedDate?: string;
     }): Promise<{ consumption_log_id: string }> => {
       const res = await fetch(`/api/food-journal/${params.id}/promote`, {
         method: 'POST',
@@ -140,6 +142,7 @@ export function usePromoteFoodJournalEntry() {
         body: JSON.stringify({
           meal_type: params.mealType,
           consumed_at: params.consumedAt,
+          consumed_date: params.consumedDate,
         }),
       });
       if (!res.ok) {

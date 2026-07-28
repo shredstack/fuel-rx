@@ -1,11 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import { isHealthKitAvailable, deleteNutritionRecord } from '@/lib/healthkit';
 import {
-  isHealthKitAvailable,
-  writeNutritionRecord,
-  deleteNutritionRecord,
-} from '@/lib/healthkit';
-import { createClient } from '@/lib/supabase/client';
+  syncEntryToHealthKit,
+  resetHealthKitSyncCache,
+} from '@/lib/healthkit/sync-service';
 import { useCelebration } from '@/providers/CelebrationProvider';
 import { cancelMealReminders } from '@/lib/meal-reminders/scheduler';
 import { isReminderMealType } from '@/lib/meal-reminders/resolution-service';
@@ -30,61 +29,9 @@ type LogMealResponse = ConsumptionEntry & {
 
 // ─── HealthKit Sync Helpers ─────────────────────────────────────────────────
 // Fire-and-forget: these never block the core meal logging UX.
+// Sync logic lives in @/lib/healthkit/sync-service; re-exported for existing imports.
 
-let _syncEnabledCache: { userId: string; enabled: boolean } | null = null;
-
-async function isHealthKitSyncEnabled(): Promise<boolean> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  if (_syncEnabledCache?.userId === user.id) return _syncEnabledCache.enabled;
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('healthkit_nutrition_sync_enabled')
-    .eq('id', user.id)
-    .single();
-  const enabled = data?.healthkit_nutrition_sync_enabled ?? false;
-  _syncEnabledCache = { userId: user.id, enabled };
-  return enabled;
-}
-
-/** Call when the user toggles sync on/off so the cache stays fresh. */
-export function resetHealthKitSyncCache() {
-  _syncEnabledCache = null;
-}
-
-async function syncEntryToHealthKit(entry: ConsumptionEntry) {
-  if (!isHealthKitAvailable()) return;
-  try {
-    const enabled = await isHealthKitSyncEnabled();
-    if (!enabled) return;
-
-    const result = await writeNutritionRecord({
-      mealName: entry.display_name,
-      mealType: entry.meal_type || 'snack',
-      calories: entry.calories,
-      protein: entry.protein,
-      carbs: entry.carbs,
-      fat: entry.fat,
-      consumedAt: new Date(entry.consumed_at),
-      fuelrxEntryId: entry.id,
-    });
-
-    if (result.success && result.healthKitSampleIds?.length) {
-      await fetch(`/api/consumption/${entry.id}/healthkit`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          healthkit_synced: true,
-          healthkit_sample_ids: result.healthKitSampleIds,
-          healthkit_synced_at: new Date().toISOString(),
-        }),
-      });
-    }
-  } catch (error) {
-    console.error('[HealthKit] Sync failed (non-blocking):', error);
-  }
-}
+export { resetHealthKitSyncCache };
 
 async function deleteEntryFromHealthKit(sampleIds: string[]) {
   if (!isHealthKitAvailable() || !sampleIds.length) return;
@@ -116,6 +63,7 @@ interface LogMealParams {
   meal_id?: string;
   meal_type: MealType;
   consumed_at: string;
+  consumed_date?: string;
 }
 
 interface LogIngredientParams {
@@ -129,6 +77,7 @@ interface LogIngredientParams {
   carbs: number;
   fat: number;
   consumed_at: string;
+  consumed_date?: string;
   grams?: number;
   category?: string;
 }
@@ -361,7 +310,7 @@ export function useRepeatYesterday() {
     }: {
       sourceDate: string;
       targetDate: string;
-    }): Promise<void> => {
+    }): Promise<{ entries?: ConsumptionEntry[] }> => {
       const response = await fetch('/api/consumption/repeat-day', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -370,14 +319,20 @@ export function useRepeatYesterday() {
       if (!response.ok) {
         throw new Error('Failed to repeat yesterday');
       }
+      return response.json();
     },
 
-    onSuccess: () => {
+    onSuccess: ({ entries }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.consumption.all });
 
       // May log several meal types at once; the status refetch drives a full
       // cancel-and-replace of the scheduled notification batch.
       queryClient.invalidateQueries({ queryKey: queryKeys.reminders.all });
+
+      // Fire-and-forget: sync copied meals to Apple Health
+      for (const entry of entries ?? []) {
+        syncEntryToHealthKit(entry);
+      }
     },
 
     onError: (error) => {

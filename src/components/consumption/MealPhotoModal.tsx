@@ -6,6 +6,7 @@ import MealAnalysisReview from './MealAnalysisReview';
 import PhotoProduceExtractorModal from './PhotoProduceExtractorModal';
 import { useKeyboard } from '@/hooks/useKeyboard';
 import { usePlatform } from '@/hooks/usePlatform';
+import { consumedAtInstantForDate } from '@/lib/date-utils';
 import type { MealType, ConsumptionEntry } from '@/lib/types';
 
 interface MealPhotoModalProps {
@@ -79,6 +80,8 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
       setIsSaving(true);
       setError(null);
 
+      const consumedAt = consumedAtInstantForDate(selectedDate);
+
       try {
         const response = await fetch(`/api/meal-photos/${photoData.photoId}/save`, {
           method: 'POST',
@@ -91,7 +94,8 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
             editedName: data.mealName,
             editedIngredients: data.ingredients,
             notes: data.notes,
-            consumedAt: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+            consumedAt,
+            consumedDate: selectedDate,
           }),
         });
 
@@ -108,7 +112,7 @@ export default function MealPhotoModal({ isOpen, onClose, selectedDate, onMealLo
             id: result.consumptionEntryId,
             user_id: '', // Will be filled by the actual data
             entry_type: 'photo_meal',
-            consumed_at: `${selectedDate}T${new Date().toTimeString().slice(0, 8)}`,
+            consumed_at: consumedAt,
             consumed_date: selectedDate,
             display_name: data.mealName,
             meal_type: data.mealType,
